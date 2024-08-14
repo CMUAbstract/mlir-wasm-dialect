@@ -8,6 +8,7 @@
 
 #include "Wasm/WasmOps.h"
 #include "Wasm/WasmDialect.h"
+#include "Wasm/WasmTypes.h"
 
 #define GET_OP_CLASSES
 #include "Wasm/WasmOps.cpp.inc"
