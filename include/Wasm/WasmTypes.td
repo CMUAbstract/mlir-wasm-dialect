@@ -21,11 +21,39 @@ class Wasm_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
-def Wasm_CustomType : Wasm_Type<"Custom", "custom"> {
-    let summary = "Wasm custom type";
-    let description = "Custom type in wasm dialect";
-    let parameters = (ins StringRefParameter<"the custom value">:$value);
-    let assemblyFormat = "`<` $value `>`";
+
+class Wasm_IntType<string name, string mnemonic> 
+    : Wasm_Type<name, mnemonic, /*traits=*/[]> {
 }
+
+def Wasm_I32 : Wasm_IntType<"i32", "i32"> {
+    let summary = "Wasm i32 type";
+    let description = "i32 type in wasm dialect";
+}
+
+def Wasm_I64 : Wasm_IntType<"i64", "i64"> {
+    let summary = "Wasm i64 type";
+    let description = "i64 type in wasm dialect";
+}
+
+
+class Wasm_FloatType<string name, string mnemonic> 
+    : Wasm_Type<name, mnemonic, /*traits=*/[]> {
+}
+
+def Wasm_F32 : Wasm_FloatType<"f32", "f32"> {
+    let summary = "Wasm f32 type";
+    let description = "f32 type in wasm dialect";
+}
+
+def Wasm_F64 : Wasm_FloatType<"f64", "f64"> {
+    let summary = "Wasm f64 type";
+    let description = "f64 type in wasm dialect";
+}
+
+def AnyNumericType : TypeConstraint<Or<[Wasm_I32.predicate,
+    Wasm_I64.predicate, Wasm_F32.predicate, Wasm_F64.predicate]>,
+    "any numeric">;
+
 
 #endif // WASM_TYPES
