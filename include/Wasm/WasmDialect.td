@@ -19,7 +19,8 @@ def Wasm_Dialect : Dialect {
     let name = "wasm";
     let summary = "wasm dialect";
     let description = [{
-        This is an MLIR wasm dialect. TODO
+        The wasm dialect is a dialect for the WebAssembly language.
+        It is intended to have a one-to-one mapping with WebAssembly.
     }];
     let cppNamespace = "::mlir::wasm";
 
