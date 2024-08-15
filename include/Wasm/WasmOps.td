@@ -10,9 +10,24 @@
 #define WASM_OPS
 
 include "Wasm/WasmTypes.td"
+include "mlir/Bytecode/BytecodeOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
+
+def Wasm_ConstantOp : Wasm_Op<"constant", [ConstantLike, Pure]> {
+    let summary = "Constant operation";
+    let description = [{
+        The `wasm.constant` operation represents a constant value.
+    }];
+
+    let arguments = (ins AnyAttr:$value);
+    let results = (outs AnyType:$res);
+
+    let assemblyFormat = [{
+        `(` $value `)` attr-dict `:` type($res)
+    }];
+}
 
 class Wasm_BinOp<string mnemonic, list<Trait> traits = []> 
     : Wasm_Op<mnemonic, traits>;
