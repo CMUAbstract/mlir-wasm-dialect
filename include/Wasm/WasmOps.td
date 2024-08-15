@@ -29,22 +29,73 @@ def Wasm_ConstantOp : Wasm_Op<"constant", [ConstantLike, Pure]> {
     }];
 }
 
-class Wasm_BinOp<string mnemonic, list<Trait> traits = []> 
+class Wasm_UnaryOp<string mnemonic, list<Trait> traits = []> 
     : Wasm_Op<mnemonic, traits>;
 
-def Wasm_AddOp : Wasm_BinOp<"add", [Pure, SameOperandsAndResultType, Commutative]> {
-    let summary = "Add two integers.";
-    let description = [{
-        The `wasm.add` operation adds two numeric values.
-    }];
+class Wasm_BinaryOp<string mnemonic, list<Trait> traits = []> 
+    : Wasm_Op<mnemonic, traits>;
 
+// integer unary operations
+class Wasm_IntegerUnaryOp<string mnemonic, list<Trait> traits = []>
+    : Wasm_UnaryOp<mnemonic, traits> {
+    let arguments = (ins AnyIntType:$input);
+    let results = (outs AnyIntType:$res);
+
+    let assemblyFormat = [{
+        $input attr-dict `:` type($input)
+    }];
+}
+
+// integer binary operations
+
+class Wasm_IntegerBinaryOp<string mnemonic, list<Trait> traits = []> 
+: Wasm_BinaryOp<mnemonic, traits # [Pure, SameOperandsAndResultType]> {
     // TODO: How to ensure that LHS and RHS are of the same type?
-    let arguments = (ins AnyNumericType:$lhs, AnyNumericType:$rhs);
-    let results = (outs AnyNumericType:$res);
+    let arguments = (ins AnyIntType:$lhs, AnyIntType:$rhs);
+    let results = (outs AnyIntType:$res);
 
     let assemblyFormat = [{
         $lhs `,` $rhs attr-dict `:` type($lhs)
     }];
 }
+
+def Wasm_IAddOp : Wasm_IntegerBinaryOp<"add", [Commutative]> {
+    let summary = "Add two integer values.";
+    let description = [{
+        The `wasm.add` operation adds two integer values.
+    }];
+}
+
+def Wasm_ISubOp : Wasm_IntegerBinaryOp<"sub", []> {
+    let summary = "Subtract a numeric value by another.";
+    let description = [{
+        The `wasm.sub` operation subtracts a numeric value by another.
+    }];
+}
+
+def Wasm_IMulOp : Wasm_IntegerBinaryOp<"mul", [Commutative]> {
+    let summary = "Multiply two integer values.";
+    let description = [{
+        The `wasm.mul` operation multiplies two integer values.
+    }];
+}
+
+def Wasm_IDivSOp : Wasm_IntegerBinaryOp<"div_s", []> {
+    let summary = "Signed division of two integer values.";
+    let description = [{
+        The `wasm.div_s` operation divides two integer values.
+    }];
+}
+
+def Wasm_IDivUOp : Wasm_IntegerBinaryOp<"div_u", []> {
+    let summary = "Unsigned division of two integer values.";
+    let description = [{
+        The `wasm.div_u` operation divides two integer values.
+    }];
+}
+
+// floating-point unary operations
+
+// floating-point binary operations
 
 #endif // WASM_OPS
