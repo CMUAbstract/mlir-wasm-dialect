@@ -14,19 +14,31 @@ include "mlir/Bytecode/BytecodeOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
-
-def Wasm_ConstantOp : Wasm_Op<"constant", [ConstantLike, Pure]> {
+// constant operator
+class Wasm_ConstantOp<string typeName> 
+    : Wasm_Op< typeName # ".constant", [Pure]> {
     let summary = "Constant operation";
     let description = [{
         The `wasm.constant` operation represents a constant value.
     }];
 
-    let arguments = (ins AnyAttr:$value);
-    let results = (outs AnyType:$res);
+    let assemblyFormat = [{ $value attr-dict }];
+}
 
-    let assemblyFormat = [{
-        `(` $value `)` attr-dict `:` type($res)
-    }];
+def Wasm_I32ConstantOp : Wasm_ConstantOp<"i32"> {
+    let arguments = (ins I32Type:$value);
+}
+
+def Wasm_I64ConstantOp : Wasm_ConstantOp<"i64"> {
+    let arguments = (ins I64Type:$value);
+}
+
+def Wasm_F32ConstantOp : Wasm_ConstantOp<"f32"> {
+    let arguments = (ins F32Type:$value);
+}
+
+def Wasm_F64ConstantOp : Wasm_ConstantOp<"f64"> {
+    let arguments = (ins F64Type:$value);
 }
 
 class Wasm_UnaryOp<string mnemonic, list<Trait> traits = []> 
@@ -36,66 +48,72 @@ class Wasm_BinaryOp<string mnemonic, list<Trait> traits = []>
     : Wasm_Op<mnemonic, traits>;
 
 // integer unary operations
-class Wasm_IntegerUnaryOp<string mnemonic, list<Trait> traits = []>
-    : Wasm_UnaryOp<mnemonic, traits> {
-    let arguments = (ins AnyIntType:$input);
-    let results = (outs AnyIntType:$res);
 
-    let assemblyFormat = [{
-        $input attr-dict `:` type($input)
-    }];
-}
+// clz
+// ctz
+// popcnt
 
 // integer binary operations
 
-class Wasm_IntegerBinaryOp<string mnemonic, list<Trait> traits = []> 
-: Wasm_BinaryOp<mnemonic, traits # [Pure, SameOperandsAndResultType]> {
-    // TODO: How to ensure that LHS and RHS are of the same type?
-    let arguments = (ins AnyIntType:$lhs, AnyIntType:$rhs);
-    let results = (outs AnyIntType:$res);
-
-    let assemblyFormat = [{
-        $lhs `,` $rhs attr-dict `:` type($lhs)
-    }];
-}
-
-def Wasm_IAddOp : Wasm_IntegerBinaryOp<"add", [Commutative]> {
-    let summary = "Add two integer values.";
-    let description = [{
-        The `wasm.add` operation adds two integer values.
-    }];
-}
-
-def Wasm_ISubOp : Wasm_IntegerBinaryOp<"sub", []> {
-    let summary = "Subtract a numeric value by another.";
-    let description = [{
-        The `wasm.sub` operation subtracts a numeric value by another.
-    }];
-}
-
-def Wasm_IMulOp : Wasm_IntegerBinaryOp<"mul", [Commutative]> {
-    let summary = "Multiply two integer values.";
-    let description = [{
-        The `wasm.mul` operation multiplies two integer values.
-    }];
-}
-
-def Wasm_IDivSOp : Wasm_IntegerBinaryOp<"div_s", []> {
-    let summary = "Signed division of two integer values.";
-    let description = [{
-        The `wasm.div_s` operation divides two integer values.
-    }];
-}
-
-def Wasm_IDivUOp : Wasm_IntegerBinaryOp<"div_u", []> {
-    let summary = "Unsigned division of two integer values.";
-    let description = [{
-        The `wasm.div_u` operation divides two integer values.
-    }];
-}
+def Wasm_IAddOp : Wasm_BinaryOp<"i32.add", []> {}
+def Wasm_ISubOp : Wasm_BinaryOp<"i32.sub", []> {}
+def Wasm_IMulOp : Wasm_BinaryOp<"i32.mul", []> {}
+def Wasm_IDivSOp : Wasm_BinaryOp<"i32.div_s", []> {}
+def Wasm_IDivUOp : Wasm_BinaryOp<"i32.div_u", []> {}
+def Wasm_IRemSOp : Wasm_BinaryOp<"i32.rem_s", []> {}
+def Wasm_IRemUOp : Wasm_BinaryOp<"i32.rem_u", []> {}
+def Wasm_IAndOp : Wasm_BinaryOp<"i32.and", []> {}
+def Wasm_IOrOp : Wasm_BinaryOp<"i32.or", []> {}
+def Wasm_IXorOp : Wasm_BinaryOp<"i32.xor", []> {}
+def Wasm_IShlOp : Wasm_BinaryOp<"i32.shl", []> {}
+def Wasm_IShrSOp : Wasm_BinaryOp<"i32.shr_s", []> {}
+def Wasm_IShrUOp : Wasm_BinaryOp<"i32.shr_u", []> {}
+def Wasm_IRotlOp : Wasm_BinaryOp<"i32.rotl", []> {}
+def Wasm_IRotrOp : Wasm_BinaryOp<"i32.rotr", []> {}
 
 // floating-point unary operations
 
+// abs
+
+// neg
+
+// sqrt
+
+// ceil
+
+// floor
+
+// trunc
+
+// nearest
+
 // floating-point binary operations
+
+// add
+
+// sub
+
+// mul
+
+// div
+
+// min
+
+// max
+
+// copysign
+
+// reference instructions
+
+// parametric instructions
+
+// variable instructions
+
+// table instructions
+
+// memory instructions
+
+// constrol instructions
+
 
 #endif // WASM_OPS

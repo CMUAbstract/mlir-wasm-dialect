@@ -51,6 +51,11 @@ def Wasm_F64 : Wasm_FloatType<"f64", "f64"> {
     let description = "f64 type in wasm dialect";
 }
 
+def I32Type : TypeConstraint<Wasm_I32.predicate, "i32">;
+def I64Type : TypeConstraint<Wasm_I64.predicate, "i64">;
+def F32Type : TypeConstraint<Wasm_F32.predicate, "f32">;
+def F64Type : TypeConstraint<Wasm_F64.predicate, "f64">;
+
 def AnyIntType : TypeConstraint<Or<[Wasm_I32.predicate, Wasm_I64.predicate]>,
     "any integer">;
 
