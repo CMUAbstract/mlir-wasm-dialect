@@ -3,14 +3,15 @@
 module {
     // CHECK-LABEL: func @bar()
     func.func @bar() {
-        %0 = arith.constant 1 : i32
-        // CHECK: %{{.*}} = wasm.foo %{{.*}} : i32
-        %res = wasm.foo %0 : i32
+        %0 = wasm.constant(1) : !wasm.i32
+        %1 = wasm.constant(2) : !wasm.i32
+        // CHECK: %{{.*}} = wasm.add %{{.*}}, %{{.*}} : !wasm.i32
+        %res = wasm.add %0, %1 : !wasm.i32
         return
     }
 
-    // CHECK-LABEL: func @wasm_types(%arg0: !wasm.custom<"10">)
-    func.func @wasm_types(%arg0: !wasm.custom<"10">) {
+    // CHECK-LABEL: func @wasm_types(%arg0: !wasm.i32)
+    func.func @wasm_types(%arg0: !wasm.i32) {
         return
     }
 }
