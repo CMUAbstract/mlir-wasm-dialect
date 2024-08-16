@@ -13,6 +13,7 @@ include "Wasm/WasmTypes.td"
 include "mlir/Bytecode/BytecodeOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/IR/CommonAttrConstraints.td"
 
 // constant operator
 class Wasm_ConstantOp<string typeName> 
@@ -26,26 +27,30 @@ class Wasm_ConstantOp<string typeName>
 }
 
 def Wasm_I32ConstantOp : Wasm_ConstantOp<"i32"> {
-    let arguments = (ins I32Type:$value);
+    let arguments = (ins I32Attr:$value);
 }
 
 def Wasm_I64ConstantOp : Wasm_ConstantOp<"i64"> {
-    let arguments = (ins I64Type:$value);
+    let arguments = (ins I64Attr:$value);
 }
 
 def Wasm_F32ConstantOp : Wasm_ConstantOp<"f32"> {
-    let arguments = (ins F32Type:$value);
+    let arguments = (ins F32Attr:$value);
 }
 
 def Wasm_F64ConstantOp : Wasm_ConstantOp<"f64"> {
-    let arguments = (ins F64Type:$value);
+    let arguments = (ins F64Attr:$value);
 }
 
 class Wasm_UnaryOp<string mnemonic, list<Trait> traits = []> 
-    : Wasm_Op<mnemonic, traits>;
+    : Wasm_Op<mnemonic, traits> {
+    let assemblyFormat = [{ attr-dict }];
+}
 
 class Wasm_BinaryOp<string mnemonic, list<Trait> traits = []> 
-    : Wasm_Op<mnemonic, traits>;
+    : Wasm_Op<mnemonic, traits> {
+    let assemblyFormat = [{ attr-dict }];
+}
 
 // integer unary operations
 
@@ -55,7 +60,8 @@ class Wasm_BinaryOp<string mnemonic, list<Trait> traits = []>
 
 // integer binary operations
 
-def Wasm_IAddOp : Wasm_BinaryOp<"i32.add", []> {}
+def Wasm_IAddOp : Wasm_BinaryOp<"i32.add", []> {
+}
 def Wasm_ISubOp : Wasm_BinaryOp<"i32.sub", []> {}
 def Wasm_IMulOp : Wasm_BinaryOp<"i32.mul", []> {}
 def Wasm_IDivSOp : Wasm_BinaryOp<"i32.div_s", []> {}
