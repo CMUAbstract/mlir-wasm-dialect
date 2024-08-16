@@ -10,6 +10,7 @@
 #define WASM_TYPES
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/CommonTypeConstraints.td"
 include "Wasm/WasmDialect.td"
 
 //===----------------------------------------------------------------------===//
@@ -65,6 +66,12 @@ def AnyFloatType : TypeConstraint<Or<[Wasm_F32.predicate, Wasm_F64.predicate]>,
 def AnyNumericType : TypeConstraint<Or<[Wasm_I32.predicate,
     Wasm_I64.predicate, Wasm_F32.predicate, Wasm_F64.predicate]>,
     "any numeric">;
-
+ 
+// TODO
+def RefType : Type<CPred<"true">, "reference type">;
+def FuncIdxType : Type<CPred<"true">, "function index type">;
+def LocalIdxType : Type<CPred<"true">, "local index type">;
+def GlobalIdxType : Type<CPred<"true">, "global index type">;
+def TableIdxType : Type<CPred<"true">, "table index type">;
 
 #endif // WASM_TYPES
