@@ -105,13 +105,155 @@ def Wasm_IRotrOp : Wasm_BinaryOp<"i32.rotr", []> {}
 
 // reference instructions
 
+def Wasm_RefNullOp : Wasm_Op<"ref.null", []> {
+    let summary = "Reference null operation";
+    let description = [{
+        The `ref.null` operation creates a null reference.
+    }];
+
+    let arguments = (ins AnyType:$type);
+}
+
+def Wasm_RefIsNullOp : Wasm_Op<"ref.is_null", []> {
+    let summary = "Reference is null operation";
+    let description = [{
+        The `ref.is_null` operation checks if a reference is null.
+    }];
+}
+
+def Wasm_RefFuncOp : Wasm_Op<"ref.func", []> {
+    let summary = "Reference function operation";
+    let description = [{
+        The `ref.func` operation creates a reference to a function.
+    }];
+    let arguments = (ins AnyType:$type);
+}
+
 // parametric instructions
+
+def Wasm_DropOp : Wasm_Op<"drop", []> {
+    let summary = "Drop operation";
+    let description = [{
+        The `drop` operation removes a value from the stack.
+    }];
+}
+
+def Wasm_SelectOp : Wasm_Op<"select", []> {
+    let summary = "Select operation";
+    let description = [{
+        The `select` operation selects between two values based on a condition.
+    }];
+
+    let arguments = (ins AnyType:$type); // TODO
+}
 
 // variable instructions
 
+def Wasm_LocalGetOp : Wasm_Op<"local.get", []> {
+    let summary = "Local get operation";
+    let description = [{
+        The `local.get` operation reads a local variable.
+    }];
+    let arguments = (ins AnyType:$type);
+}
+
+def Wasm_LocalSetOp : Wasm_Op<"local.set", []> {
+    let summary = "Local set operation";
+    let description = [{
+        The `local.set` operation writes a local variable.
+    }];
+    let arguments = (ins AnyType:$type);
+}
+
+def Wasm_LocalTeeOp : Wasm_Op<"local.tee", []> {
+    let summary = "Local tee operation";
+    let description = [{
+        The `local.tee` operation writes a local variable and returns the value.
+    }];
+    let arguments = (ins AnyType:$type);
+}
+
+def Wasm_GlobalGetOp : Wasm_Op<"global.get", []> {
+    let summary = "Global get operation";
+    let description = [{
+        The `global.get` operation reads a global variable.
+    }];
+    let arguments = (ins AnyType:$type);
+}
+
+def Wasm_GlobalSetOp : Wasm_Op<"global.set", []> {
+    let summary = "Global set operation";
+    let description = [{
+        The `global.set` operation writes a global variable.
+    }];
+    let arguments = (ins AnyType:$type);
+}
+
 // table instructions
 
+def Wasm_TableGetOp : Wasm_Op<"table.get", []> {
+    let summary = "Table get operation";
+    let description = [{
+        The `table.get` operation reads a table element.
+    }];
+    let arguments = (ins AnyType:$type);
+}
+
+def Wasm_TableSetOp : Wasm_Op<"table.set", []> {
+    let summary = "Table set operation";
+    let description = [{
+        The `table.set` operation writes a table element.
+    }];
+    let arguments = (ins AnyType:$type);
+}
+
+def Wasm_TableSizeOp : Wasm_Op<"table.size", []> {
+    let summary = "Table size operation";
+    let description = [{
+        The `table.size` operation returns the size of a table.
+    }];
+}
+
+def Wasm_TableGrowOp : Wasm_Op<"table.grow", []> {
+    let summary = "Table grow operation";
+    let description = [{
+        The `table.grow` operation grows a table.
+    }];
+}
+
+def Wasm_TableFillOp : Wasm_Op<"table.fill", []> {
+    let summary = "Table fill operation";
+    let description = [{
+        The `table.fill` operation fills a range of a table.
+    }];
+}
+
+def Wasm_TableCopyOp : Wasm_Op<"table.copy", []> {
+    let summary = "Table copy operation";
+    let description = [{
+        The `table.copy` operation copies a range of a table.
+    }];
+}
+
+def Wasm_TableInitOp : Wasm_Op<"table.init", []> {
+    let summary = "Table init operation";
+    let description = [{
+        The `table.init` operation initializes a range of a table.
+    }];
+}
+
+def Wasm_ElemDropOp : Wasm_Op<"elem.drop", []> {
+    let summary = "Element drop operation";
+    let description = [{
+        The `elem.drop` operation drops a range of elements.
+    }];
+}
+
 // memory instructions
+
+// load
+
+// store
 
 // constrol instructions
 
@@ -129,5 +271,7 @@ def Wasm_Unreachable : Wasm_Op<"unreachable", []> {
         has reached a state that should never be reached.
     }];
 }
+
+// TODO: control flow instructions
 
 #endif // WASM_OPS
