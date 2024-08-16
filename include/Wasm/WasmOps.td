@@ -60,8 +60,8 @@ class Wasm_BinaryOp<string mnemonic, list<Trait> traits = []>
 
 // integer binary operations
 
-def Wasm_IAddOp : Wasm_BinaryOp<"i32.add", []> {
-}
+// TODO: Add i64, f32, f64
+def Wasm_IAddOp : Wasm_BinaryOp<"i32.add", []> {}
 def Wasm_ISubOp : Wasm_BinaryOp<"i32.sub", []> {}
 def Wasm_IMulOp : Wasm_BinaryOp<"i32.mul", []> {}
 def Wasm_IDivSOp : Wasm_BinaryOp<"i32.div_s", []> {}
