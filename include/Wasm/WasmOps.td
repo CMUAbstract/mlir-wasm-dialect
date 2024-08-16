@@ -115,5 +115,19 @@ def Wasm_IRotrOp : Wasm_BinaryOp<"i32.rotr", []> {}
 
 // constrol instructions
 
+def Wasm_Nop : Wasm_Op<"nop", []> {
+    let summary = "No operation";
+    let description = [{
+        The `nop` operation does nothing.
+    }];
+}
+
+def Wasm_Unreachable : Wasm_Op<"unreachable", []> {
+    let summary = "Unreachable operation";
+    let description = [{
+        The `unreachable` operation is used to indicate that the program
+        has reached a state that should never be reached.
+    }];
+}
 
 #endif // WASM_OPS
