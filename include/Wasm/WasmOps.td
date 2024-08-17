@@ -132,7 +132,7 @@ def Wasm_RefFuncOp : Wasm_Op<"ref.func", []> {
     let description = [{
         The `ref.func` operation creates a reference to a function.
     }];
-    let arguments = (ins FuncIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
 }
 
 // parametric instructions
@@ -160,7 +160,7 @@ def Wasm_LocalGetOp : Wasm_Op<"local.get", []> {
     let description = [{
         The `local.get` operation reads a local variable.
     }];
-    let arguments = (ins LocalIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
 }
 
 def Wasm_LocalSetOp : Wasm_Op<"local.set", []> {
@@ -168,7 +168,7 @@ def Wasm_LocalSetOp : Wasm_Op<"local.set", []> {
     let description = [{
         The `local.set` operation writes a local variable.
     }];
-    let arguments = (ins LocalIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
 }
 
 def Wasm_LocalTeeOp : Wasm_Op<"local.tee", []> {
@@ -176,7 +176,7 @@ def Wasm_LocalTeeOp : Wasm_Op<"local.tee", []> {
     let description = [{
         The `local.tee` operation writes a local variable and returns the value.
     }];
-    let arguments = (ins LocalIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
 }
 
 def Wasm_GlobalGetOp : Wasm_Op<"global.get", []> {
@@ -184,7 +184,7 @@ def Wasm_GlobalGetOp : Wasm_Op<"global.get", []> {
     let description = [{
         The `global.get` operation reads a global variable.
     }];
-    let arguments = (ins GlobalIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
 }
 
 def Wasm_GlobalSetOp : Wasm_Op<"global.set", []> {
@@ -192,7 +192,7 @@ def Wasm_GlobalSetOp : Wasm_Op<"global.set", []> {
     let description = [{
         The `global.set` operation writes a global variable.
     }];
-    let arguments = (ins GlobalIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
 }
 
 // table instructions
@@ -202,7 +202,7 @@ def Wasm_TableGetOp : Wasm_Op<"table.get", []> {
     let description = [{
         The `table.get` operation reads a table element.
     }];
-    let arguments = (ins TableIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
 }
 
 def Wasm_TableSetOp : Wasm_Op<"table.set", []> {
@@ -210,7 +210,7 @@ def Wasm_TableSetOp : Wasm_Op<"table.set", []> {
     let description = [{
         The `table.set` operation writes a table element.
     }];
-    let arguments = (ins TableIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
 }
 
 def Wasm_TableSizeOp : Wasm_Op<"table.size", []> {
@@ -319,7 +319,7 @@ def Wasm_MemoryInitOp : Wasm_Op<"memory.init", []> {
     let description = [{
         The `memory.init` operation initializes a range of memory.
     }];
-    let arguments = (ins DataIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
@@ -328,7 +328,7 @@ def Wasm_DataDropOp : Wasm_Op<"data.drop", []> {
     let description = [{
         The `data.drop` operation drops a range of data.
     }];
-    let arguments = (ins DataIdxType:$idx);
+    let arguments = (ins I32Attr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
