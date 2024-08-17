@@ -274,7 +274,7 @@ def Wasm_LoadOp : Wasm_Op<"i32.load", []> {
     let arguments = (ins I32Attr:$offset, I32Attr:$align);
     let assemblyFormat = [{ 
         attr-dict 
-        offset`:` $offset, align`:` $align 
+        `{` `offset` `=` $offset `,`  `align` `=` $align `}`
     }];
 }
 
@@ -286,7 +286,7 @@ def Wasm_StoreOp : Wasm_Op<"i32.store", []> {
     let arguments = (ins I32Attr:$offset, I32Attr:$align);
     let assemblyFormat = [{ 
         attr-dict 
-        offset`:` $offset, align`:` $align 
+        `{` `offset` `=` $offset `,`  `align` `=` $align `}`
     }];
 }
 
