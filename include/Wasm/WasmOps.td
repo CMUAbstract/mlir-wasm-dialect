@@ -258,8 +258,79 @@ def Wasm_ElemDropOp : Wasm_Op<"elem.drop", []> {
 // memory instructions
 
 // load
+def Wasm_LoadOp : Wasm_Op<"i32.load", []> {
+    let summary = "Memory load operation";
+    let description = [{
+        The `memory.load` operation reads from memory.
+    }];
+    let arguments = (ins I32Attr:$offset, I32Attr:$align);
+    let assemblyFormat = [{ 
+        attr-dict 
+        offset`:` $offset, align`:` $align 
+    }];
+}
 
-// store
+def Wasm_StoreOp : Wasm_Op<"i32.store", []> {
+    let summary = "Memory store operation";
+    let description = [{
+        The `memory.store` operation writes to memory.
+    }];
+    let arguments = (ins I32Attr:$offset, I32Attr:$align);
+    let assemblyFormat = [{ 
+        attr-dict 
+        offset`:` $offset, align`:` $align 
+    }];
+}
+
+def Wasm_MemorySizeOp : Wasm_Op<"memory.size", []> {
+    let summary = "Memory size operation";
+    let description = [{
+        The `memory.size` operation returns the size of memory.
+    }];
+    let assemblyFormat = [{ attr-dict }];
+}
+
+def Wasm_MemoryGrowOp : Wasm_Op<"memory.grow", []> {
+    let summary = "Memory grow operation";
+    let description = [{
+        The `memory.grow` operation grows memory.
+    }];
+    let assemblyFormat = [{ attr-dict }];
+}
+
+def Wasm_MemoryFillOp : Wasm_Op<"memory.fill", []> {
+    let summary = "Memory fill operation";
+    let description = [{
+        The `memory.fill` operation fills a range of memory.
+    }];
+    let assemblyFormat = [{ attr-dict }];
+}
+
+def Wasm_MemoryCopyOp : Wasm_Op<"memory.copy", []> {
+    let summary = "Memory copy operation";
+    let description = [{
+        The `memory.copy` operation copies a range of memory.
+    }];
+    let assemblyFormat = [{ attr-dict }];
+}
+
+def Wasm_MemoryInitOp : Wasm_Op<"memory.init", []> {
+    let summary = "Memory init operation";
+    let description = [{
+        The `memory.init` operation initializes a range of memory.
+    }];
+    let arguments = (ins DataIdxType:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
+}
+
+def Wasm_DataDropOp : Wasm_Op<"data.drop", []> {
+    let summary = "Data drop operation";
+    let description = [{
+        The `data.drop` operation drops a range of data.
+    }];
+    let arguments = (ins DataIdxType:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
+}
 
 // constrol instructions
 

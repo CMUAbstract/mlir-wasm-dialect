@@ -73,5 +73,6 @@ def FuncIdxType : Type<CPred<"true">, "function index type">;
 def LocalIdxType : Type<CPred<"true">, "local index type">;
 def GlobalIdxType : Type<CPred<"true">, "global index type">;
 def TableIdxType : Type<CPred<"true">, "table index type">;
+def DataIdxType : Type<CPred<"true">, "data index type">;
 
 #endif // WASM_TYPES
