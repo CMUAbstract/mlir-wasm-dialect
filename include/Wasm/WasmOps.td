@@ -133,6 +133,7 @@ def Wasm_RefFuncOp : Wasm_Op<"ref.func", []> {
         The `ref.func` operation creates a reference to a function.
     }];
     let arguments = (ins I32Attr:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
 }
 
 // parametric instructions
@@ -161,6 +162,7 @@ def Wasm_LocalGetOp : Wasm_Op<"local.get", []> {
         The `local.get` operation reads a local variable.
     }];
     let arguments = (ins I32Attr:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
 }
 
 def Wasm_LocalSetOp : Wasm_Op<"local.set", []> {
@@ -169,6 +171,7 @@ def Wasm_LocalSetOp : Wasm_Op<"local.set", []> {
         The `local.set` operation writes a local variable.
     }];
     let arguments = (ins I32Attr:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
 }
 
 def Wasm_LocalTeeOp : Wasm_Op<"local.tee", []> {
@@ -177,6 +180,7 @@ def Wasm_LocalTeeOp : Wasm_Op<"local.tee", []> {
         The `local.tee` operation writes a local variable and returns the value.
     }];
     let arguments = (ins I32Attr:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
 }
 
 def Wasm_GlobalGetOp : Wasm_Op<"global.get", []> {
@@ -185,6 +189,7 @@ def Wasm_GlobalGetOp : Wasm_Op<"global.get", []> {
         The `global.get` operation reads a global variable.
     }];
     let arguments = (ins I32Attr:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
 }
 
 def Wasm_GlobalSetOp : Wasm_Op<"global.set", []> {
@@ -193,6 +198,7 @@ def Wasm_GlobalSetOp : Wasm_Op<"global.set", []> {
         The `global.set` operation writes a global variable.
     }];
     let arguments = (ins I32Attr:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
 }
 
 // table instructions
@@ -203,6 +209,7 @@ def Wasm_TableGetOp : Wasm_Op<"table.get", []> {
         The `table.get` operation reads a table element.
     }];
     let arguments = (ins I32Attr:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
 }
 
 def Wasm_TableSetOp : Wasm_Op<"table.set", []> {
@@ -211,6 +218,7 @@ def Wasm_TableSetOp : Wasm_Op<"table.set", []> {
         The `table.set` operation writes a table element.
     }];
     let arguments = (ins I32Attr:$idx);
+    let assemblyFormat = [{ $idx attr-dict }];
 }
 
 def Wasm_TableSizeOp : Wasm_Op<"table.size", []> {
