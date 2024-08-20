@@ -28,6 +28,11 @@ def Wasm_Dialect : Dialect {
     let extraClassDeclaration = [{
         void registerTypes();
     }];
+
+    let dependentDialects = [
+        "arith::ArithDialect",
+        "func::FuncDialect",
+    ];
 }
 
 //===----------------------------------------------------------------------===//
