@@ -11,19 +11,10 @@
 
 include "mlir/Pass/PassBase.td"
 
-def WasmSwitchBarFoo: Pass<"wasm-switch-bar-foo", "::mlir::ModuleOp"> {
-  let summary = "Switches the name of a FuncOp named `bar` to `foo` and folds.";
+def ArithToWasmPass : Pass<"arith-to-wasm"> {
+  let summary = "Converts Arith dialect to Wasm dialect";
   let description = [{
-    Switches the name of a FuncOp named `bar` to `foo` and folds.
-    ```
-    func.func @bar() {
-      return
-    }
-    // Gets transformed to:
-    func.func @foo() {
-      return
-    }
-    ```
+    Converts Arith dialect to Wasm dialect.
   }];
 }
 
