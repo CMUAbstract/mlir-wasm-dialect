@@ -14,6 +14,7 @@ include "mlir/Bytecode/BytecodeOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
+include "mlir/IR/EnumAttr.td"
 
 // constant operator
 class Wasm_ConstantOp<string typeName> 
@@ -154,7 +155,13 @@ def Wasm_SelectOp : Wasm_Op<"select", []> {
     let arguments = (ins AnyType:$arg); // TODO
 }
 
-// variable instructions
+def Wasm_LocalOp : Wasm_Op<"local", []> {
+    let summary = "Local declaration operation";
+    let description = [{
+        The `local` operation declares local variables.
+    }];
+    // TODO: arguments should be a list of types
+}
 
 def Wasm_LocalGetOp : Wasm_Op<"local.get", []> {
     let summary = "Local get operation";

@@ -10,6 +10,8 @@
 #define WASM_WASMDIALECT_H
 
 #include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Dialect.h"
 
 #include "Wasm/WasmOpsDialect.h.inc"
