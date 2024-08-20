@@ -10,36 +10,39 @@
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+
 #include "Wasm/WasmPasses.h"
 
 namespace mlir::wasm {
-#define GEN_PASS_DEF_WASMSWITCHBARFOO
+#define GEN_PASS_DEF_ARITHTOWASMPASS
 #include "Wasm/WasmPasses.h.inc"
 
 namespace {
-class WasmSwitchBarFooRewriter : public OpRewritePattern<func::FuncOp> {
+
+class ConstantOpLowering : public OpRewritePattern<arith::ConstantOp> {
 public:
-  using OpRewritePattern<func::FuncOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(func::FuncOp op,
+  using OpRewritePattern<arith::ConstantOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(arith::ConstantOp op,
                                 PatternRewriter &rewriter) const final {
-    if (op.getSymName() == "bar") {
-      rewriter.modifyOpInPlace(op, [&op]() { op.setSymName("foo"); });
-      return success();
-    }
-    return failure();
+    // rewriter.replaceOpWithNewOp<arith::ConstantOp>(op, op.value());
+    return success();
   }
 };
 
-class WasmSwitchBarFoo
-    : public impl::WasmSwitchBarFooBase<WasmSwitchBarFoo> {
+void populateArithToWasmPatterns(RewritePatternSet &patterns) {
+  patterns.add<ConstantOpLowering>(patterns.getContext());
+}
+
+class ArithToWasmPass : public impl::ArithToWasmPassBase<ArithToWasmPass> {
 public:
-  using impl::WasmSwitchBarFooBase<
-      WasmSwitchBarFoo>::WasmSwitchBarFooBase;
+  using impl::ArithToWasmPassBase<ArithToWasmPass>::ArithToWasmPassBase;
   void runOnOperation() final {
+    auto module = getOperation();
     RewritePatternSet patterns(&getContext());
-    patterns.add<WasmSwitchBarFooRewriter>(&getContext());
+    populateArithToWasmPatterns(patterns);
     FrozenRewritePatternSet patternSet(std::move(patterns));
-    if (failed(applyPatternsAndFoldGreedily(getOperation(), patternSet)))
+    if (failed(applyPatternsAndFoldGreedily(module, patternSet)))
       signalPassFailure();
   }
 };
