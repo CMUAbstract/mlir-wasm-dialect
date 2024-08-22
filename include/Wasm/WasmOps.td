@@ -153,7 +153,7 @@ def Wasm_LocalGetOp : Wasm_Op<"local.get", []> {
     let description = [{
         The `local.get` operation reads a local variable.
     }];
-    let arguments = (ins I32Attr:$idx);
+    let arguments = (ins IndexAttr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
@@ -162,7 +162,7 @@ def Wasm_LocalSetOp : Wasm_Op<"local.set", []> {
     let description = [{
         The `local.set` operation writes a local variable.
     }];
-    let arguments = (ins I32Attr:$idx);
+    let arguments = (ins IndexAttr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
@@ -171,7 +171,7 @@ def Wasm_LocalTeeOp : Wasm_Op<"local.tee", []> {
     let description = [{
         The `local.tee` operation writes a local variable and returns the value.
     }];
-    let arguments = (ins I32Attr:$idx);
+    let arguments = (ins IndexAttr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
@@ -180,7 +180,7 @@ def Wasm_GlobalGetOp : Wasm_Op<"global.get", []> {
     let description = [{
         The `global.get` operation reads a global variable.
     }];
-    let arguments = (ins I32Attr:$idx);
+    let arguments = (ins IndexAttr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
@@ -189,7 +189,7 @@ def Wasm_GlobalSetOp : Wasm_Op<"global.set", []> {
     let description = [{
         The `global.set` operation writes a global variable.
     }];
-    let arguments = (ins I32Attr:$idx);
+    let arguments = (ins IndexAttr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
@@ -200,7 +200,7 @@ def Wasm_TableGetOp : Wasm_Op<"table.get", []> {
     let description = [{
         The `table.get` operation reads a table element.
     }];
-    let arguments = (ins I32Attr:$idx);
+    let arguments = (ins IndexAttr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
@@ -209,7 +209,7 @@ def Wasm_TableSetOp : Wasm_Op<"table.set", []> {
     let description = [{
         The `table.set` operation writes a table element.
     }];
-    let arguments = (ins I32Attr:$idx);
+    let arguments = (ins IndexAttr:$idx);
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
