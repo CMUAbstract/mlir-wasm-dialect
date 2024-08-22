@@ -12,3 +12,12 @@
 
 #define GET_OP_CLASSES
 #include "Wasm/WasmOps.cpp.inc"
+
+llvm::LogicalResult mlir::wasm::ConstantOp::verify() {
+  // TODO: Value must be either of i32, i64, f32, or f64 attribute.
+  if (!llvm::isa<IntegerAttr, FloatAttr>(getValue())) {
+    return emitOpError(
+        "value must be either of i32, i64, f32, or f64 attribute");
+  }
+  return success();
+}
