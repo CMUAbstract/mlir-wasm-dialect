@@ -116,7 +116,8 @@ public:
             rewriter.setInsertionPoint(op);
             rewriter.create<wasm::LocalGetOp>(op->getLoc(), lhsLocal);
             rewriter.create<wasm::LocalGetOp>(op->getLoc(), rhsLocal);
-            rewriter.create<wasm::IAddOp>(op->getLoc());
+            // TODO: Verify somewhere that two locals are of same type
+            rewriter.create<wasm::AddOp>(op->getLoc(), lhs.getType());
             rewriter.create<wasm::LocalSetOp>(op->getLoc(), local);
             rewriter.clearInsertionPoint();
             ++it;

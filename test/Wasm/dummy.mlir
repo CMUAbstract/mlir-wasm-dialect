@@ -5,8 +5,8 @@ module {
     func.func @bar() {
         wasm.constant 1 : i32
         wasm.constant 2 : i32
-        // CHECK: wasm.i32.add 
-        wasm.i32.add 
+        // CHECK: wasm.add : i32
+        wasm.add : i32
         return
     }
 
