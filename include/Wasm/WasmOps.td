@@ -23,77 +23,83 @@ def Wasm_ConstantOp : Wasm_Op<"constant", [Pure]> {
     let hasVerifier = 1;
 }
 
-class Wasm_UnaryOp<string mnemonic, list<Trait> traits = []> 
+class Wasm_IntegerOp<string mnemonic, list<Trait> traits = []> 
     : Wasm_Op<mnemonic, traits> {
-    let assemblyFormat = [{ attr-dict }];
-}
-
-class Wasm_BinaryOp<string mnemonic, list<Trait> traits = []> 
-    : Wasm_Op<mnemonic, traits> {
-    // wasm binary operations do not explicitly take arguments.
-    // Arguments are implicitly taken from the stack
+    let summary = "operations on i32 and i64 types"; 
     let arguments = (ins TypeAttr:$type);
     let assemblyFormat = [{ attr-dict `:` $type }];
-    // TODO: Add verifier
-    // probably we should split this into two classes: one for integer and one
-    // for floating-point
 }
+
+class Wasm_FloatOp<string mnemonic, list<Trait> traits = []> 
+    : Wasm_Op<mnemonic, traits> {
+    let summary = "operations on f32 and f64 types"; 
+    let arguments = (ins TypeAttr:$type);
+    let assemblyFormat = [{ attr-dict `:` $type }];
+}
+
+// note that there is no wasm instruction that are unary and accept both integer
+// and float types
+class Wasm_NumericBinaryOp<string mnemonic, list<Trait> traits = []> 
+    : Wasm_Op<mnemonic, traits> {
+    let summary = "operations on i32, i64, f32, and f64 types"; 
+    let arguments = (ins TypeAttr:$type);
+    let assemblyFormat = [{ attr-dict `:` $type }];
+}
+
+class Wasm_IntegerUnaryOp<string mnemonic, list<Trait> traits = []> 
+    : Wasm_IntegerOp<mnemonic, traits>;
+
+class Wasm_IntegerBinaryOp<string mnemonic, list<Trait> traits = []> 
+    : Wasm_IntegerOp<mnemonic, traits>;
+
+class Wasm_FloatUnaryOp<string mnemonic, list<Trait> traits = []> 
+    : Wasm_FloatOp<mnemonic, traits>;
+
+class Wasm_FloatBinaryOp<string mnemonic, list<Trait> traits = []> 
+    : Wasm_FloatOp<mnemonic, traits>;
+
+// numeric binary operations
+def Wasm_AddOp : Wasm_NumericBinaryOp<"add">;
+def Wasm_SubOp : Wasm_NumericBinaryOp<"sub">;
+def Wasm_MulOp : Wasm_NumericBinaryOp<"mul">;
 
 // integer unary operations
 
-// clz
-// ctz
-// popcnt
+def Wasm_IClzOp : Wasm_IntegerUnaryOp<"clz">;
+def Wasm_ICtzOp : Wasm_IntegerUnaryOp<"ctz">;
+def Wasm_IPopcntOp : Wasm_IntegerUnaryOp<"popcnt">;
 
 // integer binary operations
 
-def Wasm_AddOp : Wasm_BinaryOp<"add">;
-def Wasm_SubOp : Wasm_BinaryOp<"sub">;
-def Wasm_MulOp : Wasm_BinaryOp<"mul">;
-def Wasm_DivSOp : Wasm_BinaryOp<"div_s">;
-def Wasm_DivUOp : Wasm_BinaryOp<"div_u">;
-def Wasm_RemSOp : Wasm_BinaryOp<"rem_s">;
-def Wasm_RemUOp : Wasm_BinaryOp<"rem_u">;
-def Wasm_AndOp : Wasm_BinaryOp<"and">;
-def Wasm_OrOp : Wasm_BinaryOp<"or">;
-def Wasm_XorOp : Wasm_BinaryOp<"xor">;
-def Wasm_ShlOp : Wasm_BinaryOp<"shl">;
-def Wasm_ShrSOp : Wasm_BinaryOp<"shr_s">;
-def Wasm_ShrUOp : Wasm_BinaryOp<"shr_u">;
-def Wasm_RotlOp : Wasm_BinaryOp<"rotl">;
-def Wasm_RotrOp : Wasm_BinaryOp<"rotr">;
+def Wasm_IDivSOp : Wasm_IntegerBinaryOp<"div_s">;
+def Wasm_IDivUOp : Wasm_IntegerBinaryOp<"div_u">;
+def Wasm_IRemSOp : Wasm_IntegerBinaryOp<"rem_s">;
+def Wasm_IRemUOp : Wasm_IntegerBinaryOp<"rem_u">;
+def Wasm_IAndOp : Wasm_IntegerBinaryOp<"and">;
+def Wasm_IOrOp : Wasm_IntegerBinaryOp<"or">;
+def Wasm_IXorOp : Wasm_IntegerBinaryOp<"xor">;
+def Wasm_IShlOp : Wasm_IntegerBinaryOp<"shl">;
+def Wasm_IShrSOp : Wasm_IntegerBinaryOp<"shr_s">;
+def Wasm_IShrUOp : Wasm_IntegerBinaryOp<"shr_u">;
+def Wasm_IRotlOp : Wasm_IntegerBinaryOp<"rotl">;
+def Wasm_IRotrOp : Wasm_IntegerBinaryOp<"rotr">;
 
 // floating-point unary operations
 
-// abs
-
-// neg
-
-// sqrt
-
-// ceil
-
-// floor
-
-// trunc
-
-// nearest
+def Wasm_FAbsOp : Wasm_FloatUnaryOp<"abs">;
+def Wasm_FNegOp : Wasm_FloatUnaryOp<"neg">;
+def Wasm_FSqrtOp : Wasm_FloatUnaryOp<"sqrt">;
+def Wasm_FCeilOp : Wasm_FloatUnaryOp<"ceil">;
+def Wasm_FFloorOp : Wasm_FloatUnaryOp<"floor">;
+def Wasm_FTruncOp : Wasm_FloatUnaryOp<"trunc">;
+def Wasm_FNearesetOp : Wasm_FloatUnaryOp<"nearest">;
 
 // floating-point binary operations
 
-// add
-
-// sub
-
-// mul
-
-// div
-
-// min
-
-// max
-
-// copysign
+def Wasm_FDivOp : Wasm_FloatBinaryOp<"div">;
+def Wasm_FMinOp : Wasm_FloatBinaryOp<"min">;
+def Wasm_FMaxOp : Wasm_FloatBinaryOp<"max">;
+def Wasm_FCopysignOp : Wasm_FloatBinaryOp<"copysign">;
 
 // reference instructions
 
