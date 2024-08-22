@@ -97,7 +97,8 @@ public:
             rewriter.setInsertionPoint(op);
             // add wasm.constant
             rewriter.create<wasm::ConstantOp>(op->getLoc(), attr);
-            rewriter.create<wasm::LocalSetOp>(op->getLoc(), local);
+            rewriter.create<wasm::LocalSetOp>(op->getLoc(),
+                                              rewriter.getIndexAttr(local));
             rewriter.clearInsertionPoint();
             ++it;
             rewriter.eraseOp(op);
@@ -114,11 +115,14 @@ public:
             int rhsLocal = analysis.getLocal(rhs);
 
             rewriter.setInsertionPoint(op);
-            rewriter.create<wasm::LocalGetOp>(op->getLoc(), lhsLocal);
-            rewriter.create<wasm::LocalGetOp>(op->getLoc(), rhsLocal);
+            rewriter.create<wasm::LocalGetOp>(op->getLoc(),
+                                              rewriter.getIndexAttr(lhsLocal));
+            rewriter.create<wasm::LocalGetOp>(op->getLoc(),
+                                              rewriter.getIndexAttr(rhsLocal));
             // TODO: Verify somewhere that two locals are of same type
             rewriter.create<wasm::AddOp>(op->getLoc(), lhs.getType());
-            rewriter.create<wasm::LocalSetOp>(op->getLoc(), local);
+            rewriter.create<wasm::LocalSetOp>(op->getLoc(),
+                                              rewriter.getIndexAttr(local));
             rewriter.clearInsertionPoint();
             ++it;
             rewriter.eraseOp(op);
