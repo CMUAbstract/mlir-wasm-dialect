@@ -30,7 +30,13 @@ class Wasm_UnaryOp<string mnemonic, list<Trait> traits = []>
 
 class Wasm_BinaryOp<string mnemonic, list<Trait> traits = []> 
     : Wasm_Op<mnemonic, traits> {
-    let assemblyFormat = [{ attr-dict }];
+    // wasm binary operations do not explicitly take arguments.
+    // Arguments are implicitly taken from the stack
+    let arguments = (ins TypeAttr:$type);
+    let assemblyFormat = [{ attr-dict `:` $type }];
+    // TODO: Add verifier
+    // probably we should split this into two classes: one for integer and one
+    // for floating-point
 }
 
 // integer unary operations
@@ -41,22 +47,21 @@ class Wasm_BinaryOp<string mnemonic, list<Trait> traits = []>
 
 // integer binary operations
 
-// TODO: Add i64, f32, f64
-def Wasm_IAddOp : Wasm_BinaryOp<"i32.add", []> {}
-def Wasm_ISubOp : Wasm_BinaryOp<"i32.sub", []> {}
-def Wasm_IMulOp : Wasm_BinaryOp<"i32.mul", []> {}
-def Wasm_IDivSOp : Wasm_BinaryOp<"i32.div_s", []> {}
-def Wasm_IDivUOp : Wasm_BinaryOp<"i32.div_u", []> {}
-def Wasm_IRemSOp : Wasm_BinaryOp<"i32.rem_s", []> {}
-def Wasm_IRemUOp : Wasm_BinaryOp<"i32.rem_u", []> {}
-def Wasm_IAndOp : Wasm_BinaryOp<"i32.and", []> {}
-def Wasm_IOrOp : Wasm_BinaryOp<"i32.or", []> {}
-def Wasm_IXorOp : Wasm_BinaryOp<"i32.xor", []> {}
-def Wasm_IShlOp : Wasm_BinaryOp<"i32.shl", []> {}
-def Wasm_IShrSOp : Wasm_BinaryOp<"i32.shr_s", []> {}
-def Wasm_IShrUOp : Wasm_BinaryOp<"i32.shr_u", []> {}
-def Wasm_IRotlOp : Wasm_BinaryOp<"i32.rotl", []> {}
-def Wasm_IRotrOp : Wasm_BinaryOp<"i32.rotr", []> {}
+def Wasm_AddOp : Wasm_BinaryOp<"add">;
+def Wasm_SubOp : Wasm_BinaryOp<"sub">;
+def Wasm_MulOp : Wasm_BinaryOp<"mul">;
+def Wasm_DivSOp : Wasm_BinaryOp<"div_s">;
+def Wasm_DivUOp : Wasm_BinaryOp<"div_u">;
+def Wasm_RemSOp : Wasm_BinaryOp<"rem_s">;
+def Wasm_RemUOp : Wasm_BinaryOp<"rem_u">;
+def Wasm_AndOp : Wasm_BinaryOp<"and">;
+def Wasm_OrOp : Wasm_BinaryOp<"or">;
+def Wasm_XorOp : Wasm_BinaryOp<"xor">;
+def Wasm_ShlOp : Wasm_BinaryOp<"shl">;
+def Wasm_ShrSOp : Wasm_BinaryOp<"shr_s">;
+def Wasm_ShrUOp : Wasm_BinaryOp<"shr_u">;
+def Wasm_RotlOp : Wasm_BinaryOp<"rotl">;
+def Wasm_RotrOp : Wasm_BinaryOp<"rotr">;
 
 // floating-point unary operations
 
