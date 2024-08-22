@@ -15,32 +15,12 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/Constraints.td"
 
-// constant operator
-class Wasm_ConstantOp<string typeName> 
-    : Wasm_Op< typeName # ".constant", [Pure]> {
-    let summary = "Constant operation";
-    let description = [{
-        The `wasm.constant` operation represents a constant value.
-    }];
-
-    let assemblyFormat = [{ $value attr-dict }];
-}
-
-def Wasm_I32ConstantOp : Wasm_ConstantOp<"i32"> {
-    let arguments = (ins I32Attr:$value);
-}
-
-def Wasm_I64ConstantOp : Wasm_ConstantOp<"i64"> {
-    let arguments = (ins I64Attr:$value);
-}
-
-def Wasm_F32ConstantOp : Wasm_ConstantOp<"f32"> {
-    let arguments = (ins F32Attr:$value);
-}
-
-def Wasm_F64ConstantOp : Wasm_ConstantOp<"f64"> {
-    let arguments = (ins F64Attr:$value);
+def Wasm_ConstantOp : Wasm_Op<"constant", [Pure]> {
+    let arguments = (ins AnyAttr:$value);
+    let assemblyFormat = "attr-dict $value";
+    let hasVerifier = 1;
 }
 
 class Wasm_UnaryOp<string mnemonic, list<Trait> traits = []> 

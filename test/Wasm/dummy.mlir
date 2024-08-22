@@ -3,8 +3,8 @@
 module {
     // CHECK-LABEL: func @bar()
     func.func @bar() {
-        wasm.i32.constant 1 
-        wasm.i32.constant 2
+        wasm.constant 1 : i32
+        wasm.constant 2 : i32
         // CHECK: wasm.i32.add 
         wasm.i32.add 
         return

@@ -96,8 +96,7 @@ public:
             // put wasm instructions here
             rewriter.setInsertionPoint(op);
             // add wasm.constant
-            rewriter.create<wasm::I32ConstantOp>(
-                op->getLoc(), mlir::cast<mlir::IntegerAttr>(attr));
+            rewriter.create<wasm::ConstantOp>(op->getLoc(), attr);
             rewriter.create<wasm::LocalSetOp>(op->getLoc(), local);
             rewriter.clearInsertionPoint();
             ++it;
@@ -131,7 +130,7 @@ public:
 
     Operation *firstOp = &(*func->getRegion(0).getBlocks().begin()->begin());
     rewriter.setInsertionPoint(firstOp);
-    rewriter.create<wasm::LocalOp>(func.getLoc(), "i32");
+    // rewriter.create<wasm::LocalOp>(func.getLoc(), "i32");
   }
 };
 } // namespace mlir::wasm
