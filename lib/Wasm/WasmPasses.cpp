@@ -14,6 +14,7 @@
 #include "Wasm/WasmPasses.h"
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 namespace mlir::wasm {
@@ -55,12 +56,19 @@ public:
     }
     return -1;
   }
+  // NOTE: This function should be called before erasing operations
+  std::vector<mlir::Attribute> getTypeAttrs() {
+    std::vector<mlir::Attribute> types;
+    types.reserve(reg2Loc.size());
+    std::transform(
+        reg2Loc.begin(), reg2Loc.end(), std::back_inserter(types),
+        [](const auto &reg) { return mlir::TypeAttr::get(reg.getType()); });
+    return types;
+  }
 
 private:
   int numArguments;
   int numVariables;
-  // TODO: We need to keep track of the wasm type of each local, i.e. whether
-  // it is an i32, i64, f32, or f64.
   std::vector<mlir::Value> reg2Loc;
 };
 
@@ -80,6 +88,16 @@ public:
     MLIRContext *context = func.getContext();
 
     PatternRewriter rewriter(context);
+
+    Operation *firstOp = &(*func->getRegion(0).getBlocks().begin()->begin());
+    rewriter.setInsertionPoint(firstOp);
+    std::vector<mlir::Attribute> types;
+    for (auto typeAttr : analysis.getTypeAttrs()) {
+      types.push_back(typeAttr);
+    }
+    llvm::ArrayRef<mlir::Attribute> typesRef(types);
+    rewriter.create<wasm::LocalOp>(func.getLoc(),
+                                   rewriter.getArrayAttr(typesRef));
 
     // TODO: It would be simpler to use func.walk([&](Operation *op)
     for (Region &region : func->getRegions()) {
@@ -132,10 +150,6 @@ public:
         }
       }
     }
-
-    Operation *firstOp = &(*func->getRegion(0).getBlocks().begin()->begin());
-    rewriter.setInsertionPoint(firstOp);
-    // rewriter.create<wasm::LocalOp>(func.getLoc(), "i32");
   }
 };
 } // namespace mlir::wasm
