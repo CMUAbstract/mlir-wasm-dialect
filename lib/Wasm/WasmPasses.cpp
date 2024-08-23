@@ -87,7 +87,7 @@ public:
       : OpConversionPattern<SourceOp>(typeConverter, context, benefit),
         analysis(analysis) {}
 
-  VariableAnalysis &getAnalysis() { return analysis; }
+  VariableAnalysis &getAnalysis() const { return analysis; }
 
 private:
   VariableAnalysis &analysis;
