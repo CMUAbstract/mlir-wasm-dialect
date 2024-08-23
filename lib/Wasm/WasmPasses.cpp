@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "Wasm/WasmPasses.h"
@@ -70,6 +71,39 @@ private:
   int numArguments;
   int numVariables;
   std::vector<mlir::Value> reg2Loc;
+};
+
+template <typename SourceOp>
+class OpConversionPatternWithAnalysis : public OpConversionPattern<SourceOp> {
+public:
+  OpConversionPatternWithAnalysis(MLIRContext *context,
+                                  VariableAnalysis &analysis,
+                                  PatternBenefit benefit = 1)
+      : OpConversionPattern<SourceOp>(context, benefit), analysis(analysis) {}
+  OpConversionPatternWithAnalysis(const TypeConverter &typeConverter,
+                                  MLIRContext *context,
+                                  VariableAnalysis &analysis,
+                                  PatternBenefit benefit = 1)
+      : OpConversionPattern<SourceOp>(typeConverter, context, benefit),
+        analysis(analysis) {}
+
+  VariableAnalysis &getAnalysis() { return analysis; }
+
+private:
+  VariableAnalysis &analysis;
+};
+
+struct ConvertAdd : public OpConversionPatternWithAnalysis<arith::AddIOp> {
+  using OpConversionPatternWithAnalysis<
+      arith::AddIOp>::OpConversionPatternWithAnalysis;
+
+  LogicalResult
+  matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // TODO
+
+    return success();
+  }
 };
 
 class ConvertToWasm : public impl::ConvertToWasmBase<ConvertToWasm> {
