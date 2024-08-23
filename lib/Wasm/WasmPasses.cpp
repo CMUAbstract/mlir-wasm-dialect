@@ -49,9 +49,9 @@ public:
   }
   int getNumVariables() { return numVariables; }
   int getLocal(const mlir::Value &reg) {
-    auto search = std::find(reg2Loc.begin(), reg2Loc.end(), reg);
-    if (search != reg2Loc.end()) {
-      return search - reg2Loc.begin();
+    auto result = std::find(reg2Loc.begin(), reg2Loc.end(), reg);
+    if (result != reg2Loc.end()) {
+      return result - reg2Loc.begin() + numArguments;
     }
     return -1;
   }
