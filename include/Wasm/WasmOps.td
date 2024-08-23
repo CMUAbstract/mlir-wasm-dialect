@@ -151,6 +151,8 @@ def Wasm_LocalOp : Wasm_Op<"local", []> {
     let description = [{
         The `local` operation declares local variables.
     }];
+    let arguments = (ins TypeArrayAttr:$types);
+    let assemblyFormat = [{ attr-dict `:` $types }];
     // TODO: arguments should be a list of types
 }
 
