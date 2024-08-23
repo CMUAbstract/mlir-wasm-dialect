@@ -80,12 +80,6 @@ public:
                                   VariableAnalysis &analysis,
                                   PatternBenefit benefit = 1)
       : OpConversionPattern<SourceOp>(context, benefit), analysis(analysis) {}
-  OpConversionPatternWithAnalysis(const TypeConverter &typeConverter,
-                                  MLIRContext *context,
-                                  VariableAnalysis &analysis,
-                                  PatternBenefit benefit = 1)
-      : OpConversionPattern<SourceOp>(typeConverter, context, benefit),
-        analysis(analysis) {}
 
   VariableAnalysis &getAnalysis() const { return analysis; }
 
