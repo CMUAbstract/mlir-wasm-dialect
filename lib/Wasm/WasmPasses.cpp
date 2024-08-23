@@ -94,7 +94,54 @@ struct ConvertAdd : public OpConversionPatternWithAnalysis<arith::AddIOp> {
   LogicalResult
   matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO
+    VariableAnalysis &analysis = getAnalysis();
+    mlir::Value result = op.getResult();
+
+    int resultLocal = analysis.getLocal(result);
+
+    auto lhs = op.getLhs();
+    auto rhs = op.getRhs();
+
+    int lhsLocal = analysis.getLocal(lhs);
+    int rhsLocal = analysis.getLocal(rhs);
+
+    rewriter.setInsertionPoint(op);
+    rewriter.create<wasm::LocalGetOp>(op->getLoc(),
+                                      rewriter.getIndexAttr(lhsLocal));
+    rewriter.create<wasm::LocalGetOp>(op->getLoc(),
+                                      rewriter.getIndexAttr(rhsLocal));
+    // TODO: Verify somewhere that two locals are of same type
+    rewriter.create<wasm::AddOp>(op->getLoc(), lhs.getType());
+    rewriter.create<wasm::LocalSetOp>(op->getLoc(),
+                                      rewriter.getIndexAttr(resultLocal));
+    rewriter.clearInsertionPoint();
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+struct ConvertConstant
+    : public OpConversionPatternWithAnalysis<arith::ConstantOp> {
+  using OpConversionPatternWithAnalysis<
+      arith::ConstantOp>::OpConversionPatternWithAnalysis;
+
+  LogicalResult
+  matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VariableAnalysis &analysis = getAnalysis();
+
+    mlir::Value result = op.getResult();
+    int resultLocal = analysis.getLocal(result);
+
+    mlir::Attribute attr = op->getAttr("value");
+
+    rewriter.setInsertionPoint(op);
+    rewriter.create<wasm::ConstantOp>(op->getLoc(), attr);
+    rewriter.create<wasm::LocalSetOp>(op->getLoc(),
+                                      rewriter.getIndexAttr(resultLocal));
+    rewriter.clearInsertionPoint();
+    rewriter.eraseOp(op);
 
     return success();
   }
@@ -111,6 +158,13 @@ public:
     FuncOp func = getOperation();
     MLIRContext *context = func.getContext();
 
+    ConversionTarget target(*context);
+    target.addLegalDialect<wasm::WasmDialect>();
+    target.addIllegalDialect<arith::ArithDialect>();
+
+    RewritePatternSet patterns(context);
+    patterns.add<ConvertAdd, ConvertConstant>(context, analysis);
+
     PatternRewriter rewriter(context);
 
     Operation *firstOp = &(*func->getRegion(0).getBlocks().begin()->begin());
@@ -123,56 +177,8 @@ public:
     rewriter.create<wasm::LocalOp>(func.getLoc(),
                                    rewriter.getArrayAttr(typesRef));
 
-    // TODO: It would be simpler to use func.walk([&](Operation *op)
-    for (Region &region : func->getRegions()) {
-      for (Block &block : region) {
-        for (auto it = block.rbegin(), e = block.rend(); it != e;) {
-          Operation *op = &(*it);
-          if (auto constOp = dyn_cast<arith::ConstantOp>(op)) {
-            // replace this with wasm.constant follwed by wasm.set_local
-            mlir::Value result = constOp.getResult();
-            int local = analysis.getLocal(result);
-
-            mlir::Attribute attr = constOp->getAttr("value");
-
-            // put wasm instructions here
-            rewriter.setInsertionPoint(op);
-            // add wasm.constant
-            rewriter.create<wasm::ConstantOp>(op->getLoc(), attr);
-            rewriter.create<wasm::LocalSetOp>(op->getLoc(),
-                                              rewriter.getIndexAttr(local));
-            rewriter.clearInsertionPoint();
-            ++it;
-            rewriter.eraseOp(op);
-          }
-
-          else if (auto addOp = dyn_cast<arith::AddIOp>(op)) {
-            mlir::Value result = addOp.getResult();
-            int local = analysis.getLocal(result);
-
-            auto lhs = addOp.getLhs();
-            auto rhs = addOp.getRhs();
-
-            int lhsLocal = analysis.getLocal(lhs);
-            int rhsLocal = analysis.getLocal(rhs);
-
-            rewriter.setInsertionPoint(op);
-            rewriter.create<wasm::LocalGetOp>(op->getLoc(),
-                                              rewriter.getIndexAttr(lhsLocal));
-            rewriter.create<wasm::LocalGetOp>(op->getLoc(),
-                                              rewriter.getIndexAttr(rhsLocal));
-            // TODO: Verify somewhere that two locals are of same type
-            rewriter.create<wasm::AddOp>(op->getLoc(), lhs.getType());
-            rewriter.create<wasm::LocalSetOp>(op->getLoc(),
-                                              rewriter.getIndexAttr(local));
-            rewriter.clearInsertionPoint();
-            ++it;
-            rewriter.eraseOp(op);
-          } else {
-            ++it;
-          }
-        }
-      }
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+      signalPassFailure();
     }
   }
 };
