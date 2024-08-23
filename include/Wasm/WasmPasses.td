@@ -16,6 +16,12 @@ def ConvertToWasm : Pass<"convert-to-wasm", "func::FuncOp"> {
   let description = [{
     Converts Arith dialect to Wasm dialect.
   }];
+  let dependentDialects = [
+    "wasm::WasmDialect",
+    "arith::ArithDialect",
+    "func::FuncDialect",
+  // TODO: Add scf and memref dialects
+  ];
 }
 
 #endif // WASM_PASS

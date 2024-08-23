@@ -76,10 +76,6 @@ class ConvertToWasm : public impl::ConvertToWasmBase<ConvertToWasm> {
 public:
   using impl::ConvertToWasmBase<ConvertToWasm>::ConvertToWasmBase;
 
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, wasm::WasmDialect>();
-  }
-
   void runOnOperation() final {
 
     VariableAnalysis &analysis = getAnalysis<VariableAnalysis>();
