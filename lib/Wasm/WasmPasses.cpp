@@ -18,8 +18,8 @@
 #include <vector>
 
 namespace mlir::wasm {
-#define GEN_PASS_DEF_ARITHTOWASMPASS
 #define GEN_PASS_DEF_VARIABLEANALYSIS
+#define GEN_PASS_DEF_CONVERTTOWASM
 #include "Wasm/WasmPasses.h.inc"
 
 using func::FuncOp;
@@ -72,9 +72,9 @@ private:
   std::vector<mlir::Value> reg2Loc;
 };
 
-class ArithToWasmPass : public impl::ArithToWasmPassBase<ArithToWasmPass> {
+class ConvertToWasm : public impl::ConvertToWasmBase<ConvertToWasm> {
 public:
-  using impl::ArithToWasmPassBase<ArithToWasmPass>::ArithToWasmPassBase;
+  using impl::ConvertToWasmBase<ConvertToWasm>::ConvertToWasmBase;
 
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
     registry.insert<arith::ArithDialect, wasm::WasmDialect>();
