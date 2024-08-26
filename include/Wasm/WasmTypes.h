@@ -12,6 +12,6 @@
 #include "mlir/IR/BuiltinTypes.h"
 
 #define GET_TYPEDEF_CLASSES
-#include "Wasm/WasmOpsTypes.h.inc"
+#include "Wasm/WasmTypes.h.inc"
 
 #endif // WASM_WA  SMTYPES_H

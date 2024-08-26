@@ -16,6 +16,8 @@
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
+#include "Wasm/WasmTypes.h"
+
 #define GET_OP_CLASSES
 #include "Wasm/WasmOps.h.inc"
 
