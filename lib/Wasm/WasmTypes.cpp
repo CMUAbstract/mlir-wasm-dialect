@@ -16,11 +16,11 @@
 using namespace mlir::wasm;
 
 #define GET_TYPEDEF_CLASSES
-#include "Wasm/WasmOpsTypes.cpp.inc"
+#include "Wasm/WasmTypes.cpp.inc"
 
 void WasmDialect::registerTypes() {
   addTypes<
 #define GET_TYPEDEF_LIST
-#include "Wasm/WasmOpsTypes.cpp.inc"
+#include "Wasm/WasmTypes.cpp.inc"
       >();
 }

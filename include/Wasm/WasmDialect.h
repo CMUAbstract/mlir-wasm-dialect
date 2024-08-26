@@ -14,6 +14,6 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Dialect.h"
 
-#include "Wasm/WasmOpsDialect.h.inc"
+#include "Wasm/WasmDialect.h.inc"
 
 #endif // WASM_WASMDIALECT_H

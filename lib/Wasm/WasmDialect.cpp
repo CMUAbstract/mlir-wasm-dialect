@@ -13,7 +13,7 @@
 using namespace mlir;
 using namespace mlir::wasm;
 
-#include "Wasm/WasmOpsDialect.cpp.inc"
+#include "Wasm/WasmDialect.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // Wasm dialect.
