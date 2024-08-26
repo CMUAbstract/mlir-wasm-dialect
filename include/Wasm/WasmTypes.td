@@ -22,6 +22,9 @@ class Wasm_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
+// Define a container type that holds elements of a specified type.
+def Local : Wasm_Type<"Local", "localcontainer"> {}
+
 
 class Wasm_IntType<string name, string mnemonic> 
     : Wasm_Type<name, mnemonic, /*traits=*/[]> {
