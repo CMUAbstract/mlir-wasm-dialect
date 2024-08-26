@@ -146,6 +146,16 @@ def Wasm_SelectOp : Wasm_Op<"select", []> {
     let arguments = (ins AnyType:$arg); // TODO
 }
 
+// temporary instructions
+
+def Wasm_TempLocalOp : Wasm_Op<"temp.local", []> {
+    let arguments = (ins TypeAttr:$type);
+    let results = (outs Local:$res);
+    let assemblyFormat = [{ attr-dict `:` $type }];
+}
+
+// local instructions
+
 def Wasm_LocalOp : Wasm_Op<"local", []> {
     let summary = "Local declaration operation";
     let description = [{
