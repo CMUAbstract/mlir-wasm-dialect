@@ -3,11 +3,11 @@
 module {
     // CHECK-LABEL: func @bar()
     func.func @bar() {
-        %x = wasm.temp.local : i32
+        %x = wasm.temp.local : local<i32>
         wasm.constant 1 : i32
         wasm.temp.local.set %x
 
-        %y = wasm.temp.local : i32
+        %y = wasm.temp.local : local<i32>
         wasm.constant 2 : i32
         wasm.temp.local.set %y
 
