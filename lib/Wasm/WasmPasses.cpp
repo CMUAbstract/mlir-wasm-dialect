@@ -73,20 +73,6 @@ private:
   std::vector<mlir::Value> reg2Loc;
 };
 
-template <typename SourceOp>
-class OpConversionPatternWithAnalysis : public OpConversionPattern<SourceOp> {
-public:
-  OpConversionPatternWithAnalysis(MLIRContext *context,
-                                  VariableAnalysis &analysis,
-                                  PatternBenefit benefit = 1)
-      : OpConversionPattern<SourceOp>(context, benefit), analysis(analysis) {}
-
-  VariableAnalysis &getAnalysis() const { return analysis; }
-
-private:
-  VariableAnalysis &analysis;
-};
-
 struct ConvertAdd : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
 
