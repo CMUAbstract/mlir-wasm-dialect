@@ -97,7 +97,6 @@ struct ConvertAdd : public OpConversionPatternWithAnalysis<arith::AddIOp> {
     mlir::Value result = op.getResult();
 
     auto lhs = op.getLhs();
-    // FIXME: rhs is not yet converted to local
     auto rhs = op.getRhs();
 
     rewriter.setInsertionPoint(op);
