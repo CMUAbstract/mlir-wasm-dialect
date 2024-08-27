@@ -35,8 +35,6 @@ public:
     populateArithToWasmPatterns(context, patterns);
     populateFuncToWasmPatterns(context, patterns);
 
-    PatternRewriter rewriter(context);
-
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
