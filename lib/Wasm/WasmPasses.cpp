@@ -94,28 +94,33 @@ struct ConvertAdd : public OpConversionPatternWithAnalysis<arith::AddIOp> {
   LogicalResult
   matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    VariableAnalysis &analysis = getAnalysis();
     mlir::Value result = op.getResult();
 
-    int resultLocal = analysis.getLocal(result);
-
     auto lhs = op.getLhs();
+    // FIXME: rhs is not yet converted to local
     auto rhs = op.getRhs();
 
-    int lhsLocal = analysis.getLocal(lhs);
-    int rhsLocal = analysis.getLocal(rhs);
-
     rewriter.setInsertionPoint(op);
-    rewriter.create<wasm::LocalGetOp>(op->getLoc(),
-                                      rewriter.getIndexAttr(lhsLocal));
-    rewriter.create<wasm::LocalGetOp>(op->getLoc(),
-                                      rewriter.getIndexAttr(rhsLocal));
+    auto tempLocalOp =
+        rewriter.create<wasm::TempLocalOp>(op->getLoc(), result.getType());
+
+    auto localType = mlir::wasm::LocalType::get(op->getContext());
+    auto lhsCastOp = rewriter.create<UnrealizedConversionCastOp>(
+        op->getLoc(), localType, lhs);
+    rewriter.create<wasm::TempLocalGetOp>(op->getLoc(), lhsCastOp.getResult(0));
+    auto rhsCastOp = rewriter.create<UnrealizedConversionCastOp>(
+        op->getLoc(), localType, rhs);
+    rewriter.create<wasm::TempLocalGetOp>(op->getLoc(), rhsCastOp.getResult(0));
     // TODO: Verify somewhere that two locals are of same type
     rewriter.create<wasm::AddOp>(op->getLoc(), lhs.getType());
-    rewriter.create<wasm::LocalSetOp>(op->getLoc(),
-                                      rewriter.getIndexAttr(resultLocal));
+    rewriter.create<wasm::TempLocalSetOp>(op->getLoc(),
+                                          tempLocalOp.getResult());
+
+    auto castOp = rewriter.create<UnrealizedConversionCastOp>(
+        op->getLoc(), result.getType(), tempLocalOp.getResult());
     rewriter.clearInsertionPoint();
-    rewriter.eraseOp(op);
+
+    rewriter.replaceOp(op, castOp);
 
     return success();
   }
@@ -129,19 +134,21 @@ struct ConvertConstant
   LogicalResult
   matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    VariableAnalysis &analysis = getAnalysis();
-
     mlir::Value result = op.getResult();
-    int resultLocal = analysis.getLocal(result);
 
     mlir::Attribute attr = op->getAttr("value");
 
     rewriter.setInsertionPoint(op);
+    auto tempLocalOp =
+        rewriter.create<wasm::TempLocalOp>(op->getLoc(), result.getType());
     rewriter.create<wasm::ConstantOp>(op->getLoc(), attr);
-    rewriter.create<wasm::LocalSetOp>(op->getLoc(),
-                                      rewriter.getIndexAttr(resultLocal));
+    rewriter.create<wasm::TempLocalSetOp>(op->getLoc(),
+                                          tempLocalOp.getResult());
+    auto castOp = rewriter.create<UnrealizedConversionCastOp>(
+        op->getLoc(), result.getType(), tempLocalOp.getResult());
     rewriter.clearInsertionPoint();
-    rewriter.eraseOp(op);
+
+    rewriter.replaceOp(op, castOp);
 
     return success();
   }
@@ -161,21 +168,12 @@ public:
     ConversionTarget target(*context);
     target.addLegalDialect<wasm::WasmDialect>();
     target.addIllegalDialect<arith::ArithDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     patterns.add<ConvertAdd, ConvertConstant>(context, analysis);
 
     PatternRewriter rewriter(context);
-
-    Operation *firstOp = &(*func->getRegion(0).getBlocks().begin()->begin());
-    rewriter.setInsertionPoint(firstOp);
-    std::vector<mlir::Attribute> types;
-    for (auto typeAttr : analysis.getTypeAttrs()) {
-      types.push_back(typeAttr);
-    }
-    llvm::ArrayRef<mlir::Attribute> typesRef(types);
-    rewriter.create<wasm::LocalOp>(func.getLoc(),
-                                   rewriter.getArrayAttr(typesRef));
 
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
