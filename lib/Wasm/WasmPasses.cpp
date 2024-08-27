@@ -104,7 +104,8 @@ struct ConvertAdd : public OpConversionPatternWithAnalysis<arith::AddIOp> {
     auto tempLocalOp =
         rewriter.create<wasm::TempLocalOp>(op->getLoc(), result.getType());
 
-    auto localType = mlir::wasm::LocalType::get(op->getContext());
+    auto localType =
+        mlir::wasm::LocalType::get(op->getContext(), result.getType());
     auto lhsCastOp = rewriter.create<UnrealizedConversionCastOp>(
         op->getLoc(), localType, lhs);
     rewriter.create<wasm::TempLocalGetOp>(op->getLoc(), lhsCastOp.getResult(0));

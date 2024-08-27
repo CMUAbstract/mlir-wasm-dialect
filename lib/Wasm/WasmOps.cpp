@@ -21,3 +21,11 @@ llvm::LogicalResult mlir::wasm::ConstantOp::verify() {
   }
   return success();
 }
+
+void mlir::wasm::TempLocalOp::build(OpBuilder &builder, OperationState &state,
+                                    mlir::Type inner) {
+  auto context = inner.getContext();
+  auto localType = mlir::wasm::LocalType::get(context, inner);
+  state.addTypes(localType);
+  state.addAttribute("type", mlir::TypeAttr::get(inner));
+}
