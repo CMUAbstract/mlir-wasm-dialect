@@ -151,7 +151,7 @@ def Wasm_SelectOp : Wasm_Op<"select", []> {
 def Wasm_TempLocalOp : Wasm_Op<"temp.local", []> {
     let arguments = (ins TypeAttr:$type);
     let results = (outs Local:$res);
-    let assemblyFormat = [{ attr-dict `:` $type }];
+    let assemblyFormat = [{ attr-dict `:` `local` `<` $type `>` }];
 }
 
 def Wasm_TempLocalGetOp : Wasm_Op<"temp.local.get", []> {
