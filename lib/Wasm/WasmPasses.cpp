@@ -87,9 +87,8 @@ private:
   VariableAnalysis &analysis;
 };
 
-struct ConvertAdd : public OpConversionPatternWithAnalysis<arith::AddIOp> {
-  using OpConversionPatternWithAnalysis<
-      arith::AddIOp>::OpConversionPatternWithAnalysis;
+struct ConvertAdd : public OpConversionPattern<arith::AddIOp> {
+  using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
@@ -126,10 +125,8 @@ struct ConvertAdd : public OpConversionPatternWithAnalysis<arith::AddIOp> {
   }
 };
 
-struct ConvertConstant
-    : public OpConversionPatternWithAnalysis<arith::ConstantOp> {
-  using OpConversionPatternWithAnalysis<
-      arith::ConstantOp>::OpConversionPatternWithAnalysis;
+struct ConvertConstant : public OpConversionPattern<arith::ConstantOp> {
+  using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
@@ -159,9 +156,6 @@ public:
   using impl::ConvertToWasmBase<ConvertToWasm>::ConvertToWasmBase;
 
   void runOnOperation() final {
-
-    VariableAnalysis &analysis = getAnalysis<VariableAnalysis>();
-
     FuncOp func = getOperation();
     MLIRContext *context = func.getContext();
 
@@ -171,7 +165,7 @@ public:
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
-    patterns.add<ConvertAdd, ConvertConstant>(context, analysis);
+    patterns.add<ConvertAdd, ConvertConstant>(context);
 
     PatternRewriter rewriter(context);
 
