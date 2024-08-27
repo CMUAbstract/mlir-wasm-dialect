@@ -3,6 +3,7 @@ add_mlir_dialect_library(MLIRWasm
         WasmDialect.cpp
         WasmOps.cpp
         WasmPasses.cpp
+        VariableAnalysis.cpp
 
         ADDITIONAL_HEADER_DIRS
         ${PROJECT_SOURCE_DIR}/include/Wasm
