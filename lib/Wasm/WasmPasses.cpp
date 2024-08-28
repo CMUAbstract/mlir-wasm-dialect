@@ -65,6 +65,21 @@ public:
     RewritePatternSet patterns(context);
     populateWasmFinalizePatterns(context, analysis, patterns);
 
+    // TODO: place it somewhere else
+    // declare local at the beginning of the function
+    // note that analysis.getTypesAttrs() must be called before applying the
+    // conversion because mlir Values are erased during the conversion
+    PatternRewriter rewriter(context);
+    Operation *firstOp = &(*func->getRegion(0).getBlocks().begin()->begin());
+    rewriter.setInsertionPoint(firstOp);
+    std::vector<mlir::Attribute> types;
+    for (auto typeAttr : analysis.getTypeAttrs()) {
+      types.push_back(typeAttr);
+    }
+    llvm::ArrayRef<mlir::Attribute> typesRef(types);
+    rewriter.create<wasm::LocalOp>(func.getLoc(),
+                                   rewriter.getArrayAttr(typesRef));
+
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
