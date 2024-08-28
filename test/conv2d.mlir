@@ -1,10 +1,77 @@
 module {
-  func.func @main(%arg0: tensor<1x28x28xf32>) -> (tensor<1x26x26x12xf32>) {
-    %0 = "tosa.const"() <{value = dense<"0x6FD08D3EA136B73ECC2598BE68C8C7BD47C2893E4315403E8878E8BE7643423E12675A3E955EFD3D6D4618BDA425F7BD32CF4E3D1310393E8EFD2D3E3E192B3E9DC5533E09616E3CAA38B13E3A481C3FF88EFF3EFDA786BE59702A3ECAC8FA3E54DF58BF07874CBFDAC3EDBE821B5A3E3964C83E2360B9BEB9E0173F9C1B583EC38553BFE87E163FD75948BECBE93FBFD9E635BC995A033DD25B30BBE634273E29292E3E6379723EF23DC63DBBCE893D13A60FBE81605EBFDDB84BBFFB322EBF6CD7883EE38DA13D7344C9BECB7F3A3F8BACD33E07C0933EBCDC98BE3C56863EC1FD333E7A0BA73EAE6E9E3D73D02DBE0B067E3E921E64BDF4D2B4BE6A55E9BDF2E034BE65ABA2BCAB3F3F3E51989B3D6D5F0E3E6591633E5A9D043E9FF7253E7EFA0D3FBD6BD5BE7FD213BF30DF87BF4A3115BF0159ED3D5F5B073EE5E4243F7D860B3FCB509B3EBD06543E92F2D93E8515C4BDA554503CBCFBBB3E9D5DAEBE2D30F3BEC6A52DBF47C745BFC16F483E3E1C163F6B713EBF9B44CB3D6C78E43EC4B73ABF904D96BD182F043F6A5738BE2DE4563E8918A4BCD3BB3D3E9F64913EED95723D5CF97EBECBCD383EB8C3083E"> : tensor<12x3x3x1xf32>}> : () -> tensor<12x3x3x1xf32>
-    %1 = "tosa.const"() <{value = dense<[-0.222490191, -0.110080265, -0.0211029891, -0.0302090608, -0.0760430768, 0.171374053, -0.0595209934, -0.0705402568, 0.0501642376, -0.0180300213, 0.0987159535, -0.0877056419]> : tensor<12xf32>}> : () -> tensor<12xf32>
-    %4 = tosa.reshape %arg0 {new_shape = array<i64: 1, 28, 28, 1>} : (tensor<1x28x28xf32>) -> tensor<1x28x28x1xf32>
-    %5 = tosa.conv2d %4, %0, %1 {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>} : (tensor<1x28x28x1xf32>, tensor<12x3x3x1xf32>, tensor<12xf32>) -> tensor<1x26x26x12xf32>
-    return %5 : tensor<1x26x26x12xf32>
+  memref.global "private" constant @__constant_12xf32 : memref<12xf32> = dense<[-0.222490191, -0.110080265, -0.0211029891, -0.0302090608, -0.0760430768, 0.171374053, -0.0595209934, -0.0705402568, 0.0501642376, -0.0180300213, 0.0987159535, -0.0877056419]> {alignment = 64 : i64}
+  memref.global "private" constant @__constant_12x3x3x1xf32 : memref<12x3x3x1xf32> = dense<"0x6FD08D3EA136B73ECC2598BE68C8C7BD47C2893E4315403E8878E8BE7643423E12675A3E955EFD3D6D4618BDA425F7BD32CF4E3D1310393E8EFD2D3E3E192B3E9DC5533E09616E3CAA38B13E3A481C3FF88EFF3EFDA786BE59702A3ECAC8FA3E54DF58BF07874CBFDAC3EDBE821B5A3E3964C83E2360B9BEB9E0173F9C1B583EC38553BFE87E163FD75948BECBE93FBFD9E635BC995A033DD25B30BBE634273E29292E3E6379723EF23DC63DBBCE893D13A60FBE81605EBFDDB84BBFFB322EBF6CD7883EE38DA13D7344C9BECB7F3A3F8BACD33E07C0933EBCDC98BE3C56863EC1FD333E7A0BA73EAE6E9E3D73D02DBE0B067E3E921E64BDF4D2B4BE6A55E9BDF2E034BE65ABA2BCAB3F3F3E51989B3D6D5F0E3E6591633E5A9D043E9FF7253E7EFA0D3FBD6BD5BE7FD213BF30DF87BF4A3115BF0159ED3D5F5B073EE5E4243F7D860B3FCB509B3EBD06543E92F2D93E8515C4BDA554503CBCFBBB3E9D5DAEBE2D30F3BEC6A52DBF47C745BFC16F483E3E1C163F6B713EBF9B44CB3D6C78E43EC4B73ABF904D96BD182F043F6A5738BE2DE4563E8918A4BCD3BB3D3E9F64913EED95723D5CF97EBECBCD383EB8C3083E"> {alignment = 64 : i64}
+  func.func @main(%arg0: memref<1x28x28xf32, strided<[?, ?, ?], offset: ?>>) -> memref<1x26x26x12xf32> {
+    %0 = memref.get_global @__constant_12x3x3x1xf32 : memref<12x3x3x1xf32>
+    %1 = memref.get_global @__constant_12xf32 : memref<12xf32>
+    %expand_shape = memref.expand_shape %arg0 [[0], [1], [2, 3]] output_shape [1, 28, 28, 1] : memref<1x28x28xf32, strided<[?, ?, ?], offset: ?>> into memref<1x28x28x1xf32, strided<[?, ?, ?, ?], offset: ?>>
+    %alloc = memref.alloc() {alignment = 64 : i64} : memref<1x26x26x12xf32>
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c1_0 = arith.constant 1 : index
+    scf.for %arg1 = %c0 to %c1 step %c1_0 {
+      %c0_4 = arith.constant 0 : index
+      %c26 = arith.constant 26 : index
+      %c1_5 = arith.constant 1 : index
+      scf.for %arg2 = %c0_4 to %c26 step %c1_5 {
+        %c0_6 = arith.constant 0 : index
+        %c26_7 = arith.constant 26 : index
+        %c1_8 = arith.constant 1 : index
+        scf.for %arg3 = %c0_6 to %c26_7 step %c1_8 {
+          %c0_9 = arith.constant 0 : index
+          %c12 = arith.constant 12 : index
+          %c1_10 = arith.constant 1 : index
+          scf.for %arg4 = %c0_9 to %c12 step %c1_10 {
+            %2 = memref.load %1[%arg4] : memref<12xf32>
+            memref.store %2, %alloc[%arg1, %arg2, %arg3, %arg4] : memref<1x26x26x12xf32>
+          }
+        }
+      }
+    }
+    %c0_1 = arith.constant 0 : index
+    %c1_2 = arith.constant 1 : index
+    %c1_3 = arith.constant 1 : index
+    scf.for %arg1 = %c0_1 to %c1_2 step %c1_3 {
+      %c0_4 = arith.constant 0 : index
+      %c26 = arith.constant 26 : index
+      %c1_5 = arith.constant 1 : index
+      scf.for %arg2 = %c0_4 to %c26 step %c1_5 {
+        %c0_6 = arith.constant 0 : index
+        %c26_7 = arith.constant 26 : index
+        %c1_8 = arith.constant 1 : index
+        scf.for %arg3 = %c0_6 to %c26_7 step %c1_8 {
+          %c0_9 = arith.constant 0 : index
+          %c12 = arith.constant 12 : index
+          %c1_10 = arith.constant 1 : index
+          scf.for %arg4 = %c0_9 to %c12 step %c1_10 {
+            %c0_11 = arith.constant 0 : index
+            %c3 = arith.constant 3 : index
+            %c1_12 = arith.constant 1 : index
+            scf.for %arg5 = %c0_11 to %c3 step %c1_12 {
+              %c0_13 = arith.constant 0 : index
+              %c3_14 = arith.constant 3 : index
+              %c1_15 = arith.constant 1 : index
+              scf.for %arg6 = %c0_13 to %c3_14 step %c1_15 {
+                %c0_16 = arith.constant 0 : index
+                %c1_17 = arith.constant 1 : index
+                %c1_18 = arith.constant 1 : index
+                scf.for %arg7 = %c0_16 to %c1_17 step %c1_18 {
+                  %2 = arith.addi %arg2, %arg5 : index
+                  %3 = arith.addi %arg3, %arg6 : index
+                  %4 = memref.load %expand_shape[%arg1, %2, %3, %arg7] : memref<1x28x28x1xf32, strided<[?, ?, ?, ?], offset: ?>>
+                  %5 = memref.load %0[%arg4, %arg5, %arg6, %arg7] : memref<12x3x3x1xf32>
+                  %6 = memref.load %alloc[%arg1, %arg2, %arg3, %arg4] : memref<1x26x26x12xf32>
+                  %7 = arith.mulf %4, %5 : f32
+                  %8 = arith.addf %6, %7 : f32
+                  memref.store %8, %alloc[%arg1, %arg2, %arg3, %arg4] : memref<1x26x26x12xf32>
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return %alloc : memref<1x26x26x12xf32>
   }
 }
 
