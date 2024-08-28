@@ -28,3 +28,9 @@ mkdir build && cd build
 cmake -G Ninja .. -DMLIR_DIR=$PREFIX/lib/cmake/mlir -DLLVM_EXTERNAL_LIT=$BUILD_DIR/bin/llvm-lit
 cmake --build . --target check-wasm
 ```
+
+## Run
+```sh
+export PATH="bin:$PATH"
+wasm-opt --convert-to-wasm --reconcile-unrealized-casts --wasm-finalize input.mlir
+```
