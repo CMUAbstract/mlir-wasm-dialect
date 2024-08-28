@@ -12,10 +12,12 @@
 
 #include "Wasm/ConversionPatterns/ArithToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/FuncToWasmPatterns.h"
+#include "Wasm/VariableAnalysis.h"
 #include "Wasm/WasmPasses.h"
 
 namespace mlir::wasm {
 #define GEN_PASS_DEF_CONVERTTOWASM
+#define GEN_PASS_DEF_WASMFINALIZE
 #include "Wasm/WasmPasses.h.inc"
 
 class ConvertToWasm : public impl::ConvertToWasmBase<ConvertToWasm> {
@@ -34,6 +36,30 @@ public:
     RewritePatternSet patterns(context);
     populateArithToWasmPatterns(context, patterns);
     populateFuncToWasmPatterns(context, patterns);
+
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+class WasmFinalize : public impl::WasmFinalizeBase<WasmFinalize> {
+public:
+  using impl::WasmFinalizeBase<WasmFinalize>::WasmFinalizeBase;
+
+  void runOnOperation() final {
+    func::FuncOp func = getOperation();
+    MLIRContext *context = func.getContext();
+    VariableAnalysis analysis(func);
+
+    ConversionTarget target(*context);
+    target.addLegalDialect<wasm::WasmDialect>();
+    target.addIllegalOp<wasm::TempLocalOp>();
+    target.addIllegalOp<wasm::TempLocalGetOp>();
+    target.addIllegalOp<wasm::TempLocalSetOp>();
+    target.addIllegalOp<UnrealizedConversionCastOp>();
+
+    RewritePatternSet patterns(context);
 
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();

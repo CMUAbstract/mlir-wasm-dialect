@@ -24,4 +24,14 @@ def ConvertToWasm : Pass<"convert-to-wasm", "func::FuncOp"> {
   ];
 }
 
+def WasmFinalize : Pass<"wasm-finalize", "func::FuncOp"> {
+  let summary = "Finalizes Wasm dialect";
+  let description = [{
+    Transforms temporary local variable accesses into index accesses.
+  }];
+  let dependentDialects = [
+    "wasm::WasmDialect",
+  ];
+}
+
 #endif // WASM_PASS
