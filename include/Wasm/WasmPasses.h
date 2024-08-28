@@ -13,14 +13,12 @@
 #include "mlir/Pass/Pass.h"
 #include <memory>
 
-namespace mlir {
-namespace wasm {
+namespace mlir::wasm {
 #define GEN_PASS_DECL
 #include "Wasm/WasmPasses.h.inc"
 
 #define GEN_PASS_REGISTRATION
 #include "Wasm/WasmPasses.h.inc"
-} // namespace wasm
-} // namespace mlir
+} // namespace mlir::wasm
 
 #endif

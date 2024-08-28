@@ -3,9 +3,6 @@
 #include "Wasm/VariableAnalysis.h"
 #include "Wasm/WasmOps.h"
 
-using namespace mlir;
-using namespace mlir::wasm;
-
 namespace mlir::wasm {
 VariableAnalysis::VariableAnalysis(Operation *op) {
   numArguments = 0;

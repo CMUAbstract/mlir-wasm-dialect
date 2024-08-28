@@ -2,8 +2,6 @@
 #include "Wasm/ConversionPatterns/ArithToWasmPatterns.h"
 #include "Wasm/WasmOps.h"
 
-using namespace mlir;
-
 namespace mlir::wasm {
 
 void populateArithToWasmPatterns(MLIRContext *context,

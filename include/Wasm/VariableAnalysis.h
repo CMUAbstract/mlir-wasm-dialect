@@ -5,7 +5,6 @@
 
 #include "mlir/IR/Operation.h"
 
-using namespace mlir;
 using namespace std;
 
 namespace mlir::wasm {
