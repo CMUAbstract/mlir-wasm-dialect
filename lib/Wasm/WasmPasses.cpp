@@ -12,6 +12,7 @@
 
 #include "Wasm/ConversionPatterns/ArithToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/FuncToWasmPatterns.h"
+#include "Wasm/ConversionPatterns/WasmFinalizePatterns.h"
 #include "Wasm/VariableAnalysis.h"
 #include "Wasm/WasmPasses.h"
 
@@ -54,12 +55,15 @@ public:
 
     ConversionTarget target(*context);
     target.addLegalDialect<wasm::WasmDialect>();
+    target.addLegalDialect<func::FuncDialect>();
     target.addIllegalOp<wasm::TempLocalOp>();
     target.addIllegalOp<wasm::TempLocalGetOp>();
     target.addIllegalOp<wasm::TempLocalSetOp>();
-    target.addIllegalOp<UnrealizedConversionCastOp>();
+    // TODO: mark this as illegal after implementing function argument handling
+    // target.addIllegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
+    populateWasmFinalizePatterns(context, analysis, patterns);
 
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
