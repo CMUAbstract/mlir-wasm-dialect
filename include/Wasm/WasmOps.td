@@ -429,6 +429,7 @@ def Wasm_WasmFuncOp : Wasm_Op<"func", [AutomaticAllocationScope, IsolatedFromAbo
 def Wasm_WasmReturnOp : Wasm_Op<"return", [Terminator, HasParent<"WasmFuncOp">]> {
 
     // NOTE: WasmReturnOp does not have any operands
+    let assemblyFormat = "attr-dict";
 }
 
 #endif // WASM_OPS
