@@ -13,7 +13,9 @@
 #define GET_OP_CLASSES
 #include "Wasm/WasmOps.cpp.inc"
 
-llvm::LogicalResult mlir::wasm::ConstantOp::verify() {
+namespace mlir::wasm {
+
+llvm::LogicalResult ConstantOp::verify() {
   // TODO: Value must be either of i32, i64, f32, or f64 attribute.
   if (!llvm::isa<IntegerAttr, FloatAttr>(getValue())) {
     return emitOpError(
@@ -33,3 +35,13 @@ void mlir::wasm::TempLocalOp::build(OpBuilder &builder, OperationState &state,
 void mlir::wasm::LoopOp::build(OpBuilder &builder, OperationState &state) {
   state.addRegion();
 }
+
+WasmFuncOp WasmFuncOp::create(Location location, StringRef name,
+                              FunctionType type) {
+  OpBuilder builder(location->getContext());
+  OperationState state(location, getOperationName());
+  WasmFuncOp::build(builder, state, name, type);
+  return cast<WasmFuncOp>(Operation::create(state));
+}
+
+} // namespace mlir::wasm

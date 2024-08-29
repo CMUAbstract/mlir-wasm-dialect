@@ -414,4 +414,16 @@ def Wasm_NoOp : Wasm_Op<"noop", []> {
     }];
 }
 
+def Wasm_WasmFuncOp : Wasm_Op<"func", [AutomaticAllocationScope, IsolatedFromAbove]> {
+
+    let arguments = (ins SymbolNameAttr:$sym_name,
+                        TypeAttrOf<FunctionType>:$function_type);
+    let regions = (region AnyRegion:$body);
+
+    let extraClassDeclaration = [{
+        static WasmFuncOp create(Location location, StringRef name, FunctionType type);
+    }];
+    let assemblyFormat = [{ $body attr-dict `:` $function_type }];
+}
+
 #endif // WASM_OPS
