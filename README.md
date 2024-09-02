@@ -31,7 +31,7 @@ cmake --build . --target check-wasm
 
 ## Run
 ```sh
-export PATH="bin:$PATH"
+export PATH="build/bin:$PATH"
 wasm-opt --convert-to-wasm --reconcile-unrealized-casts --wasm-finalize input.mlir
 ```
 
