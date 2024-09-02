@@ -6,12 +6,12 @@ namespace mlir::wasm {
 
 void populateArithToWasmPatterns(MLIRContext *context,
                                  RewritePatternSet &patterns) {
-  patterns.add<ConvertAdd, ConvertConstant>(context);
+  patterns.add<AddIOpLowering, ConstantOpLowering>(context);
 }
 
 LogicalResult
-ConvertAdd::matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
-                            ConversionPatternRewriter &rewriter) const {
+AddIOpLowering::matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const {
   Value result = op.getResult();
 
   auto lhs = op.getLhs();
@@ -43,8 +43,8 @@ ConvertAdd::matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
 }
 
 LogicalResult
-ConvertConstant::matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
-                                 ConversionPatternRewriter &rewriter) const {
+ConstantOpLowering::matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
+                                    ConversionPatternRewriter &rewriter) const {
   Value result = op.getResult();
 
   Attribute attr = op->getAttr("value");
