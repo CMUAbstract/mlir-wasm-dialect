@@ -26,8 +26,8 @@ public:
   using impl::ConvertToWasmBase<ConvertToWasm>::ConvertToWasmBase;
 
   void runOnOperation() final {
-    func::FuncOp func = getOperation();
-    MLIRContext *context = func.getContext();
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
 
     ConversionTarget target(*context);
     target.addLegalDialect<wasm::WasmDialect>();
@@ -38,7 +38,7 @@ public:
     populateArithToWasmPatterns(context, patterns);
     populateFuncToWasmPatterns(context, patterns);
 
-    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

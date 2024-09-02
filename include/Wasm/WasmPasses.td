@@ -11,7 +11,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertToWasm : Pass<"convert-to-wasm", "func::FuncOp"> {
+def ConvertToWasm : Pass<"convert-to-wasm", "ModuleOp"> {
   let summary = "Converts Arith dialect to Wasm dialect";
   let description = [{
     Converts Arith dialect to Wasm dialect.
