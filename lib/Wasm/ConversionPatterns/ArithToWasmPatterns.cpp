@@ -19,13 +19,17 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
 
     auto lhsCastOp = rewriter.create<UnrealizedConversionCastOp>(
         loc, localType, addIOp.getLhs());
-    rewriter.create<wasm::TempLocalGetOp>(loc, lhsCastOp.getResult(0));
-
     auto rhsCastOp = rewriter.create<UnrealizedConversionCastOp>(
         addIOp->getLoc(), localType, addIOp.getRhs());
+
+    if ((addIOp.getLhs().getType() != type) ||
+        (addIOp.getRhs().getType() != type)) {
+      return rewriter.notifyMatchFailure(addIOp, "type mismatch");
+    }
+
+    rewriter.create<wasm::TempLocalGetOp>(loc, lhsCastOp.getResult(0));
     rewriter.create<wasm::TempLocalGetOp>(loc, rhsCastOp.getResult(0));
 
-    // TODO: Verify somewhere that two locals are of same type
     rewriter.create<wasm::AddOp>(loc, type);
     rewriter.create<wasm::TempLocalSetOp>(loc, tempLocalOp.getResult());
 
