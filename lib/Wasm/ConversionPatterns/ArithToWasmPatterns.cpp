@@ -14,7 +14,6 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
     auto lhs = op.getLhs();
     auto rhs = op.getRhs();
 
-    rewriter.setInsertionPoint(op);
     auto tempLocalOp =
         rewriter.create<wasm::TempLocalOp>(op->getLoc(), result.getType());
 
@@ -33,7 +32,6 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
 
     auto castOp = rewriter.create<UnrealizedConversionCastOp>(
         op->getLoc(), result.getType(), tempLocalOp.getResult());
-    rewriter.clearInsertionPoint();
 
     rewriter.replaceOp(op, castOp);
 
@@ -49,7 +47,6 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
 
     Attribute attr = op->getAttr("value");
 
-    rewriter.setInsertionPoint(op);
     auto tempLocalOp =
         rewriter.create<wasm::TempLocalOp>(op->getLoc(), result.getType());
     rewriter.create<wasm::ConstantOp>(op->getLoc(), attr);
@@ -57,7 +54,6 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
                                           tempLocalOp.getResult());
     auto castOp = rewriter.create<UnrealizedConversionCastOp>(
         op->getLoc(), result.getType(), tempLocalOp.getResult());
-    rewriter.clearInsertionPoint();
 
     rewriter.replaceOp(op, castOp);
 
