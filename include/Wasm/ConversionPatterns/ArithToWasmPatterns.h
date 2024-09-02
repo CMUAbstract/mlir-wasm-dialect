@@ -9,19 +9,6 @@ namespace mlir::wasm {
 void populateArithToWasmPatterns(MLIRContext *context,
                                  RewritePatternSet &patterns);
 
-struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
-  using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
-  LogicalResult
-  matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override;
-};
-struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
-  using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
-  LogicalResult
-  matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override;
-};
-
 } // namespace mlir::wasm
 
 #endif // WASM_ARITHTOWASMPATTERNS_H
