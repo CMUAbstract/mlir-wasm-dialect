@@ -7,33 +7,32 @@ namespace mlir::wasm {
 struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
   LogicalResult
-  matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
+  matchAndRewrite(arith::AddIOp addIOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Value result = op.getResult();
+    Location loc = addIOp->getLoc();
+    Value result = addIOp.getResult();
+    Type type = result.getType();
 
-    auto lhs = op.getLhs();
-    auto rhs = op.getRhs();
+    auto localType = mlir::wasm::LocalType::get(addIOp->getContext(), type);
 
-    auto tempLocalOp =
-        rewriter.create<wasm::TempLocalOp>(op->getLoc(), result.getType());
+    auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
 
-    auto localType =
-        mlir::wasm::LocalType::get(op->getContext(), result.getType());
     auto lhsCastOp = rewriter.create<UnrealizedConversionCastOp>(
-        op->getLoc(), localType, lhs);
-    rewriter.create<wasm::TempLocalGetOp>(op->getLoc(), lhsCastOp.getResult(0));
+        loc, localType, addIOp.getLhs());
+    rewriter.create<wasm::TempLocalGetOp>(loc, lhsCastOp.getResult(0));
+
     auto rhsCastOp = rewriter.create<UnrealizedConversionCastOp>(
-        op->getLoc(), localType, rhs);
-    rewriter.create<wasm::TempLocalGetOp>(op->getLoc(), rhsCastOp.getResult(0));
+        addIOp->getLoc(), localType, addIOp.getRhs());
+    rewriter.create<wasm::TempLocalGetOp>(loc, rhsCastOp.getResult(0));
+
     // TODO: Verify somewhere that two locals are of same type
-    rewriter.create<wasm::AddOp>(op->getLoc(), lhs.getType());
-    rewriter.create<wasm::TempLocalSetOp>(op->getLoc(),
-                                          tempLocalOp.getResult());
+    rewriter.create<wasm::AddOp>(loc, type);
+    rewriter.create<wasm::TempLocalSetOp>(loc, tempLocalOp.getResult());
 
     auto castOp = rewriter.create<UnrealizedConversionCastOp>(
-        op->getLoc(), result.getType(), tempLocalOp.getResult());
+        loc, type, tempLocalOp.getResult());
 
-    rewriter.replaceOp(op, castOp);
+    rewriter.replaceOp(addIOp, castOp);
 
     return success();
   }
@@ -41,21 +40,20 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
 struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
   LogicalResult
-  matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
+  matchAndRewrite(arith::ConstantOp constantOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Value result = op.getResult();
+    Location loc = constantOp->getLoc();
+    Type type = constantOp.getResult().getType();
+    Attribute value = constantOp->getAttr("value");
 
-    Attribute attr = op->getAttr("value");
+    auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
+    rewriter.create<wasm::ConstantOp>(loc, value);
+    rewriter.create<wasm::TempLocalSetOp>(loc, tempLocalOp.getResult());
 
-    auto tempLocalOp =
-        rewriter.create<wasm::TempLocalOp>(op->getLoc(), result.getType());
-    rewriter.create<wasm::ConstantOp>(op->getLoc(), attr);
-    rewriter.create<wasm::TempLocalSetOp>(op->getLoc(),
-                                          tempLocalOp.getResult());
     auto castOp = rewriter.create<UnrealizedConversionCastOp>(
-        op->getLoc(), result.getType(), tempLocalOp.getResult());
+        loc, type, tempLocalOp.getResult());
 
-    rewriter.replaceOp(op, castOp);
+    rewriter.replaceOp(constantOp, castOp);
 
     return success();
   }
