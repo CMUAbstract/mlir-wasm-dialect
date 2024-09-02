@@ -9,13 +9,13 @@ namespace mlir::wasm {
 void populateArithToWasmPatterns(MLIRContext *context,
                                  RewritePatternSet &patterns);
 
-struct ConvertAdd : public OpConversionPattern<arith::AddIOp> {
+struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
   LogicalResult
   matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override;
 };
-struct ConvertConstant : public OpConversionPattern<arith::ConstantOp> {
+struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
   LogicalResult
   matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
