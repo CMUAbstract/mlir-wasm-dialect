@@ -29,3 +29,7 @@ void mlir::wasm::TempLocalOp::build(OpBuilder &builder, OperationState &state,
   state.addTypes(localType);
   state.addAttribute("type", mlir::TypeAttr::get(inner));
 }
+
+void mlir::wasm::LoopOp::build(OpBuilder &builder, OperationState &state) {
+  state.addRegion();
+}
