@@ -3,7 +3,7 @@
 
 namespace mlir::wasm {
 
-void populateFuncToWasmPatterns(MLIRContext *context,
+void populateFuncToWasmPatterns(TypeConverter &converter,
                                 RewritePatternSet &patterns) {
   // TODO
 }

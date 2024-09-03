@@ -6,7 +6,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir::wasm {
-void populateFuncToWasmPatterns(MLIRContext *context,
+void populateFuncToWasmPatterns(TypeConverter &typeConverter,
                                 RewritePatternSet &patterns);
 
 } // namespace mlir::wasm
