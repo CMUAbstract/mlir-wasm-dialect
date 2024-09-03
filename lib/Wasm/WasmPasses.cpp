@@ -67,8 +67,8 @@ public:
 
     RewritePatternSet patterns(context);
     WasmTypeConverter typeConverter(context);
-    populateArithToWasmPatterns(typeConverter, context, patterns);
-    populateFuncToWasmPatterns(context, patterns);
+    populateArithToWasmPatterns(typeConverter, patterns);
+    populateFuncToWasmPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();

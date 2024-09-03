@@ -7,7 +7,6 @@
 
 namespace mlir::wasm {
 void populateArithToWasmPatterns(TypeConverter &typeConverter,
-                                 MLIRContext *context,
                                  RewritePatternSet &patterns);
 
 } // namespace mlir::wasm
