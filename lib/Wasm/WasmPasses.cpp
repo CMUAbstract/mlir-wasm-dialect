@@ -21,6 +21,37 @@ namespace mlir::wasm {
 #define GEN_PASS_DEF_WASMFINALIZE
 #include "Wasm/WasmPasses.h.inc"
 
+class WasmTypeConverter : public TypeConverter {
+public:
+  WasmTypeConverter(MLIRContext *ctx) {
+    addConversion([](LocalType type) { return type.getInner(); });
+    addConversion(
+        [ctx](IntegerType type) -> Type { return LocalType::get(ctx, type); });
+    addConversion(
+        [ctx](FloatType type) -> Type { return LocalType::get(ctx, type); });
+
+    addSourceMaterialization([](OpBuilder &builder, Type type,
+                                ValueRange inputs,
+                                Location loc) -> std::optional<Value> {
+      if (inputs.size() != 1)
+        return std::nullopt;
+
+      return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+          .getResult(0);
+    });
+
+    addTargetMaterialization([](OpBuilder &builder, Type type,
+                                ValueRange inputs,
+                                Location loc) -> std::optional<Value> {
+      if (inputs.size() != 1)
+        return std::nullopt;
+
+      return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+          .getResult(0);
+    });
+  }
+};
+
 class ConvertToWasm : public impl::ConvertToWasmBase<ConvertToWasm> {
 public:
   using impl::ConvertToWasmBase<ConvertToWasm>::ConvertToWasmBase;
@@ -35,7 +66,8 @@ public:
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
-    populateArithToWasmPatterns(context, patterns);
+    WasmTypeConverter typeConverter(context);
+    populateArithToWasmPatterns(typeConverter, context, patterns);
     populateFuncToWasmPatterns(context, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
