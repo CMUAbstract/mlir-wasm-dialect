@@ -84,6 +84,8 @@ def Wasm_IShrUOp : Wasm_IntegerBinaryOp<"shr_u">;
 def Wasm_IRotlOp : Wasm_IntegerBinaryOp<"rotl">;
 def Wasm_IRotrOp : Wasm_IntegerBinaryOp<"rotr">;
 
+def Wasm_ILtUOp : Wasm_IntegerBinaryOp<"lt_u">;
+
 // floating-point unary operations
 
 def Wasm_FAbsOp : Wasm_FloatUnaryOp<"abs">;
@@ -383,5 +385,33 @@ def Wasm_Unreachable : Wasm_Op<"unreachable", []> {
 }
 
 // TODO: control flow instructions
+
+def Wasm_LoopOp: Wasm_Op<"loop"> {
+    // TODO: Handle loop-carried values
+    let regions = (region AnyRegion:$body);
+
+    let builders = [
+        OpBuilder<(ins)>,
+    ];
+}
+
+def Wasm_LoopEndOp: Wasm_Op<"loop_end", [Terminator]> {
+    // TODO: HasParent<LoopOp>
+}
+
+def Wasm_BranchOp: Wasm_Op<"br", [Terminator]> {
+    let successors = (successor AnySuccessor:$dest);
+}
+
+def Wasm_CondBranchOp: Wasm_Op<"cond_br", [Terminator]> {
+    let successors = (successor AnySuccessor:$dest);
+}
+
+def Wasm_NoOp : Wasm_Op<"noop", []> {
+    let summary = "No operation";
+    let description = [{
+        The `noop` operation does nothing.
+    }];
+}
 
 #endif // WASM_OPS
