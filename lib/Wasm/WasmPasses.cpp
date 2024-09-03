@@ -12,6 +12,7 @@
 
 #include "Wasm/ConversionPatterns/ArithToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/FuncToWasmPatterns.h"
+#include "Wasm/ConversionPatterns/ScfToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/WasmFinalizePatterns.h"
 #include "Wasm/VariableAnalysis.h"
 #include "Wasm/WasmPasses.h"
@@ -29,6 +30,8 @@ public:
         [ctx](IntegerType type) -> Type { return LocalType::get(ctx, type); });
     addConversion(
         [ctx](FloatType type) -> Type { return LocalType::get(ctx, type); });
+    addConversion(
+        [ctx](IndexType type) -> Type { return LocalType::get(ctx, type); });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs,
@@ -63,12 +66,14 @@ public:
     ConversionTarget target(*context);
     target.addLegalDialect<wasm::WasmDialect>();
     target.addIllegalDialect<arith::ArithDialect>();
+    target.addIllegalDialect<scf::SCFDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     WasmTypeConverter typeConverter(context);
     populateArithToWasmPatterns(typeConverter, patterns);
     populateFuncToWasmPatterns(typeConverter, patterns);
+    populateScfToWasmPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();

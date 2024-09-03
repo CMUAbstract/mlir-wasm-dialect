@@ -20,7 +20,8 @@ def ConvertToWasm : Pass<"convert-to-wasm", "ModuleOp"> {
     "wasm::WasmDialect",
     "arith::ArithDialect",
     "func::FuncDialect",
-  // TODO: Add scf and memref dialects
+    "scf::SCFDialect",
+  // TODO: Add memref dialects
   ];
 }
 
