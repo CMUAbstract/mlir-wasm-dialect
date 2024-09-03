@@ -13,8 +13,6 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
     Value result = addIOp.getResult();
     Type type = result.getType();
 
-    auto localType = mlir::wasm::LocalType::get(addIOp->getContext(), type);
-
     auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
 
     if ((addIOp.getLhs().getType() != type) ||
@@ -59,8 +57,8 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
 };
 
 void populateArithToWasmPatterns(TypeConverter &typeConverter,
-                                 MLIRContext *context,
                                  RewritePatternSet &patterns) {
+  MLIRContext *context = patterns.getContext();
   patterns.add<AddIOpLowering, ConstantOpLowering>(typeConverter, context);
 }
 
