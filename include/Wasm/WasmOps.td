@@ -11,8 +11,11 @@
 
 include "Wasm/WasmTypes.td"
 include "mlir/Bytecode/BytecodeOpInterface.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/Constraints.td"
@@ -414,23 +417,44 @@ def Wasm_NoOp : Wasm_Op<"noop", []> {
     }];
 }
 
-def Wasm_WasmFuncOp : Wasm_Op<"func", [AutomaticAllocationScope, IsolatedFromAbove]> {
+def Wasm_WasmFuncOp : Wasm_Op<"func", [FunctionOpInterface, IsolatedFromAbove]> {
 
-    let arguments = (ins SymbolNameAttr:$sym_name,
-                        TypeAttrOf<FunctionType>:$function_type);
+    let arguments = (ins
+        SymbolNameAttr:$sym_name,
+        TypeAttrOf<FunctionType>:$function_type,
+        OptionalAttr<DictArrayAttr>:$arg_attrs,
+        OptionalAttr<DictArrayAttr>:$res_attrs
+    );
     let regions = (region AnyRegion:$body);
 
+    let builders = [OpBuilder<(ins
+        "StringRef":$name, "FunctionType":$type,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)
+    >];
+
     let extraClassDeclaration = [{
-        static WasmFuncOp create(Location location, StringRef name, FunctionType type);
+        //===------------------------------------------------------------------===//
+        // FunctionOpInterface Methods
+        //===------------------------------------------------------------------===//
+
+        /// Returns the argument types of this function.
+        ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
+
+        /// Returns the result types of this function.
+        ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+        Region *getCallableRegion() { return &getBody(); }
     }];
-    let assemblyFormat = [{ $body attr-dict `:` $function_type }];
+    let hasCustomAssemblyFormat = 1;
+    let skipDefaultBuilders = 1;
+    
+
 }
 
-def Wasm_WasmReturnOp : Wasm_Op<"return", [Terminator, 
-// HasParent<"WasmFuncOp">
-]> {
+def Wasm_WasmReturnOp : Wasm_Op<"return", [Pure, Terminator, HasParent<"WasmFuncOp">, ReturnLike]> {
 
     // NOTE: WasmReturnOp does not have any operands
+    // The return operation only emits the input in the format if it is present.
     let assemblyFormat = "attr-dict";
 }
 

@@ -6,8 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Wasm/WasmOps.h"
+#include "mlir/Interfaces/FunctionImplementation.h"
+
 #include "Wasm/WasmDialect.h"
+#include "Wasm/WasmOps.h"
 #include "Wasm/WasmTypes.h"
 
 #define GET_OP_CLASSES
@@ -36,12 +38,40 @@ void mlir::wasm::LoopOp::build(OpBuilder &builder, OperationState &state) {
   state.addRegion();
 }
 
-WasmFuncOp WasmFuncOp::create(Location location, StringRef name,
-                              FunctionType type) {
-  OpBuilder builder(location->getContext());
-  OperationState state(location, getOperationName());
-  WasmFuncOp::build(builder, state, name, type);
-  return cast<WasmFuncOp>(Operation::create(state));
+void mlir::wasm::WasmFuncOp::build(mlir::OpBuilder &builder,
+                                   mlir::OperationState &state,
+                                   llvm::StringRef name,
+                                   mlir::FunctionType type,
+                                   llvm::ArrayRef<mlir::NamedAttribute> attrs) {
+  state.addAttribute(SymbolTable::getSymbolAttrName(),
+                     builder.getStringAttr(name));
+  state.addAttribute(getFunctionTypeAttrName(state.name), TypeAttr::get(type));
+  state.attributes.append(attrs.begin(), attrs.end());
+  state.addRegion();
+}
+
+mlir::ParseResult mlir::wasm::WasmFuncOp::parse(mlir::OpAsmParser &parser,
+                                                mlir::OperationState &result) {
+  // Dispatch to the FunctionOpInterface provided utility method that parses the
+  // function operation.
+  auto buildFuncType =
+      [](mlir::Builder &builder, llvm::ArrayRef<mlir::Type> argTypes,
+         llvm::ArrayRef<mlir::Type> results,
+         mlir::function_interface_impl::VariadicFlag,
+         std::string &) { return builder.getFunctionType(argTypes, results); };
+
+  return mlir::function_interface_impl::parseFunctionOp(
+      parser, result, /*allowVariadic=*/false,
+      getFunctionTypeAttrName(result.name), buildFuncType,
+      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+}
+
+void mlir::wasm::WasmFuncOp::print(mlir::OpAsmPrinter &p) {
+  // Dispatch to the FunctionOpInterface provided utility method that prints the
+  // function operation.
+  mlir::function_interface_impl::printFunctionOp(
+      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+      getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
 } // namespace mlir::wasm
