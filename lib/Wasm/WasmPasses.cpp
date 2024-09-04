@@ -67,6 +67,7 @@ public:
     target.addLegalDialect<wasm::WasmDialect>();
     target.addIllegalDialect<arith::ArithDialect>();
     target.addIllegalDialect<scf::SCFDialect>();
+    target.addIllegalDialect<func::FuncDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
