@@ -7,13 +7,13 @@ namespace mlir::wasm {
 
 void populateFuncToWasmPatterns(TypeConverter &typeConverter,
                                 RewritePatternSet &patterns) {
-  patterns.add<ConvertFunc, ConvertReturn>(typeConverter,
-                                           patterns.getContext());
+  patterns.add<FuncOpLowering, ReturnOpLowering>(typeConverter,
+                                                 patterns.getContext());
 }
 
 LogicalResult
-ConvertFunc::matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,
-                             ConversionPatternRewriter &rewriter) const {
+FuncOpLowering::matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const {
 
   TypeConverter::SignatureConversion signatureConverter(
       funcOp.getFunctionType().getNumInputs());
@@ -50,8 +50,8 @@ ConvertFunc::matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,
 }
 
 LogicalResult
-ConvertReturn::matchAndRewrite(func::ReturnOp returnOp, OpAdaptor adaptor,
-                               ConversionPatternRewriter &rewriter) const {
+ReturnOpLowering::matchAndRewrite(func::ReturnOp returnOp, OpAdaptor adaptor,
+                                  ConversionPatternRewriter &rewriter) const {
   for (auto operand : returnOp->getOperands()) {
     // TODO: ideally TypeConverter should automatically handle type conversion
     // but it doesn't seem to work because TempLocalGetOp are not the operations
