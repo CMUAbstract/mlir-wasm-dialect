@@ -25,13 +25,22 @@ namespace mlir::wasm {
 class WasmTypeConverter : public TypeConverter {
 public:
   WasmTypeConverter(MLIRContext *ctx) {
-    addConversion([](LocalType type) { return type.getInner(); });
     addConversion(
         [ctx](IntegerType type) -> Type { return LocalType::get(ctx, type); });
     addConversion(
         [ctx](FloatType type) -> Type { return LocalType::get(ctx, type); });
     addConversion(
         [ctx](IndexType type) -> Type { return LocalType::get(ctx, type); });
+
+    addArgumentMaterialization([](OpBuilder &builder, Type type,
+                                  ValueRange inputs,
+                                  Location loc) -> std::optional<Value> {
+      if (inputs.size() != 1)
+        return std::nullopt;
+
+      return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+          .getResult(0);
+    });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs,
