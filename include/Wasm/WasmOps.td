@@ -370,6 +370,15 @@ def Wasm_DataDropOp : Wasm_Op<"data.drop", []> {
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
+def Wasm_DataOp : Wasm_Op<"data"> {
+    let arguments = (ins I32Attr:$offset, StrAttr:$bytes); 
+    let assemblyFormat = [{ 
+        attr-dict 
+        `{` `offset` `=` $offset `,`  `bytes` `=` $bytes `}`
+    }];
+
+}
+
 // constrol instructions
 
 def Wasm_Nop : Wasm_Op<"nop", []> {
