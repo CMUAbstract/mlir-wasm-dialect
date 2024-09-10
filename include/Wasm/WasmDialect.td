@@ -32,6 +32,8 @@ def Wasm_Dialect : Dialect {
     let dependentDialects = [
         "arith::ArithDialect",
         "func::FuncDialect",
+        "scf::SCFDialect",
+        "memref::MemRefDialect",
     ];
 }
 
