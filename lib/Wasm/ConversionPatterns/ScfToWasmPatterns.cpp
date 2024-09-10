@@ -36,8 +36,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.setInsertionPointToEnd(bodyEndBlock);
     auto *terminationBlock = rewriter.createBlock(&loopOp.getRegion());
 
-    // TODO: we don't really need this
-    // we added this to avoid the error that the entry block should have no
+    // we add this to avoid the error that the entry block should have no
     // predecessors
     rewriter.setInsertionPointToEnd(firstBlockHead);
     rewriter.create<wasm::BranchOp>(loc, condBlock);
