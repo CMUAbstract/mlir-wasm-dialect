@@ -21,19 +21,33 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     // firstBlockHead is the entrypoint of the loop. This does not have any
     // predecessors
     auto *firstBlockHead = firstBlock;
+
     // looping logic is defined in the condBlock
     auto *condBlock = rewriter.splitBlock(firstBlock, firstBlock->begin());
     auto *firstBlockEnd = rewriter.splitBlock(condBlock, condBlock->begin());
-    // induction variable is updated in the bodyEndBlock
     Block *bodyEndBlock;
     if (firstBlock == lastBlock) {
       bodyEndBlock = firstBlockEnd;
     } else {
       bodyEndBlock = lastBlock;
     }
-    Operation *terminator = bodyEndBlock->getTerminator();
+
+    // induction variable is updated in the inductionVariableUpdateBlock, which
+    // follows the bodyEndBlock
+    // NOTE: we add this block for the sake of clarity. Ideally this should be
+    // merged with the bodyEndBlock by an optimizer.
+    rewriter.setInsertionPointToEnd(bodyEndBlock);
+    auto *inductionVariableUpdateBlock =
+        rewriter.createBlock(&loopOp.getRegion());
 
     rewriter.setInsertionPointToEnd(bodyEndBlock);
+    Operation *terminator = bodyEndBlock->getTerminator();
+    rewriter.eraseOp(terminator);
+    rewriter.create<wasm::BranchOp>(loc, inductionVariableUpdateBlock);
+
+    rewriter.setInsertionPointToEnd(inductionVariableUpdateBlock);
+    // terminationBlock is the exit point of the loop with a single terminator
+    // wasm.LoopEndOp
     auto *terminationBlock = rewriter.createBlock(&loopOp.getRegion());
 
     // we add this to avoid the error that the entry block should have no
@@ -66,7 +80,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.create<wasm::CondBranchOp>(loc, terminationBlock);
 
     // update induction variable at the end of the loop body
-    rewriter.setInsertionPointToEnd(bodyEndBlock);
+    rewriter.setInsertionPointToEnd(inductionVariableUpdateBlock);
     auto step = forOp.getStep();
 
     auto castedStep = typeConverter->materializeTargetConversion(
@@ -76,7 +90,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.create<wasm::AddOp>(loc, rewriter.getI32Type());
     rewriter.create<wasm::TempLocalSetOp>(loc, castedInductionVariable);
 
-    rewriter.replaceOpWithNewOp<wasm::BranchOp>(terminator, condBlock);
+    rewriter.create<wasm::BranchOp>(loc, condBlock);
 
     // add terminator at the end of the termination block
     rewriter.setInsertionPointToEnd(terminationBlock);
