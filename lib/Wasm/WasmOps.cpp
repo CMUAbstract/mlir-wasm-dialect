@@ -34,6 +34,43 @@ void TempLocalOp::build(OpBuilder &builder, OperationState &state,
   state.addAttribute("type", mlir::TypeAttr::get(inner));
 }
 
+ParseResult parseLocalOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand local;
+  Type localInnerType;
+
+  if (parser.parseOperand(local) || parser.parseColonType(localInnerType))
+    return failure();
+
+  auto localType = LocalType::get(parser.getContext(), localInnerType);
+  if (parser.resolveOperand(local, localType, result.operands))
+    return failure();
+
+  result.addTypes(localInnerType);
+
+  return success();
+}
+
+void printLocalOp(OpAsmPrinter &p, LocalType localType) {
+  p << " : " << localType.getInner();
+  return;
+}
+
+ParseResult TempLocalGetOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseLocalOp(parser, result);
+}
+
+void TempLocalGetOp::print(OpAsmPrinter &p) {
+  printLocalOp(p, getLocal().getType());
+}
+
+ParseResult TempLocalSetOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseLocalOp(parser, result);
+}
+
+void TempLocalSetOp::print(OpAsmPrinter &p) {
+  printLocalOp(p, getLocal().getType());
+}
+
 void LoopOp::build(OpBuilder &builder, OperationState &state) {
   state.addRegion();
 }
