@@ -166,12 +166,12 @@ def Wasm_TempLocalOp : Wasm_Op<"temp.local", []> {
 
 def Wasm_TempLocalGetOp : Wasm_Op<"temp.local.get", []> {
     let arguments = (ins Local:$local);
-    let assemblyFormat = [{ $local attr-dict `:` type($local) }];
+    let hasCustomAssemblyFormat = 1;
 }
 
 def Wasm_TempLocalSetOp : Wasm_Op<"temp.local.set", []> {
     let arguments = (ins Local:$local);
-    let assemblyFormat = [{ $local attr-dict `:` type($local) }];
+    let hasCustomAssemblyFormat = 1;
 }
 
 // local instructions
