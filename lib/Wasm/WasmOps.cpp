@@ -26,23 +26,21 @@ llvm::LogicalResult ConstantOp::verify() {
   return success();
 }
 
-void mlir::wasm::TempLocalOp::build(OpBuilder &builder, OperationState &state,
-                                    mlir::Type inner) {
+void TempLocalOp::build(OpBuilder &builder, OperationState &state,
+                        mlir::Type inner) {
   auto context = inner.getContext();
   auto localType = mlir::wasm::LocalType::get(context, inner);
   state.addTypes(localType);
   state.addAttribute("type", mlir::TypeAttr::get(inner));
 }
 
-void mlir::wasm::LoopOp::build(OpBuilder &builder, OperationState &state) {
+void LoopOp::build(OpBuilder &builder, OperationState &state) {
   state.addRegion();
 }
 
-void mlir::wasm::WasmFuncOp::build(mlir::OpBuilder &builder,
-                                   mlir::OperationState &state,
-                                   llvm::StringRef name,
-                                   mlir::FunctionType type,
-                                   llvm::ArrayRef<mlir::NamedAttribute> attrs) {
+void WasmFuncOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+                       llvm::StringRef name, mlir::FunctionType type,
+                       llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   state.addAttribute(SymbolTable::getSymbolAttrName(),
                      builder.getStringAttr(name));
   state.addAttribute(getFunctionTypeAttrName(state.name), TypeAttr::get(type));
@@ -50,8 +48,8 @@ void mlir::wasm::WasmFuncOp::build(mlir::OpBuilder &builder,
   state.addRegion();
 }
 
-mlir::ParseResult mlir::wasm::WasmFuncOp::parse(mlir::OpAsmParser &parser,
-                                                mlir::OperationState &result) {
+ParseResult WasmFuncOp::parse(mlir::OpAsmParser &parser,
+                              mlir::OperationState &result) {
   // Dispatch to the FunctionOpInterface provided utility method that parses the
   // function operation.
   auto buildFuncType =
@@ -66,7 +64,7 @@ mlir::ParseResult mlir::wasm::WasmFuncOp::parse(mlir::OpAsmParser &parser,
       getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
 }
 
-void mlir::wasm::WasmFuncOp::print(mlir::OpAsmPrinter &p) {
+void WasmFuncOp::print(mlir::OpAsmPrinter &p) {
   // Dispatch to the FunctionOpInterface provided utility method that prints the
   // function operation.
   mlir::function_interface_impl::printFunctionOp(
