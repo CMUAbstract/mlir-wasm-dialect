@@ -371,9 +371,9 @@ def Wasm_DataDropOp : Wasm_Op<"data.drop", []> {
 }
 
 def Wasm_DataOp : Wasm_Op<"data"> {
-    let arguments = (ins I32Attr:$offset, StrAttr:$bytes); 
+    let arguments = (ins SymbolNameAttr:$sym_name, I32Attr:$offset, StrAttr:$bytes); 
     let assemblyFormat = [{ 
-        attr-dict 
+        attr-dict $sym_name `:`
         `{` `offset` `=` $offset `,`  `bytes` `=` $bytes `}`
     }];
 
