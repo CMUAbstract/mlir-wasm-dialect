@@ -47,8 +47,27 @@ struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
   LogicalResult
   matchAndRewrite(memref::GlobalOp globalOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO
-    return success();
+    if (globalOp.isExternal()) {
+      return rewriter.notifyMatchFailure(globalOp,
+                                         "external global op not supported");
+    }
+    if (globalOp.isUninitialized()) {
+      return rewriter.notifyMatchFailure(
+          globalOp, "uninitialized global op not supported");
+    }
+    if (auto denseElementsAttr =
+            dyn_cast<DenseElementsAttr>(globalOp.getConstantInitValue())) {
+      auto rawData = denseElementsAttr.getRawData();
+      std::string bytes = generateStr(rawData.data(), rawData.size());
+      rewriter.replaceOpWithNewOp<wasm::DataOp>(
+          globalOp, rewriter.getStringAttr(globalOp.getSymName()),
+          // TODO: offset should not be 0
+          rewriter.getIntegerAttr(rewriter.getIntegerType(32), 0),
+          rewriter.getStringAttr(bytes.c_str()));
+      return success();
+    }
+
+    return failure();
   }
 };
 
