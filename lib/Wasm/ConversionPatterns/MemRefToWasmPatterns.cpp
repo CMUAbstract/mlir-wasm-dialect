@@ -71,6 +71,72 @@ struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
   }
 };
 
+struct GlobalGetOpLowering : public OpConversionPattern<memref::GlobalGetOp> {
+  using OpConversionPattern<memref::GlobalGetOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::GlobalGetOp globalGetOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // TODO
+    // we should add a temporary wasm operation that holds the memory
+    // offset and the shape
+    return success();
+  }
+};
+
+struct LoadOpLowering : public OpConversionPattern<memref::LoadOp> {
+  using OpConversionPattern<memref::LoadOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::LoadOp loadOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // TODO
+    // 1. read from the temporary wasm operation about the memory offset and
+    // shape
+    // 2. compute the memory location to read from
+    // 3. perform the load operation (i32.load, i64.load, f32.load, f64.load)
+    return success();
+  }
+};
+
+struct StoreOpLowering : public OpConversionPattern<memref::StoreOp> {
+  using OpConversionPattern<memref::StoreOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::StoreOp storeOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // TODO
+    // 1. read from the temporary wasm operation the memory offset and
+    // shape
+    // 2. compute the memory location to read from
+    // 3. perform the store operation (i32.store, i64.store, f32.store,
+    // f64.store)
+    return success();
+  }
+};
+
+struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
+  using OpConversionPattern<memref::AllocOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::AllocOp allocOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // TODO
+    // 1. compute the size of the memory to allocate
+    // 2. create wasm.malloc operation (this should store the shape of the
+    // allocated memory)
+    return success();
+  }
+};
+
+// TODO: pre-processing
+// - compute the offset of each data segment
+// - add (import "malloc")
+
+// TODO: post-processing
+// - remove temporary wasm operations
+// - remove the `shape` attribute from wasm.malloc
+
 void populateMemRefToWasmPatterns(TypeConverter &typeConverter,
                                   RewritePatternSet &patterns) {
   patterns.add<GlobalOpLowering>(typeConverter, patterns.getContext());
