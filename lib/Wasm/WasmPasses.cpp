@@ -12,6 +12,7 @@
 
 #include "Wasm/ConversionPatterns/ArithToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/FuncToWasmPatterns.h"
+#include "Wasm/ConversionPatterns/MemRefToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/ScfToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/WasmFinalizePatterns.h"
 #include "Wasm/VariableAnalysis.h"
@@ -77,6 +78,7 @@ public:
     target.addIllegalDialect<arith::ArithDialect>();
     target.addIllegalDialect<scf::SCFDialect>();
     target.addIllegalDialect<func::FuncDialect>();
+    target.addIllegalDialect<memref::MemRefDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
@@ -84,6 +86,7 @@ public:
     populateArithToWasmPatterns(typeConverter, patterns);
     populateFuncToWasmPatterns(typeConverter, patterns);
     populateScfToWasmPatterns(typeConverter, patterns);
+    populateMemRefToWasmPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
