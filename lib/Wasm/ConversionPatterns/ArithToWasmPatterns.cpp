@@ -4,6 +4,38 @@
 
 namespace mlir::wasm {
 
+struct AddFOpLowering : public OpConversionPattern<arith::AddFOp> {
+	using OpConversionPattern<arith::AddFOp>::OpConversionPattern;	// Constructor
+	LogicalResult matchAndRewrite( arith::AddFOp addFOp, OpAdaptor adaptor, 
+						ConversionPatternRewriter &rewriter) const override {
+		Location loc = addFOp->getLoc();
+		Value result = addFOp.getResult();
+		Type type = addFOp.getType();
+
+		auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
+
+		if(( addFOp.getLhs().getType() != type ) ||
+			( addFOp.getRhs().getType() != type )) {
+				return rewriter.notifyMatchFailure( addFOp, "type mismatch");
+			}
+
+		auto localType = typeConverter->convertType(type);
+		auto castedLhs = typeConverter->materializeTargetConversion(
+			rewriter, loc, localType, addFOp.getLhs()		);
+		auto castedRhs = typeConverter->materializeTargetConversion(
+			rewriter, loc, localType, addFOp.getRhs()		);
+
+		rewriter.create<wasm::TempLocalGetOp>(loc, castedLhs);
+		rewriter.create<wasm::TempLocalGetOp>(loc, castedRhs);
+
+		rewriter.create<wasm::AddOp>(loc, type);
+		rewriter.create<wasm::TempLocalSetOp>(loc, tempLocalOp.getResult());
+		rewriter.replaceOp(addFOp, tempLocalOp);
+
+		return success();
+	}
+}; 
+
 struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
   LogicalResult
@@ -38,6 +70,7 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
     return success();
   }
 };
+
 struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
   LogicalResult
@@ -59,7 +92,11 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
 void populateArithToWasmPatterns(TypeConverter &typeConverter,
                                  RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns.add<AddIOpLowering, ConstantOpLowering>(typeConverter, context);
+  patterns.add<
+  	AddIOpLowering, 
+	AddFOpLowering,
+  	ConstantOpLowering
+  >(typeConverter, context);
 }
 
 } // namespace mlir::wasm
