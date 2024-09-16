@@ -104,4 +104,10 @@ void WasmFuncOp::print(mlir::OpAsmPrinter &p) {
       getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
+LogicalResult
+TempGetGlobalOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  // TODO: check if the symbol is a global variable
+  return success();
+}
+
 } // namespace mlir::wasm
