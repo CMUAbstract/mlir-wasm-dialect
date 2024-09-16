@@ -7,7 +7,7 @@ namespace mlir::wasm {
 VariableAnalysis::VariableAnalysis(Operation *op) {
   numArguments = 0;
   numVariables = 0;
-  if (auto func = dyn_cast<func::FuncOp>(op)) {
+  if (auto func = dyn_cast<wasm::WasmFuncOp>(op)) {
     // TODO: add function arguments to reg2Loc
     // function arguments are also local variables in wasm
     // Before that, we need to convert the arguments to LocalType
