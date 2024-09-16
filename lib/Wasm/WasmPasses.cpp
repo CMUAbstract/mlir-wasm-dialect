@@ -96,7 +96,7 @@ public:
   using impl::WasmFinalizeBase<WasmFinalize>::WasmFinalizeBase;
 
   void runOnOperation() final {
-    func::FuncOp func = getOperation();
+    wasm::WasmFuncOp func = getOperation();
     MLIRContext *context = func.getContext();
     VariableAnalysis analysis(func);
 
