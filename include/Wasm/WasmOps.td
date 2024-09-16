@@ -377,7 +377,10 @@ def Wasm_TempGetGlobalOp : Wasm_Op<"temp.get_global",
     let assemblyFormat = [{ $name `:` type($result) attr-dict }];
 }
 
-def Wasm_MallocOp : Wasm_Op<"malloc", []> {}
+def Wasm_CallOp : Wasm_Op<"call"> {
+    let arguments = (ins FlatSymbolRefAttr:$name);
+    let assemblyFormat = [{ $name attr-dict }];
+}
 
 // constrol instructions
 

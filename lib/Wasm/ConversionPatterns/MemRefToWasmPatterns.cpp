@@ -243,7 +243,8 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
     int64_t size = memRefSize(memRefType, alignment);
     rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(size));
 
-    rewriter.create<MallocOp>(loc);
+    rewriter.create<CallOp>(loc,
+                            StringAttr::get(rewriter.getContext(), "malloc"));
 
     auto localOp = rewriter.create<TempLocalOp>(loc, rewriter.getI32Type());
     // assume that the result of malloc is pushed to the stack
