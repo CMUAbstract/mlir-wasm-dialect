@@ -163,11 +163,6 @@ struct LoadOpLowering : public OpConversionPattern<memref::LoadOp> {
     }
     rewriter.replaceOpWithNewOp<LoadOp>(
         loadOp, TypeAttr::get(loadOp.getMemRefType().getElementType()));
-    // TODO
-    // 1. read from the temporary wasm operation about the memory offset and
-    // shape
-    // 2. compute the memory location to read from
-    // 3. perform the load operation (i32.load, i64.load, f32.load, f64.load)
     return success();
   }
 };
