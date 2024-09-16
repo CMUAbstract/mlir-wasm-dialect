@@ -20,6 +20,11 @@ include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/Constraints.td"
 
+def MemRefTypeAttr
+    : TypeAttrBase<"::mlir::MemRefType", "memref type attribute"> {
+  let constBuilderCall = "::mlir::TypeAttr::get($0)";
+}
+
 def Wasm_ConstantOp : Wasm_Op<"constant", [Pure]> {
     let arguments = (ins AnyAttr:$value);
     let assemblyFormat = "attr-dict $value";
@@ -259,8 +264,8 @@ def Wasm_TableSizeOp : Wasm_Op<"table.size", []> {
 }
 
 def Wasm_TableGrowOp : Wasm_Op<"table.grow", []> {
-    let summary = "Table grow operation";
-    let description = [{
+  let summary = "Table grow operation";
+  let description = [{
         The `table.grow` operation grows a table.
     }];
 }
@@ -297,27 +302,13 @@ def Wasm_ElemDropOp : Wasm_Op<"elem.drop", []> {
 
 // load
 def Wasm_LoadOp : Wasm_Op<"i32.load", []> {
-    let summary = "Memory load operation";
-    let description = [{
-        The `memory.load` operation reads from memory.
-    }];
-    let arguments = (ins I32Attr:$offset, I32Attr:$align);
-    let assemblyFormat = [{ 
-        attr-dict 
-        `{` `offset` `=` $offset `,`  `align` `=` $align `}`
-    }];
+    let arguments = (ins TypeAttr : $type);
+    let assemblyFormat = [{ attr-dict `:` $type }];
 }
 
-def Wasm_StoreOp : Wasm_Op<"i32.store", []> {
-    let summary = "Memory store operation";
-    let description = [{
-        The `memory.store` operation writes to memory.
-    }];
-    let arguments = (ins I32Attr:$offset, I32Attr:$align);
-    let assemblyFormat = [{ 
-        attr-dict 
-        `{` `offset` `=` $offset `,`  `align` `=` $align `}`
-    }];
+def Wasm_StoreOp : Wasm_Op<"store", []> {
+    let arguments = (ins TypeAttr : $type);
+    let assemblyFormat = [{ attr-dict `:` $type }];
 }
 
 def Wasm_MemorySizeOp : Wasm_Op<"memory.size", []> {
@@ -371,13 +362,22 @@ def Wasm_DataDropOp : Wasm_Op<"data.drop", []> {
 }
 
 def Wasm_DataOp : Wasm_Op<"data"> {
-    let arguments = (ins SymbolNameAttr:$sym_name, I32Attr:$offset, StrAttr:$bytes); 
+    let arguments = (ins SymbolNameAttr:$sym_name, 
+        I32Attr:$offset, StrAttr:$bytes, OptionalAttr<MemRefTypeAttr>:$type); 
     let assemblyFormat = [{ 
         attr-dict $sym_name `:`
         `{` `offset` `=` $offset `,`  `bytes` `=` $bytes `}`
     }];
-
 }
+
+def Wasm_TempGetGlobalOp : Wasm_Op<"temp.get_global", 
+    [Pure, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+    let arguments = (ins FlatSymbolRefAttr:$name);
+    let results = (outs AnyStaticShapeMemRef:$result);
+    let assemblyFormat = [{ $name `:` type($result) attr-dict }];
+}
+
+def Wasm_MallocOp : Wasm_Op<"malloc", []> {}
 
 // constrol instructions
 
