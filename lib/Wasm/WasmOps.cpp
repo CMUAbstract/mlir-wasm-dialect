@@ -45,14 +45,7 @@ ParseResult parseLocalOp(OpAsmParser &parser, OperationState &result) {
   if (parser.resolveOperand(local, localType, result.operands))
     return failure();
 
-  result.addTypes(localInnerType);
-
   return success();
-}
-
-void printLocalOp(OpAsmPrinter &p, LocalType localType) {
-  p << " : " << localType.getInner();
-  return;
 }
 
 ParseResult TempLocalGetOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -60,7 +53,8 @@ ParseResult TempLocalGetOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void TempLocalGetOp::print(OpAsmPrinter &p) {
-  printLocalOp(p, getLocal().getType());
+  p << " " << getLocal();
+  p << " : " << getLocal().getType().getInner();
 }
 
 ParseResult TempLocalSetOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -68,7 +62,8 @@ ParseResult TempLocalSetOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void TempLocalSetOp::print(OpAsmPrinter &p) {
-  printLocalOp(p, getLocal().getType());
+  p << " " << getLocal();
+  p << " : " << getLocal().getType().getInner();
 }
 
 void LoopOp::build(OpBuilder &builder, OperationState &state) {
