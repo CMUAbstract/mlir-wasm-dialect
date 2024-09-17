@@ -161,8 +161,18 @@ struct LoadOpLowering : public OpConversionPattern<memref::LoadOp> {
     if (failed(result)) {
       return result;
     }
-    rewriter.replaceOpWithNewOp<LoadOp>(
-        loadOp, TypeAttr::get(loadOp.getMemRefType().getElementType()));
+
+    // the result of the load is pushed to the stack
+    // we should pop it, assign it to a local variable,
+    // and replace all uses of the load with this local variable
+    auto loc = loadOp.getLoc();
+    auto elementType = loadOp.getMemRefType().getElementType();
+
+    rewriter.create<LoadOp>(loc, TypeAttr::get(elementType));
+    auto localOp = rewriter.create<TempLocalOp>(loc, elementType);
+    rewriter.create<TempLocalSetOp>(loc, localOp.getResult());
+    rewriter.replaceOp(loadOp, localOp.getResult());
+
     return success();
   }
 };
