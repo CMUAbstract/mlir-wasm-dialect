@@ -261,6 +261,21 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
   }
 };
 
+struct ExpandShapeLowering : public OpConversionPattern<memref::ExpandShapeOp> {
+  using OpConversionPattern<memref::ExpandShapeOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::ExpandShapeOp expandShapeOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+        expandShapeOp, expandShapeOp.getResult().getType(),
+        expandShapeOp.getOperand(0));
+
+    return success();
+  }
+};
+
 // TODO: pre-processing
 // - compute the offset of each data segment
 // - add (import "malloc")
@@ -268,7 +283,8 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
 void populateMemRefToWasmPatterns(TypeConverter &typeConverter,
                                   RewritePatternSet &patterns) {
   patterns.add<GlobalOpLowering, GlobalGetOpLowering, AllocOpLowering,
-               StoreOpLowering>(typeConverter, patterns.getContext());
+               StoreOpLowering, LoadOpLowering, ExpandShapeLowering>(
+      typeConverter, patterns.getContext());
 }
 
 } // namespace mlir::wasm
