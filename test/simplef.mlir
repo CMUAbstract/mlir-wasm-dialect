@@ -4,7 +4,9 @@ module {
 	%b = arith.constant 4.0 : f32
 	%c = arith.addf %a, %b : f32
 	%d = arith.addf %c, %i : f32
-    return %d : f32
+	%e = arith.constant 10.0 : f32
+	%f = arith.mulf %d, %e : f32
+	return %f : f32
     }
 
 }

@@ -4,37 +4,73 @@
 
 namespace mlir::wasm {
 
+struct MulFOpLowering : public OpConversionPattern<arith::MulFOp> {
+  using OpConversionPattern<arith::MulFOp>::OpConversionPattern; // Constructor
+
+  LogicalResult
+  matchAndRewrite(arith::MulFOp mulFOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    Location loc = mulFOp->getLoc();
+    Value result = mulFOp.getResult();
+    Type type = mulFOp.getType();
+
+    auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
+
+    if ((mulFOp.getLhs().getType() != type) ||
+        (mulFOp.getRhs().getType() != type)) {
+      return rewriter.notifyMatchFailure(mulFOp, "type mismatch");
+    }
+
+    auto localType = typeConverter->convertType(type);
+    auto castedLhs = typeConverter->materializeTargetConversion(
+        rewriter, loc, localType, mulFOp.getLhs());
+    auto castedRhs = typeConverter->materializeTargetConversion(
+        rewriter, loc, localType, mulFOp.getRhs());
+
+    rewriter.create<wasm::TempLocalGetOp>(loc, castedLhs);
+    rewriter.create<wasm::TempLocalGetOp>(loc, castedRhs);
+
+    rewriter.create<wasm::MulOp>(loc, type);
+    rewriter.create<wasm::TempLocalSetOp>(loc, tempLocalOp.getResult());
+    rewriter.replaceOp(mulFOp, tempLocalOp);
+
+    return success();
+  }
+};
+
 struct AddFOpLowering : public OpConversionPattern<arith::AddFOp> {
-	using OpConversionPattern<arith::AddFOp>::OpConversionPattern;	// Constructor
-	LogicalResult matchAndRewrite( arith::AddFOp addFOp, OpAdaptor adaptor, 
-						ConversionPatternRewriter &rewriter) const override {
-		Location loc = addFOp->getLoc();
-		Value result = addFOp.getResult();
-		Type type = addFOp.getType();
+  using OpConversionPattern<arith::AddFOp>::OpConversionPattern; // Constructor
+  LogicalResult
+  matchAndRewrite(arith::AddFOp addFOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = addFOp->getLoc();
+    Value result = addFOp.getResult();
+    Type type = addFOp.getType();
 
-		auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
+    auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
 
-		if(( addFOp.getLhs().getType() != type ) ||
-			( addFOp.getRhs().getType() != type )) {
-				return rewriter.notifyMatchFailure( addFOp, "type mismatch");
-			}
+    if ((addFOp.getLhs().getType() != type) ||
+        (addFOp.getRhs().getType() != type)) {
+      return rewriter.notifyMatchFailure(addFOp, "type mismatch");
+    }
 
-		auto localType = typeConverter->convertType(type);
-		auto castedLhs = typeConverter->materializeTargetConversion(
-			rewriter, loc, localType, addFOp.getLhs()		);
-		auto castedRhs = typeConverter->materializeTargetConversion(
-			rewriter, loc, localType, addFOp.getRhs()		);
+    auto localType = typeConverter->convertType(type);
+    auto castedLhs = typeConverter->materializeTargetConversion(
+        rewriter, loc, localType, addFOp.getLhs());
+    auto castedRhs = typeConverter->materializeTargetConversion(
+        rewriter, loc, localType, addFOp.getRhs());
 
-		rewriter.create<wasm::TempLocalGetOp>(loc, castedLhs);
-		rewriter.create<wasm::TempLocalGetOp>(loc, castedRhs);
+    rewriter.create<wasm::TempLocalGetOp>(loc, castedLhs);
+    rewriter.create<wasm::TempLocalGetOp>(loc, castedRhs);
 
-		rewriter.create<wasm::AddOp>(loc, type);
-		rewriter.create<wasm::TempLocalSetOp>(loc, tempLocalOp.getResult());
-		rewriter.replaceOp(addFOp, tempLocalOp);
+    rewriter.create<wasm::AddOp>(loc, type);
+    rewriter.create<wasm::TempLocalSetOp>(loc, tempLocalOp.getResult());
+    rewriter.replaceOp(addFOp, tempLocalOp);
 
-		return success();
-	}
-}; 
+    return success();
+  }
+};
 
 struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
@@ -92,11 +128,9 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
 void populateArithToWasmPatterns(TypeConverter &typeConverter,
                                  RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns.add<
-  	AddIOpLowering, 
-	AddFOpLowering,
-  	ConstantOpLowering
-  >(typeConverter, context);
+  patterns
+      .add<AddIOpLowering, AddFOpLowering, MulFOpLowering, ConstantOpLowering>(
+          typeConverter, context);
 }
 
 } // namespace mlir::wasm
