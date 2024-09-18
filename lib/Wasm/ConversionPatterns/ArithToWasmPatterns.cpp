@@ -31,7 +31,9 @@ LogicalResult matchAndRewriteBinaryOp(S op, ConversionPatternRewriter &rewriter,
   rewriter.create<T>(loc, type);
 
   rewriter.create<wasm::TempLocalSetOp>(loc, tempLocalOp.getResult());
-  rewriter.replaceOp(op, tempLocalOp);
+  auto castOp = rewriter.create<UnrealizedConversionCastOp>(
+      loc, result.getType(), tempLocalOp.getResult());
+  rewriter.replaceOp(op, castOp);
 
   return success();
 }
