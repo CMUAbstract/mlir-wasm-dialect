@@ -3,6 +3,41 @@
 
 namespace mlir::wasm {
 
+// +----------------------------------------+
+// | entrypointBlock                        |
+// |   <initialize induction variable>      |
+// |   cf.br ^conditionBlock                |
+// +----------------------------------------+
+//                 |
+//                 v
+// +----------------------------------------+
+// | conditionBlock                         |
+// |   <evaluate loop condition>            |
+// |   cf.cond_br %cond, ^bodyStartBlock, ^terminationBlock |
+// +----------------------------------------+
+//         |                                         |
+//         | True                                    | False
+//         v                                         v
+// +----------------------------------------+    +---------------------------+
+// | bodyStartBlock                         |    | terminationBlock          |
+// |   <loop body begins>                   |    |   <code after the loop>   |
+// |                                        |    +---------------------------+
+// |   ... (possible intermediate blocks)   |
+// |                                        |
+// | bodyEndBlock                           |
+// |   <loop body ends>                     |
+// +----------------------------------------+
+//                 |
+//                 v
+// +----------------------------------------+
+// | inductionVariableUpdateBlock           |
+// |   <update induction variable>          |
+// |   cf.br ^conditionBlock                |
+// +----------------------------------------+
+//                 |
+//                 v
+//          (Back to conditionBlock)
+
 struct ForLowering : public OpConversionPattern<scf::ForOp> {
   using OpConversionPattern<scf::ForOp>::OpConversionPattern;
 
@@ -18,13 +53,11 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.inlineRegionBefore(forOp.getRegion(), loopOp.getBody(),
                                 loopOp.getBody().end());
 
-    // firstBlockHead is the entrypoint of the loop. This does not have any
-    // predecessors
-    auto *firstBlockHead = firstBlock;
+    auto *entrypointBlock = firstBlock;
 
-    // looping logic is defined in the condBlock
-    auto *condBlock = rewriter.splitBlock(firstBlock, firstBlock->begin());
-    auto *firstBlockEnd = rewriter.splitBlock(condBlock, condBlock->begin());
+    auto *conditionBlock = rewriter.splitBlock(firstBlock, firstBlock->begin());
+    auto *firstBlockEnd =
+        rewriter.splitBlock(conditionBlock, conditionBlock->begin());
     auto *bodyStartBlock = firstBlockEnd;
     Block *bodyEndBlock;
     if (firstBlock == lastBlock) {
@@ -33,8 +66,6 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
       bodyEndBlock = lastBlock;
     }
 
-    // induction variable is updated in the inductionVariableUpdateBlock, which
-    // follows the bodyEndBlock
     // NOTE: we add this block for the sake of clarity. Ideally this should be
     // merged with the bodyEndBlock by an optimizer.
     rewriter.setInsertionPointToEnd(bodyEndBlock);
@@ -53,11 +84,11 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
 
     // we add this to avoid the error that the entry block should have no
     // predecessors
-    rewriter.setInsertionPointToEnd(firstBlockHead);
+    rewriter.setInsertionPointToEnd(entrypointBlock);
 
     // set branching logic here
     // TODO: handle for loops with loop-carried values
-    auto inductionVariable = firstBlockHead->getArgument(0);
+    auto inductionVariable = entrypointBlock->getArgument(0);
     Value lowerBound = forOp.getLowerBound();
     Value upperBound = forOp.getUpperBound();
     if (!lowerBound || !upperBound) {
@@ -68,7 +99,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
         rewriter.create<TempLocalOp>(loc, inductionVariable.getType());
     rewriter.replaceAllUsesWith(inductionVariable, inductionLocalOp);
     auto inductionLocal = inductionLocalOp.getResult();
-    firstBlockHead->eraseArgument(0);
+    entrypointBlock->eraseArgument(0);
 
     // initialize induction local
     auto castedLowerBound = typeConverter->materializeTargetConversion(
@@ -78,9 +109,9 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.create<wasm::TempLocalGetOp>(loc, castedLowerBound);
     rewriter.create<wasm::TempLocalSetOp>(loc, inductionLocal);
 
-    rewriter.create<wasm::BranchOp>(loc, condBlock);
+    rewriter.create<wasm::BranchOp>(loc, conditionBlock);
 
-    rewriter.setInsertionPointToEnd(condBlock);
+    rewriter.setInsertionPointToEnd(conditionBlock);
 
     auto castedUpperBound = typeConverter->materializeTargetConversion(
         rewriter, loc,
@@ -104,7 +135,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.create<wasm::AddOp>(loc, rewriter.getI32Type());
     rewriter.create<wasm::TempLocalSetOp>(loc, inductionLocal);
 
-    rewriter.create<wasm::BranchOp>(loc, condBlock);
+    rewriter.create<wasm::BranchOp>(loc, conditionBlock);
 
     // add terminator at the end of the termination block
     rewriter.setInsertionPointToEnd(terminationBlock);
