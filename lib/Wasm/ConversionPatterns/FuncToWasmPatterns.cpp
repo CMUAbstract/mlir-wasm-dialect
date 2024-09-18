@@ -57,7 +57,7 @@ struct ReturnOpLowering : public OpConversionPattern<func::ReturnOp> {
       // operations that are being converted
       auto casted = typeConverter->materializeTargetConversion(
           rewriter, returnOp.getLoc(),
-          typeConverter->convertType(operand.getType()), operand);
+          LocalType::get(rewriter.getContext(), operand.getType()), operand);
       rewriter.create<TempLocalGetOp>(returnOp.getLoc(), casted);
     }
     rewriter.replaceOpWithNewOp<WasmReturnOp>(returnOp);

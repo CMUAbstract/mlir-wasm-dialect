@@ -20,11 +20,10 @@ LogicalResult matchAndRewriteBinaryOp(S op, ConversionPatternRewriter &rewriter,
     return rewriter.notifyMatchFailure(op, "type mismatch");
   }
 
-  auto localType = typeConverter->convertType(type);
-  auto castedLhs =
-      typeConverter->materializeTargetConversion(rewriter, loc, localType, lhs);
-  auto castedRhs =
-      typeConverter->materializeTargetConversion(rewriter, loc, localType, rhs);
+  auto castedLhs = typeConverter->materializeTargetConversion(
+      rewriter, loc, LocalType::get(rewriter.getContext(), type), lhs);
+  auto castedRhs = typeConverter->materializeTargetConversion(
+      rewriter, loc, LocalType::get(rewriter.getContext(), type), rhs);
 
   rewriter.create<wasm::TempLocalGetOp>(loc, castedLhs);
   rewriter.create<wasm::TempLocalGetOp>(loc, castedRhs);
