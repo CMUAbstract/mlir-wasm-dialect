@@ -25,6 +25,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     // looping logic is defined in the condBlock
     auto *condBlock = rewriter.splitBlock(firstBlock, firstBlock->begin());
     auto *firstBlockEnd = rewriter.splitBlock(condBlock, condBlock->begin());
+    auto *bodyStartBlock = firstBlockEnd;
     Block *bodyEndBlock;
     if (firstBlock == lastBlock) {
       bodyEndBlock = firstBlockEnd;
@@ -89,7 +90,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.create<wasm::TempLocalGetOp>(loc, castedUpperBound);
 
     rewriter.create<wasm::ILtUOp>(loc, rewriter.getI32Type()); // FIXME
-    rewriter.create<wasm::CondBranchOp>(loc, terminationBlock);
+    rewriter.create<wasm::CondBranchOp>(loc, terminationBlock, bodyStartBlock);
 
     // update induction variable at the end of the loop body
     rewriter.setInsertionPointToEnd(inductionVariableUpdateBlock);
