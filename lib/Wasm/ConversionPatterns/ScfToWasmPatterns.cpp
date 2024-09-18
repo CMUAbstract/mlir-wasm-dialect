@@ -53,27 +53,38 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     // we add this to avoid the error that the entry block should have no
     // predecessors
     rewriter.setInsertionPointToEnd(firstBlockHead);
-    rewriter.create<wasm::BranchOp>(loc, condBlock);
 
     // set branching logic here
     // TODO: handle for loops with loop-carried values
     auto inductionVariable = firstBlockHead->getArgument(0);
-
-    rewriter.setInsertionPointToEnd(condBlock);
     Value lowerBound = forOp.getLowerBound();
     Value upperBound = forOp.getUpperBound();
-
     if (!lowerBound || !upperBound) {
       return rewriter.notifyMatchFailure(forOp, "missing loop bounds");
     }
 
-    auto castedInductionVariable = typeConverter->materializeTargetConversion(
-        rewriter, loc, typeConverter->convertType(inductionVariable.getType()),
-        inductionVariable);
+    auto inductionLocalOp =
+        rewriter.create<TempLocalOp>(loc, inductionVariable.getType());
+    rewriter.replaceAllUsesWith(inductionVariable, inductionLocalOp);
+    auto inductionLocal = inductionLocalOp.getResult();
+
+    // initialize induction local
+    auto castedLowerBound = typeConverter->materializeTargetConversion(
+        rewriter, loc,
+        LocalType::get(rewriter.getContext(), lowerBound.getType()),
+        lowerBound);
+    rewriter.create<wasm::TempLocalGetOp>(loc, castedLowerBound);
+    rewriter.create<wasm::TempLocalSetOp>(loc, inductionLocal);
+
+    rewriter.create<wasm::BranchOp>(loc, condBlock);
+
+    rewriter.setInsertionPointToEnd(condBlock);
+
     auto castedUpperBound = typeConverter->materializeTargetConversion(
-        rewriter, loc, typeConverter->convertType(upperBound.getType()),
+        rewriter, loc,
+        LocalType::get(rewriter.getContext(), upperBound.getType()),
         upperBound);
-    rewriter.create<wasm::TempLocalGetOp>(loc, castedInductionVariable);
+    rewriter.create<wasm::TempLocalGetOp>(loc, inductionLocal);
     rewriter.create<wasm::TempLocalGetOp>(loc, castedUpperBound);
 
     rewriter.create<wasm::ILtUOp>(loc, rewriter.getI32Type()); // FIXME
@@ -84,11 +95,12 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     auto step = forOp.getStep();
 
     auto castedStep = typeConverter->materializeTargetConversion(
-        rewriter, loc, typeConverter->convertType(step.getType()), step);
-    rewriter.create<wasm::TempLocalGetOp>(loc, castedInductionVariable);
+        rewriter, loc, LocalType::get(rewriter.getContext(), step.getType()),
+        step);
+    rewriter.create<wasm::TempLocalGetOp>(loc, inductionLocal);
     rewriter.create<wasm::TempLocalGetOp>(loc, castedStep);
     rewriter.create<wasm::AddOp>(loc, rewriter.getI32Type());
-    rewriter.create<wasm::TempLocalSetOp>(loc, castedInductionVariable);
+    rewriter.create<wasm::TempLocalSetOp>(loc, inductionLocal);
 
     rewriter.create<wasm::BranchOp>(loc, condBlock);
 
