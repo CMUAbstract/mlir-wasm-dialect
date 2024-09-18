@@ -8,12 +8,9 @@ VariableAnalysis::VariableAnalysis(Operation *op) {
   numArguments = 0;
   numVariables = 0;
   if (auto func = dyn_cast<wasm::WasmFuncOp>(op)) {
-    // TODO: add function arguments to reg2Loc
-    // function arguments are also local variables in wasm
-    // Before that, we need to convert the arguments to LocalType
-    // for (auto arg : func.getArguments()) {
-    //   reg2Loc.push_back(dyn_cast<Value>(arg));
-    // }
+    for (auto arg : func.getArguments()) {
+      reg2Loc.push_back(dyn_cast<Value>(arg));
+    }
     numArguments = func.getNumArguments();
 
     func.walk([&](Operation *op) {
@@ -31,9 +28,7 @@ int VariableAnalysis::getNumVariables() { return numVariables; }
 int VariableAnalysis::getLocalIndex(const Value &tempLocal) {
   auto result = std::find(reg2Loc.begin(), reg2Loc.end(), tempLocal);
   if (result != reg2Loc.end()) {
-    // TODO: + numArguments should be removed after adding function arguments to
-    // reg2Loc
-    return result - reg2Loc.begin() + numArguments;
+    return result - reg2Loc.begin();
   }
   // TODO: Error handling
   return -1;
