@@ -95,10 +95,14 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
       return rewriter.notifyMatchFailure(forOp, "missing loop bounds");
     }
 
-    auto inductionLocalOp =
-        rewriter.create<TempLocalOp>(loc, inductionVariable.getType());
-    rewriter.replaceAllUsesWith(inductionVariable, inductionLocalOp);
-    auto inductionLocal = inductionLocalOp.getResult();
+    auto inductionLocal =
+        rewriter.create<TempLocalOp>(loc, inductionVariable.getType())
+            .getResult();
+    auto castedInductionLocal = typeConverter->materializeSourceConversion(
+        rewriter, loc, inductionVariable.getType(), inductionLocal);
+
+    rewriter.replaceAllUsesWith(inductionVariable, castedInductionLocal);
+
     entrypointBlock->eraseArgument(0);
 
     // initialize induction local
@@ -107,6 +111,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
         LocalType::get(rewriter.getContext(), lowerBound.getType()),
         lowerBound);
     rewriter.create<wasm::TempLocalGetOp>(loc, castedLowerBound);
+
     rewriter.create<wasm::TempLocalSetOp>(loc, inductionLocal);
 
     rewriter.create<wasm::BranchOp>(loc, conditionBlock);
