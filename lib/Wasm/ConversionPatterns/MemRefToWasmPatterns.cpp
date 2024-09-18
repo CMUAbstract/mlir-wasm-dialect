@@ -125,8 +125,6 @@ LogicalResult computeAddress(Operation *op, Value memref, MemRefType memRefType,
         op, "Cannot compute strides and offset for the given MemRefType.");
   }
 
-  rewriter.create<AddOp>(loc, rewriter.getI32Type());
-
   // asssume that the memref if actually a pointer to the base address
   // convert the memref back to local<i32>
   auto pointer = typeConverter->materializeTargetConversion(
@@ -146,6 +144,8 @@ LogicalResult computeAddress(Operation *op, Value memref, MemRefType memRefType,
     rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(4));
     rewriter.create<MulOp>(loc, rewriter.getI32Type());
   }
+  rewriter.create<AddOp>(loc, rewriter.getI32Type());
+
   return success();
 }
 
