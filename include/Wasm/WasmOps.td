@@ -407,7 +407,7 @@ def Wasm_BranchOp: Wasm_Op<"br", [Terminator]> {
 }
 
 def Wasm_CondBranchOp: Wasm_Op<"cond_br", [Terminator]> {
-    let successors = (successor AnySuccessor:$dest);
+    let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
 }
 
 def Wasm_NoOp : Wasm_Op<"noop", []> {
