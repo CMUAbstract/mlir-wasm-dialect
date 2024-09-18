@@ -67,6 +67,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
         rewriter.create<TempLocalOp>(loc, inductionVariable.getType());
     rewriter.replaceAllUsesWith(inductionVariable, inductionLocalOp);
     auto inductionLocal = inductionLocalOp.getResult();
+    firstBlockHead->eraseArgument(0);
 
     // initialize induction local
     auto castedLowerBound = typeConverter->materializeTargetConversion(
