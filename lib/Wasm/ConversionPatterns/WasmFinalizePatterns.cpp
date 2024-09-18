@@ -22,10 +22,8 @@ LogicalResult FinalizeTempLocalGetOp::matchAndRewrite(
     ConversionPatternRewriter &rewriter) const {
   VariableAnalysis &analysis = getAnalysis();
 
-  auto localGetOp = rewriter.create<LocalGetOp>(
-      op->getLoc(),
-      rewriter.getIndexAttr(analysis.getLocalIndex(op->getOperand(0))));
-  rewriter.replaceOp(op, localGetOp);
+  rewriter.replaceOpWithNewOp<LocalGetOp>(
+      op, rewriter.getIndexAttr(analysis.getLocalIndex(op->getOperand(0))));
   return success();
 }
 
@@ -34,10 +32,8 @@ LogicalResult FinalizeTempLocalSetOp::matchAndRewrite(
     ConversionPatternRewriter &rewriter) const {
   VariableAnalysis &analysis = getAnalysis();
 
-  auto localSetOp = rewriter.create<LocalSetOp>(
-      op->getLoc(),
-      rewriter.getIndexAttr(analysis.getLocalIndex(op->getOperand(0))));
-  rewriter.replaceOp(op, localSetOp);
+  rewriter.replaceOpWithNewOp<LocalSetOp>(
+      op, rewriter.getIndexAttr(analysis.getLocalIndex(op->getOperand(0))));
   return success();
 }
 } // namespace mlir::wasm
