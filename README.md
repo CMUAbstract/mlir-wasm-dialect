@@ -16,7 +16,7 @@ cmake -G Ninja ../llvm \
 -DLLVM_ENABLE_PROJECTS=mlir \
 -DLLVM_TARGETS_TO_BUILD="Native;NVPTX;AMDGPU" \
 -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly \
--DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_BUILD_TYPE=Debug \
 -DLLVM_ENABLE_ASSERTIONS=ON
 cmake --build . --target check-mlir
 ```
@@ -25,7 +25,7 @@ cmake --build . --target check-mlir
 
 ```sh
 mkdir build && cd build
-cmake -G Ninja .. -DMLIR_DIR=$PREFIX/lib/cmake/mlir -DLLVM_EXTERNAL_LIT=$BUILD_DIR/bin/llvm-lit
+cmake -G Ninja ..  -DMLIR_DIR=$PREFIX/lib/cmake/mlir  -DLLVM_EXTERNAL_LIT=$BUILD_DIR/bin/llvm-lit -DCMAKE_BUILD_TYPE=Debug 
 cmake --build . --target check-wasm
 ```
 
