@@ -112,7 +112,7 @@ struct GlobalGetOpLowering : public OpConversionPattern<memref::GetGlobalOp> {
 };
 
 LogicalResult computeAddress(Operation *op, Value memref, MemRefType memRefType,
-                             OperandRange indices,
+                             ValueRange indices,
                              const TypeConverter *const typeConverter,
                              ConversionPatternRewriter &rewriter) {
 
@@ -137,8 +137,13 @@ LogicalResult computeAddress(Operation *op, Value memref, MemRefType memRefType,
   rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
   // linearIndex += indices[i] * strides[i] * 4;
   for (int i = 0; i < memRefType.getRank(); i++) {
-    typeConverter->materializeTargetConversion(
-        rewriter, loc, rewriter.getI32Type(), indices[i]);
+    // we need to push this index to the stack!
+    Value castedIndex = typeConverter->materializeTargetConversion(
+        rewriter, loc,
+        LocalType::get(rewriter.getContext(), rewriter.getI32Type()),
+        indices[i]);
+    rewriter.create<TempLocalGetOp>(loc, castedIndex);
+
     rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(strides[i]));
     rewriter.create<MulOp>(loc, rewriter.getI32Type());
     rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(4));
@@ -157,7 +162,7 @@ struct LoadOpLowering : public OpConversionPattern<memref::LoadOp> {
                   ConversionPatternRewriter &rewriter) const override {
     LogicalResult result =
         computeAddress(loadOp, loadOp.getMemRef(), loadOp.getMemRefType(),
-                       loadOp.getIndices(), typeConverter, rewriter);
+                       adaptor.getIndices(), typeConverter, rewriter);
     if (failed(result)) {
       return result;
     }
@@ -195,7 +200,7 @@ struct StoreOpLowering : public OpConversionPattern<memref::StoreOp> {
 
     LogicalResult result =
         computeAddress(storeOp, storeOp.getMemRef(), storeOp.getMemRefType(),
-                       storeOp.getIndices(), typeConverter, rewriter);
+                       adaptor.getIndices(), typeConverter, rewriter);
     if (failed(result)) {
       return result;
     }
