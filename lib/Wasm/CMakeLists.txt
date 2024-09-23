@@ -5,7 +5,9 @@ add_mlir_dialect_library(MLIRWasm
         WasmDialect.cpp
         WasmOps.cpp
         WasmPasses.cpp
+        BaseAddrAnalysis.cpp
         VariableAnalysis.cpp
+        utility.cpp
         ${CONVERSION_SRC_FILES}
 
         ADDITIONAL_HEADER_DIRS
