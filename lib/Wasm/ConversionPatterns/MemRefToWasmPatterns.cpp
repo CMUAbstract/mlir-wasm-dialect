@@ -81,14 +81,11 @@ struct GlobalOpLowering
             dyn_cast<DenseElementsAttr>(globalOp.getConstantInitValue())) {
       auto rawData = denseElementsAttr.getRawData();
       std::string bytes = generateStr(rawData.data(), rawData.size());
-      auto dataOp = rewriter.replaceOpWithNewOp<wasm::DataOp>(
+      rewriter.replaceOpWithNewOp<wasm::DataOp>(
           globalOp, rewriter.getStringAttr(globalOp.getSymName()),
           rewriter.getIntegerAttr(rewriter.getIntegerType(32), baseAddr),
           rewriter.getStringAttr(bytes.c_str()),
           TypeAttr::get(globalOp.getType()));
-
-      dataOp->setAttr("baseAddr", rewriter.getIntegerAttr(
-                                      rewriter.getIntegerType(32), baseAddr));
       return success();
     }
 
@@ -96,12 +93,15 @@ struct GlobalOpLowering
   }
 };
 
-struct GlobalGetOpLowering : public OpConversionPattern<memref::GetGlobalOp> {
-  using OpConversionPattern<memref::GetGlobalOp>::OpConversionPattern;
+struct GlobalGetOpLowering
+    : public OpConversionPatternWithAnalysis<memref::GetGlobalOp> {
+  using OpConversionPatternWithAnalysis<
+      memref::GetGlobalOp>::OpConversionPatternWithAnalysis;
 
   LogicalResult
   matchAndRewrite(memref::GetGlobalOp getGlobalOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    auto analysis = getAnalysis();
     Location loc = getGlobalOp.getLoc();
 
     // we don't know if this is a global op or not
@@ -111,13 +111,16 @@ struct GlobalGetOpLowering : public OpConversionPattern<memref::GetGlobalOp> {
             getGlobalOp,
             StringAttr::get(rewriter.getContext(), getGlobalOp.getName()));
     if (globalOp) {
-      baseAddr = cast<IntegerAttr>(globalOp->getAttr("baseAddr"));
+      baseAddr = rewriter.getIntegerAttr(
+          rewriter.getIntegerType(32),
+          getAnalysis().getBaseAddr(globalOp.getName().str()));
     }
     if (!globalOp) {
       auto dataOp = SymbolTable::lookupNearestSymbolFrom<wasm::DataOp>(
           getGlobalOp,
           StringAttr::get(rewriter.getContext(), getGlobalOp.getName()));
-      baseAddr = cast<IntegerAttr>(dataOp->getAttr("baseAddr"));
+      baseAddr = rewriter.getIntegerAttr(rewriter.getIntegerType(32),
+                                         dataOp.getOffset());
     }
 
     rewriter.create<ConstantOp>(loc, baseAddr);
@@ -285,11 +288,10 @@ struct ExpandShapeLowering : public OpConversionPattern<memref::ExpandShapeOp> {
 void populateMemRefToWasmPatterns(TypeConverter &typeConverter,
                                   RewritePatternSet &patterns,
                                   BaseAddrAnalysis &analysis) {
-  patterns.add<GlobalOpLowering>(typeConverter, patterns.getContext(),
-                                 analysis);
-  patterns.add<GlobalGetOpLowering, AllocOpLowering, StoreOpLowering,
-               LoadOpLowering, ExpandShapeLowering>(typeConverter,
-                                                    patterns.getContext());
+  patterns.add<GlobalOpLowering, GlobalGetOpLowering>(
+      typeConverter, patterns.getContext(), analysis);
+  patterns.add<AllocOpLowering, StoreOpLowering, LoadOpLowering,
+               ExpandShapeLowering>(typeConverter, patterns.getContext());
 }
 
 } // namespace mlir::wasm
