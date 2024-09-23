@@ -1,13 +1,16 @@
 #ifndef WASM_MEMREFTOWASMPATTERNS_H
 #define WASM_MEMREFTOWASMPATTERNS_H
 
+#include "Wasm/BaseAddrAnalysis.h"
+
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir::wasm {
 void populateMemRefToWasmPatterns(TypeConverter &typeConverter,
-                                  RewritePatternSet &patterns);
+                                  RewritePatternSet &patterns,
+                                  BaseAddrAnalysis &analysis);
 
 } // namespace mlir::wasm
 

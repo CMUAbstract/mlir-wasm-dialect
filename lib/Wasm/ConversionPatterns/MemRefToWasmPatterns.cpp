@@ -1,5 +1,6 @@
 #include "Wasm/ConversionPatterns/MemRefToWasmPatterns.h"
 #include "Wasm/WasmOps.h"
+#include "Wasm/utility.h"
 
 #include <iomanip>
 #include <sstream>
@@ -41,12 +42,31 @@ std::string generateStr(const void *bytes, size_t length) {
 
 namespace mlir::wasm {
 
-struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
-  using OpConversionPattern<memref::GlobalOp>::OpConversionPattern;
+template <typename SourceOp>
+class OpConversionPatternWithAnalysis : public OpConversionPattern<SourceOp> {
+public:
+  OpConversionPatternWithAnalysis(TypeConverter &typeConverter,
+                                  MLIRContext *context,
+                                  BaseAddrAnalysis &analysis,
+                                  PatternBenefit benefit = 1)
+      : OpConversionPattern<SourceOp>(typeConverter, context, benefit),
+        analysis(analysis) {}
+
+  BaseAddrAnalysis &getAnalysis() const { return analysis; }
+
+private:
+  BaseAddrAnalysis &analysis;
+};
+
+struct GlobalOpLowering
+    : public OpConversionPatternWithAnalysis<memref::GlobalOp> {
+  using OpConversionPatternWithAnalysis<
+      memref::GlobalOp>::OpConversionPatternWithAnalysis;
 
   LogicalResult
   matchAndRewrite(memref::GlobalOp globalOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    auto analysis = getAnalysis();
     if (globalOp.isExternal()) {
       return rewriter.notifyMatchFailure(globalOp,
                                          "external global op not supported");
@@ -55,19 +75,20 @@ struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
       return rewriter.notifyMatchFailure(
           globalOp, "uninitialized global op not supported");
     }
+
+    auto baseAddr = analysis.getBaseAddr(globalOp.getName().str());
     if (auto denseElementsAttr =
             dyn_cast<DenseElementsAttr>(globalOp.getConstantInitValue())) {
       auto rawData = denseElementsAttr.getRawData();
       std::string bytes = generateStr(rawData.data(), rawData.size());
       auto dataOp = rewriter.replaceOpWithNewOp<wasm::DataOp>(
           globalOp, rewriter.getStringAttr(globalOp.getSymName()),
-          // TODO: baseAddr should not be 0
-          rewriter.getIntegerAttr(rewriter.getIntegerType(32), 0),
+          rewriter.getIntegerAttr(rewriter.getIntegerType(32), baseAddr),
           rewriter.getStringAttr(bytes.c_str()),
           TypeAttr::get(globalOp.getType()));
 
-      dataOp->setAttr("baseAddr",
-                      rewriter.getIntegerAttr(rewriter.getIntegerType(32), 0));
+      dataOp->setAttr("baseAddr", rewriter.getIntegerAttr(
+                                      rewriter.getIntegerType(32), baseAddr));
       return success();
     }
 
@@ -213,30 +234,6 @@ struct StoreOpLowering : public OpConversionPattern<memref::StoreOp> {
   }
 };
 
-int64_t memRefSize(MemRefType memRefType, int64_t alignment) {
-  // Step 1: Get the shape (dimensions)
-  auto shape = memRefType.getShape();
-
-  // Step 2: Compute the total number of elements
-  int64_t totalElements = 1;
-  for (int64_t dimSize : shape) {
-    totalElements *= dimSize;
-  }
-
-  // Step 3: Determine the size of each element
-  int64_t elementSize = memRefType.getElementType().getIntOrFloatBitWidth() / 8;
-
-  // Step 4: Calculate the total memory size
-  int64_t totalMemorySize = totalElements * elementSize;
-
-  // Step 5: Adjust for alignment
-  // Align to the nearest multiple of 'alignment'
-  int64_t alignedMemorySize =
-      ((totalMemorySize + alignment - 1) / alignment) * alignment;
-
-  return alignedMemorySize;
-}
-
 struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
   using OpConversionPattern<memref::AllocOp>::OpConversionPattern;
 
@@ -286,10 +283,13 @@ struct ExpandShapeLowering : public OpConversionPattern<memref::ExpandShapeOp> {
 // - add (import "malloc")
 
 void populateMemRefToWasmPatterns(TypeConverter &typeConverter,
-                                  RewritePatternSet &patterns) {
-  patterns.add<GlobalOpLowering, GlobalGetOpLowering, AllocOpLowering,
-               StoreOpLowering, LoadOpLowering, ExpandShapeLowering>(
-      typeConverter, patterns.getContext());
+                                  RewritePatternSet &patterns,
+                                  BaseAddrAnalysis &analysis) {
+  patterns.add<GlobalOpLowering>(typeConverter, patterns.getContext(),
+                                 analysis);
+  patterns.add<GlobalGetOpLowering, AllocOpLowering, StoreOpLowering,
+               LoadOpLowering, ExpandShapeLowering>(typeConverter,
+                                                    patterns.getContext());
 }
 
 } // namespace mlir::wasm
