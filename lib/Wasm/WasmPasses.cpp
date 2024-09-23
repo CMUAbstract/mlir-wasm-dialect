@@ -10,6 +10,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "Wasm/BaseAddrAnalysis.h"
 #include "Wasm/ConversionPatterns/ArithToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/FuncToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/MemRefToWasmPatterns.h"
@@ -73,6 +74,7 @@ public:
   void runOnOperation() final {
     auto module = getOperation();
     MLIRContext *context = module.getContext();
+    BaseAddrAnalysis analysis(module);
 
     ConversionTarget target(*context);
     target.addLegalDialect<wasm::WasmDialect>();
@@ -86,7 +88,7 @@ public:
     WasmTypeConverter typeConverter(context);
     populateArithToWasmPatterns(typeConverter, patterns);
     populateFuncToWasmPatterns(typeConverter, patterns);
-    populateMemRefToWasmPatterns(typeConverter, patterns);
+    populateMemRefToWasmPatterns(typeConverter, patterns, analysis);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
