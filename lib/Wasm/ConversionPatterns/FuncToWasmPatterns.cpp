@@ -51,14 +51,8 @@ struct ReturnOpLowering : public OpConversionPattern<func::ReturnOp> {
   LogicalResult
   matchAndRewrite(func::ReturnOp returnOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    for (auto operand : returnOp->getOperands()) {
-      // TODO: ideally TypeConverter should automatically handle type conversion
-      // but it doesn't seem to work because TempLocalGetOp are not the
-      // operations that are being converted
-      auto casted = typeConverter->materializeTargetConversion(
-          rewriter, returnOp.getLoc(),
-          LocalType::get(rewriter.getContext(), operand.getType()), operand);
-      rewriter.create<TempLocalGetOp>(returnOp.getLoc(), casted);
+    for (auto operand : adaptor.getOperands()) {
+      rewriter.create<TempLocalGetOp>(returnOp.getLoc(), operand);
     }
     rewriter.replaceOpWithNewOp<WasmReturnOp>(returnOp);
 
