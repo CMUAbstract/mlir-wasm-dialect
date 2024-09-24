@@ -33,7 +33,9 @@ public:
         [ctx](FloatType type) -> Type { return LocalType::get(ctx, type); });
     addConversion(
         [ctx](IndexType type) -> Type { return LocalType::get(ctx, type); });
-    addConversion([](Type type) -> Type { return type; });
+    addConversion([ctx](MemRefType type) -> Type {
+      return LocalType::get(ctx, IntegerType::get(ctx, 32));
+    });
 
     addArgumentMaterialization([](OpBuilder &builder, Type type,
                                   ValueRange inputs,
