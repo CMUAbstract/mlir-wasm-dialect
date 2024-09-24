@@ -10,15 +10,20 @@ LogicalResult matchAndRewriteBinaryOp(S op, ConversionPatternRewriter &rewriter,
   Location loc = op->getLoc();
   Value result = op.getResult();
   Type type = op.getType();
+  // FIXME: This is a temporary workaround to handle index type
+  if (isa<IndexType>(type)) {
+    type = rewriter.getI32Type();
+  }
 
   auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
 
   auto lhs = op.getOperand(0);
   auto rhs = op.getOperand(1);
 
-  if ((lhs.getType() != type) || (rhs.getType() != type)) {
-    return rewriter.notifyMatchFailure(op, "type mismatch");
-  }
+  // FIXME: This is a temporary workaround to handle index type
+  // if ((lhs.getType() != type) || (rhs.getType() != type)) {
+  //  return rewriter.notifyMatchFailure(op, "type mismatch");
+  //}
 
   auto castedLhs = typeConverter->materializeTargetConversion(
       rewriter, loc, LocalType::get(rewriter.getContext(), type), lhs);
@@ -78,7 +83,17 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = constantOp->getLoc();
     Type type = constantOp.getResult().getType();
-    Attribute value = constantOp->getAttr("value");
+
+    // FIXME: This is a temporary workaround to handle index type
+    if (isa<IndexType>(type)) {
+      type = rewriter.getI32Type();
+    }
+    Attribute value = constantOp.getValue();
+    // FIXME: This is a temporary workaround to handle index type
+    if (isa<IndexType>(cast<TypedAttr>(value).getType())) {
+      value = rewriter.getI32IntegerAttr(
+          cast<IntegerAttr>(value).getValue().getSExtValue());
+    }
 
     auto tempLocalOp = rewriter.create<wasm::TempLocalOp>(loc, type);
     rewriter.create<wasm::ConstantOp>(loc, value);
