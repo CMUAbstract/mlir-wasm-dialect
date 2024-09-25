@@ -380,6 +380,10 @@ def Wasm_TempGetGlobalOp : Wasm_Op<"temp.get_global",
 def Wasm_CallOp : Wasm_Op<"call"> {
     let arguments = (ins FlatSymbolRefAttr:$name);
     let assemblyFormat = [{ $name attr-dict }];
+
+    let extraClassDeclaration = [{
+        StringRef getCallee() { return getName(); }
+    }];
 }
 
 // constrol instructions

@@ -163,6 +163,16 @@ llvm::LogicalResult translateLocalGetOp(LocalGetOp localGetOp,
   output << "(local.get " << localGetOp.getIdx() << ")";
   return success();
 }
+llvm::LogicalResult translateLocalSetOp(LocalSetOp localSetOp,
+                                        raw_ostream &output) {
+  output << "(local.set " << localSetOp.getIdx() << ")";
+  return success();
+}
+
+llvm::LogicalResult translateCallOp(CallOp callOp, raw_ostream &output) {
+  output << "(call $" << callOp.getCallee() << ")";
+  return success();
+}
 
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
   if (auto constantOp = dyn_cast<ConstantOp>(op)) {
@@ -171,6 +181,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateLocalOp(localOp, output);
   } else if (auto localGetOp = dyn_cast<LocalGetOp>(op)) {
     return translateLocalGetOp(localGetOp, output);
+  } else if (auto localSetOp = dyn_cast<LocalSetOp>(op)) {
+    return translateLocalSetOp(localSetOp, output);
+  } else if (auto callOp = dyn_cast<CallOp>(op)) {
+    return translateCallOp(callOp, output);
   } else {
     op->emitError("unsupported operation");
     return failure();
