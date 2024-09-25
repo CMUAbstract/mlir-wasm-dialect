@@ -158,16 +158,17 @@ llvm::LogicalResult translateFunction(WasmFuncOp funcOp, raw_ostream &output) {
 LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
   output << "(module\n";
 
-  for (Operation &op : module.getOps()) {
-    if (auto funcOp = dyn_cast<WasmFuncOp>(&op)) {
-      if (failed(translateFunction(funcOp, output))) {
-        return failure();
-      }
+  for (auto funcOp : module.getOps<WasmFuncOp>()) {
+    if (failed(translateFunction(funcOp, output))) {
+      funcOp.emitError("failed to translate WasmFuncOp");
+      return failure();
     }
-    if (auto dataOp = dyn_cast<DataOp>(&op)) {
-      if (failed(translateData(dataOp, output))) {
-        return failure();
-      }
+  }
+
+  for (auto dataOp : module.getOps<DataOp>()) {
+    if (failed(translateData(dataOp, output))) {
+      dataOp.emitError("failed to translate DataOp");
+      return failure();
     }
   }
 
