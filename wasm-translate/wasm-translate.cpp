@@ -38,6 +38,41 @@ llvm::LogicalResult getWatType(Type mlirType, std::string &watType) {
   return success();
 }
 
+llvm::LogicalResult getWatType(Attribute attr, std::string &watType) {
+  if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
+    if (intAttr.getType().isInteger(32)) {
+
+      watType = "i32";
+    } else if (intAttr.getType().isInteger(64)) {
+      watType = "i64";
+    } else {
+      return failure();
+    }
+  } else if (auto floatAttr = dyn_cast<FloatAttr>(attr)) {
+    if (floatAttr.getType().isF32()) {
+      watType = "f32";
+    } else if (floatAttr.getType().isF64()) {
+      watType = "f64";
+    } else {
+      return failure();
+    }
+  } else {
+    return failure();
+  }
+  return success();
+}
+
+llvm::LogicalResult getNumericAttrValue(Attribute attr, std::string &value) {
+  if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
+    value = std::to_string(intAttr.getInt());
+  } else if (auto floatAttr = dyn_cast<FloatAttr>(attr)) {
+    value = std::to_string(floatAttr.getValueAsDouble());
+  } else {
+    return failure();
+  }
+  return success();
+}
+
 llvm::LogicalResult translateFunctionArguments(WasmFuncOp funcOp,
                                                raw_ostream &output) {
   auto functionType = funcOp.getFunctionType();
@@ -82,26 +117,64 @@ llvm::LogicalResult translateOperand(Value operand, raw_ostream &output) {
   return success();
 }
 
-llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
-  if (auto addOp = dyn_cast<AddOp>(op)) {
-    output << "(i32.add ";
-    // Translate operands
-    for (Value operand : op->getOperands()) {
-      if (failed(translateOperand(operand, output))) {
-        return failure();
-      }
-      output << " ";
-    }
-    output << ")";
-  }
-  // Handle other operations similarly
-  else if (isa<WasmReturnOp>(op)) {
-    output << "(return)";
-  } else {
-    // Unsupported operation
+llvm::LogicalResult translateConstantOp(ConstantOp constantOp,
+                                        raw_ostream &output) {
+  std::string watType;
+  Attribute valueAttr = constantOp.getValue();
+  if (failed(getWatType(valueAttr, watType))) {
+    constantOp.emitError("unsupported constant type");
     return failure();
   }
-  output << "\n    ";
+  output << "(" << watType << ".const ";
+
+  std::string value;
+  if (failed(getNumericAttrValue(valueAttr, value))) {
+    constantOp.emitError("unsupported constant value");
+    return failure();
+  }
+  output << value;
+  output << ")";
+  return success();
+}
+
+llvm::LogicalResult translateLocalOp(LocalOp localOp, raw_ostream &output) {
+  output << "(local ";
+  bool first = true;
+  for (Attribute attr : localOp.getTypes()) {
+    TypeAttr typeAttr = cast<TypeAttr>(attr);
+    std::string watType;
+    if (failed(getWatType(typeAttr.getValue(), watType))) {
+      localOp.emitError("unsupported local type");
+      return failure();
+    }
+    if (!first) {
+      output << " ";
+    } else {
+      first = false;
+    }
+    output << watType;
+  }
+  output << ")";
+  return success();
+}
+
+llvm::LogicalResult translateLocalGetOp(LocalGetOp localGetOp,
+                                        raw_ostream &output) {
+  output << "(local.get " << localGetOp.getIdx() << ")";
+  return success();
+}
+
+llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
+  if (auto constantOp = dyn_cast<ConstantOp>(op)) {
+    return translateConstantOp(constantOp, output);
+  } else if (auto localOp = dyn_cast<LocalOp>(op)) {
+    return translateLocalOp(localOp, output);
+  } else if (auto localGetOp = dyn_cast<LocalGetOp>(op)) {
+    return translateLocalGetOp(localGetOp, output);
+  } else {
+    op->emitError("unsupported operation");
+    return failure();
+  }
   return success();
 }
 
@@ -113,6 +186,7 @@ llvm::LogicalResult translateFunctionBody(WasmFuncOp funcOp,
       if (failed(translateOperation(&op, output))) {
         return failure();
       }
+      output << "\n    ";
     }
   }
   return success();
@@ -130,19 +204,19 @@ llvm::LogicalResult translateFunction(WasmFuncOp funcOp, raw_ostream &output) {
   // Start function declaration
   output << "  (func $" << funcOp.getName() << " ";
 
-  // TODO: add function type
+  // TODO: translate function type
 
   // Translate function arguments
-  if (failed(translateFunctionArguments(funcOp, output))) {
-    funcOp.emitError("translating function arguments failed");
-    return failure();
-  }
+  // if (failed(translateFunctionArguments(funcOp, output))) {
+  //  funcOp.emitError("translating function arguments failed");
+  //  return failure();
+  //}
 
   // Translate function result types
-  if (failed(translateFunctionResults(funcOp, output))) {
-    funcOp.emitError("translating function results failed");
-    return failure();
-  }
+  // if (failed(translateFunctionResults(funcOp, output))) {
+  //  funcOp.emitError("translating function results failed");
+  //  return failure();
+  //}
 
   // Translate function body
   if (failed(translateFunctionBody(funcOp, output))) {
