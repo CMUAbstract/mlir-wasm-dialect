@@ -229,12 +229,17 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
 llvm::LogicalResult translateFunctionBody(WasmFuncOp funcOp,
                                           raw_ostream &output) {
   output << "\n    "; // Indentation for readability
+  bool isFirstOp = true;
   for (Block &block : funcOp.getBlocks()) {
     for (Operation &op : block.getOperations()) {
+      if (!isFirstOp) {
+        output << "\n    ";
+      } else {
+        isFirstOp = false;
+      }
       if (failed(translateOperation(&op, output))) {
         return failure();
       }
-      output << "\n    ";
     }
   }
   return success();
@@ -273,7 +278,7 @@ llvm::LogicalResult translateFunction(WasmFuncOp funcOp, raw_ostream &output) {
   }
 
   // Close function
-  output << "  )\n";
+  output << ")\n";
   return success();
 }
 
