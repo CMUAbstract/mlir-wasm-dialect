@@ -19,9 +19,19 @@ struct FuncOpLowering : public OpConversionPattern<func::FuncOp> {
           inputType.index(), typeConverter->convertType(inputType.value()));
     }
 
-    auto newFuncType =
-        rewriter.getFunctionType(signatureConverter.getConvertedTypes(),
-                                 funcOp.getFunctionType().getResults());
+    // we should return i32 for memref types
+    llvm::SmallVector<Type, 4> newResultTypes;
+    for (auto resultType : funcOp.getFunctionType().getResults()) {
+      resultType.dump();
+      if (isa<MemRefType>(resultType)) {
+        newResultTypes.push_back(rewriter.getI32Type());
+      } else {
+        newResultTypes.push_back(resultType);
+      }
+    }
+
+    auto newFuncType = rewriter.getFunctionType(
+        signatureConverter.getConvertedTypes(), newResultTypes);
     auto newFuncOp = rewriter.create<WasmFuncOp>(funcOp.getLoc(),
                                                  funcOp.getName(), newFuncType);
 
