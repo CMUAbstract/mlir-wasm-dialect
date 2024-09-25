@@ -13,6 +13,7 @@ set(WASM_TEST_DEPENDS
         FileCheck count not
         wasm-capi-test
         wasm-opt
+        wasm-translate
         WasmPlugin
         )
 if(MLIR_ENABLE_BINDINGS_PYTHON)
