@@ -196,6 +196,12 @@ llvm::LogicalResult translateMulOp(MulOp mulOp, raw_ostream &output) {
   return success();
 }
 
+llvm::LogicalResult translateReturnOp(WasmReturnOp returnOp,
+                                      raw_ostream &output) {
+  output << "return";
+  return success();
+}
+
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
   if (auto constantOp = dyn_cast<ConstantOp>(op)) {
     return translateConstantOp(constantOp, output);
@@ -211,6 +217,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateAddOp(addOp, output);
   } else if (auto mulOp = dyn_cast<MulOp>(op)) {
     return translateMulOp(mulOp, output);
+  } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
+    return translateReturnOp(returnOp, output);
   } else {
     op->emitError("unsupported operation");
     return failure();
