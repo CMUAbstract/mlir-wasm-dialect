@@ -119,7 +119,7 @@ llvm::LogicalResult translateFunctionBody(WasmFuncOp funcOp,
 }
 
 llvm::LogicalResult translateData(DataOp dataOp, raw_ostream &output) {
-  output << "(data $" << dataOp.getSymName() << " (i32.const "
+  output << "(data $.L" << dataOp.getSymName() << " (i32.const "
          << dataOp.getOffset() << ") \"";
   output << dataOp.getBytes();
   output << "\")\n";
