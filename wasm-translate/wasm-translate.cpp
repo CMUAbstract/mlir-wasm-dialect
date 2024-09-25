@@ -18,7 +18,12 @@
 #include "mlir/InitAllTranslations.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <map>
+#include <set>
+#include <vector>
 
 namespace mlir::wasm {
 
@@ -66,39 +71,9 @@ llvm::LogicalResult getNumericAttrValue(Attribute attr, std::string &value) {
   if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
     value = std::to_string(intAttr.getInt());
   } else if (auto floatAttr = dyn_cast<FloatAttr>(attr)) {
-    value = std::to_string(floatAttr.getValueAsDouble());
+    value = llvm::formatv("{0:E}", floatAttr.getValueAsDouble());
   } else {
     return failure();
-  }
-  return success();
-}
-
-llvm::LogicalResult translateFunctionArguments(WasmFuncOp funcOp,
-                                               raw_ostream &output) {
-  auto functionType = funcOp.getFunctionType();
-  unsigned numInputs = functionType.getNumInputs();
-  for (unsigned i = 0; i < numInputs; ++i) {
-    Type inputType = functionType.getInput(i);
-    std::string watType;
-    if (failed(getWatType(inputType, watType))) {
-      return failure();
-    }
-    output << "(param $p" << i << " " << watType << ") ";
-  }
-  return success();
-}
-
-llvm::LogicalResult translateFunctionResults(WasmFuncOp funcOp,
-                                             raw_ostream &output) {
-  auto functionType = funcOp.getFunctionType();
-  unsigned numResults = functionType.getNumResults();
-  for (unsigned i = 0; i < numResults; ++i) {
-    Type resultType = functionType.getResult(i);
-    std::string watType;
-    if (failed(getWatType(resultType, watType))) {
-      return failure();
-    }
-    output << "(result " << watType << ") ";
   }
   return success();
 }
@@ -253,23 +228,83 @@ llvm::LogicalResult translateData(DataOp dataOp, raw_ostream &output) {
   return success();
 }
 
-llvm::LogicalResult translateFunction(WasmFuncOp funcOp, raw_ostream &output) {
+struct WasmFunctionSignature {
+  std::vector<std::string> paramTypes;
+  std::vector<std::string> resultTypes;
+
+  WasmFunctionSignature(WasmFuncOp &funcOp) {
+    paramTypes.reserve(funcOp.getNumArguments());
+    for (Type argType : funcOp.getFunctionType().getInputs()) {
+      // function arguments are always local variables
+      Type innerType = cast<LocalType>(argType).getInner();
+      std::string watType;
+      if (failed(getWatType(innerType, watType))) {
+        funcOp.emitError("unsupported argument type");
+        // TODO: handle error
+      }
+      paramTypes.push_back(watType);
+    }
+    resultTypes.reserve(funcOp.getFunctionType().getResults().size());
+    for (auto resultType : funcOp.getFunctionType().getResults()) {
+      std::string watType;
+      if (failed(getWatType(resultType, watType))) {
+        funcOp.emitError("unsupported result type");
+        // TODO: handle error
+      }
+      resultTypes.push_back(watType);
+    }
+  }
+
+  bool operator<(const WasmFunctionSignature &other) const {
+    if (paramTypes != other.paramTypes)
+      return paramTypes < other.paramTypes;
+    return resultTypes < other.resultTypes;
+  }
+  bool operator==(const WasmFunctionSignature &other) const {
+    return paramTypes == other.paramTypes && resultTypes == other.resultTypes;
+  }
+};
+
+using func_signature_map_t = std::map<WasmFunctionSignature, unsigned>;
+
+llvm::LogicalResult translateFunction(func_signature_map_t &funcSignatureMap,
+                                      WasmFuncOp funcOp, raw_ostream &output) {
   // Start function declaration
   output << "  (func $" << funcOp.getName() << " ";
 
-  // TODO: translate function type
+  // function type
+  WasmFunctionSignature funcSignature(funcOp);
+  output << "(type " << funcSignatureMap[funcSignature] << ")";
 
-  // Translate function arguments
-  // if (failed(translateFunctionArguments(funcOp, output))) {
-  //  funcOp.emitError("translating function arguments failed");
-  //  return failure();
-  //}
+  // function params
+  if (!funcSignature.paramTypes.empty()) {
+    output << " (param ";
+    bool isFirst = true;
+    for (auto paramType : funcSignature.paramTypes) {
+      output << paramType;
+      if (!isFirst) {
+        output << " ";
+      } else {
+        isFirst = false;
+      }
+    }
+    output << ")";
+  }
 
-  // Translate function result types
-  // if (failed(translateFunctionResults(funcOp, output))) {
-  //  funcOp.emitError("translating function results failed");
-  //  return failure();
-  //}
+  // function results
+  if (!funcSignature.resultTypes.empty()) {
+    output << " (result ";
+    bool isFirst = true;
+    for (auto resultType : funcSignature.resultTypes) {
+      output << resultType;
+      if (!isFirst) {
+        output << " ";
+      } else {
+        isFirst = false;
+      }
+    }
+    output << ")";
+  }
 
   // Translate function body
   if (failed(translateFunctionBody(funcOp, output))) {
@@ -282,11 +317,54 @@ llvm::LogicalResult translateFunction(WasmFuncOp funcOp, raw_ostream &output) {
   return success();
 }
 
+func_signature_map_t initializeFunctionSignatureMap(ModuleOp &module) {
+  func_signature_map_t funcSignatureMap;
+  unsigned typeIndex = 0;
+  for (auto funcOp : module.getOps<WasmFuncOp>()) {
+    WasmFunctionSignature funcSignature(funcOp);
+    if (auto search = funcSignatureMap.find(funcSignature);
+        search == funcSignatureMap.end()) {
+      funcSignatureMap[funcSignature] = typeIndex;
+      typeIndex++;
+    }
+  }
+  return funcSignatureMap;
+}
+
+LogicalResult
+translateFunctionSignatures(func_signature_map_t &funcSignatureMap,
+                            raw_ostream &output) {
+  for (auto entry : funcSignatureMap) {
+    output << "(type ";
+    output << "(;" << entry.second << ";) ";
+    output << "(func ";
+    if (!entry.first.paramTypes.empty()) {
+      for (auto paramType : entry.first.paramTypes) {
+        output << "(param " << paramType << ") ";
+      }
+    }
+    if (!entry.first.resultTypes.empty()) {
+      for (auto resultType : entry.first.resultTypes) {
+        output << "(result " << resultType << ") ";
+      }
+    }
+    output << "))\n";
+  }
+  return success();
+}
+
 LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
+  func_signature_map_t funcSignatureMap =
+      initializeFunctionSignatureMap(module);
+
   output << "(module\n";
 
+  if (failed(translateFunctionSignatures(funcSignatureMap, output))) {
+    return failure();
+  }
+
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
-    if (failed(translateFunction(funcOp, output))) {
+    if (failed(translateFunction(funcSignatureMap, funcOp, output))) {
       funcOp.emitError("failed to translate WasmFuncOp");
       return failure();
     }
