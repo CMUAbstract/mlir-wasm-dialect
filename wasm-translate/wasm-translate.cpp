@@ -174,6 +174,28 @@ llvm::LogicalResult translateCallOp(CallOp callOp, raw_ostream &output) {
   return success();
 }
 
+// we should use op interface to refactor this to support all arithmetic ops
+llvm::LogicalResult translateAddOp(AddOp addOp, raw_ostream &output) {
+  output << "(";
+  std::string watType;
+  if (failed(getWatType(addOp.getType(), watType))) {
+    addOp.emitError("unsupported add type");
+    return failure();
+  }
+  output << watType << ".add)";
+  return success();
+}
+llvm::LogicalResult translateMulOp(MulOp mulOp, raw_ostream &output) {
+  output << "(";
+  std::string watType;
+  if (failed(getWatType(mulOp.getType(), watType))) {
+    mulOp.emitError("unsupported add type");
+    return failure();
+  }
+  output << watType << ".mul)";
+  return success();
+}
+
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
   if (auto constantOp = dyn_cast<ConstantOp>(op)) {
     return translateConstantOp(constantOp, output);
@@ -185,6 +207,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateLocalSetOp(localSetOp, output);
   } else if (auto callOp = dyn_cast<CallOp>(op)) {
     return translateCallOp(callOp, output);
+  } else if (auto addOp = dyn_cast<AddOp>(op)) {
+    return translateAddOp(addOp, output);
+  } else if (auto mulOp = dyn_cast<MulOp>(op)) {
+    return translateMulOp(mulOp, output);
   } else {
     op->emitError("unsupported operation");
     return failure();
