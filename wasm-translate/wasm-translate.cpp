@@ -19,17 +19,23 @@
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "llvm/Support/raw_ostream.h"
 
-int main(int argc, char **argv) {
-  mlir::registerAllTranslations();
+using namespace mlir;
 
-  // TODO: Register wasm translations here.
-  mlir::TranslateFromMLIRRegistration withdescription(
-      "option", "different from option",
-      [](mlir::Operation *op, llvm::raw_ostream &output) {
-        return llvm::LogicalResult::success();
-      },
-      [](mlir::DialectRegistry &a) {});
-
-  return failed(
-      mlir::mlirTranslateMain(argc, argv, "MLIR Translation Testing Tool"));
+LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
+  // TODO
+  return success();
 }
+
+int main(int argc, char **argv) {
+  registerAllTranslations();
+
+  TranslateFromMLIRRegistration registration(
+      "mlir-to-wat", "translate from mlir wasm dialect to wat",
+      [](ModuleOp module, raw_ostream &output) {
+        return translateModuleToWat(module, output);
+      },
+      [](DialectRegistry &registry) { registry.insert<wasm::WasmDialect>(); });
+
+  return failed(mlirTranslateMain(argc, argv, "MLIR Translation Tool"));
+
+} // namespace mlir
