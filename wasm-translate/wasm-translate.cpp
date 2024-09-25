@@ -139,7 +139,7 @@ llvm::LogicalResult translateConstantOp(ConstantOp constantOp,
 
 llvm::LogicalResult translateLocalOp(LocalOp localOp, raw_ostream &output) {
   output << "(local ";
-  bool first = true;
+  bool isFirstOp = true;
   for (Attribute attr : localOp.getTypes()) {
     TypeAttr typeAttr = cast<TypeAttr>(attr);
     std::string watType;
@@ -147,10 +147,10 @@ llvm::LogicalResult translateLocalOp(LocalOp localOp, raw_ostream &output) {
       localOp.emitError("unsupported local type");
       return failure();
     }
-    if (!first) {
+    if (!isFirstOp) {
       output << " ";
     } else {
-      first = false;
+      isFirstOp = false;
     }
     output << watType;
   }
