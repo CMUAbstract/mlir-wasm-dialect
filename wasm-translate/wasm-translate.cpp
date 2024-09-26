@@ -207,23 +207,36 @@ llvm::LogicalResult translateReturnOp(WasmReturnOp returnOp,
   return success();
 }
 
+static unsigned counter = 0;
+std::string getUniqueBlockName() {
+  return "$block" + std::to_string(counter++);
+}
+std::string getUniqueLoopName() { return "$loop" + std::to_string(counter++); }
+std::string getUniqueCondLoopName() {
+  return "$condloop" + std::to_string(counter++);
+}
+
 // TODO: move this to header file?
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output);
 
 llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   auto blockIt = loopOp.getRegion().begin();
-  auto revBlockIt = loopOp.getRegion().rbegin();
   Block *preheader = &*blockIt;
   blockIt++;
   Block *conditionBlock = &*blockIt;
   blockIt++;
-  // now blockIt points to the body start block
-  Block *terminationBlock = &*revBlockIt;
-  revBlockIt++;
-  Block *inductionVariableUpdateBlock = &*revBlockIt;
+  Block *bodyBlock = &*blockIt;
+  blockIt++;
+  Block *inductionVariableUpdateBlock = &*blockIt;
+  blockIt++;
+  Block *terminationBlock = &*blockIt;
 
-  output << "(block " << "$uniquenameofblock" << "\n";
-  output << "(loop " << "$uniquenameofloop" << "\n";
+  std::string blockName = getUniqueBlockName();
+  std::string loopName = getUniqueLoopName();
+  std::string condLoopName = getUniqueCondLoopName();
+
+  output << "(block " << blockName << "\n";
+  output << "(loop " << loopName << "\n";
   // preheader block
   // assert that preheader does not have an operation except for the branch to
   // the condition block
@@ -247,6 +260,7 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   // condition block
   // translate all operations in the condition block
   // except for the last one, which should be a conditional branch
+  output << "(loop " << condLoopName << "\n";
   auto &conditionOps = conditionBlock->getOperations();
   if (conditionOps.empty()) {
     loopOp.emitError("Condition block is empty");
@@ -269,21 +283,29 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
         "Last operation in condition block should be a CondBranchOp");
     return failure();
   }
-  output << "br_if $" << "uniquenameofblock" << "\n";
+  output << "br_if " << blockName << "\n";
 
-  // bodyStartBlock to bodyEndBlock
-  for (Block *block = &*blockIt; block != inductionVariableUpdateBlock;
-       block++) {
-    // translate all operations in each body block
-    // Translate all operations in each body block
-    for (auto &op : block->getOperations()) {
-      if (failed(translateOperation(&op, output))) {
-        op.emitError("Failed to translate operation in loop body");
-        return failure();
-      }
-      output << "\n";
+  // bodyBlock
+  // last operation in bodyBlock should be a branch to the
+  // inductionVariableUpdateBlock
+  auto &bodyBlockOps = bodyBlock->getOperations();
+  auto bodyBlockOpIt = bodyBlockOps.begin();
+  auto bodyBlockOpEnd = bodyBlockOps.end();
+  --bodyBlockOpEnd; // Point to the last operation
+  for (; bodyBlockOpIt != bodyBlockOpEnd; ++bodyBlockOpIt) {
+    if (failed(translateOperation(&*bodyBlockOpIt, output))) {
+      bodyBlockOpIt->emitError("Failed to translate operation in loop body");
+      return failure();
     }
+    output << "\n";
   }
+  Operation *lastBodyBlockOp = &*bodyBlockOpEnd;
+  if (!isa<BranchOp>(lastBodyBlockOp)) {
+    loopOp.emitError("Last operation in body block should be a BranchOp");
+    return failure();
+  }
+  output << "br " << condLoopName << "\n";
+  output << ")\n"; // end of condition loop
 
   // inductionVariableUpdateBlock
   // translate all operations in the inductionVariableUpdateBlock
@@ -309,11 +331,12 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   // Handle the last operation: Branch to condition block
   Operation *lastUpdateOp = &*updateOpEnd;
   if (!isa<BranchOp>(lastUpdateOp)) {
+    lastUpdateOp->dump();
     loopOp.emitError("Last operation in induction variable update block should "
                      "be a BranchOp");
     return failure();
   }
-  output << "br $" << "uniquenameofloop" << "\n";
+  output << "br " << loopName << "\n";
 
   // termination block
   // assert that termination block has exactly one operation which is a loop end
