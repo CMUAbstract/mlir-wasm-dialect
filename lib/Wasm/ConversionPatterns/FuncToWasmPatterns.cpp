@@ -22,7 +22,6 @@ struct FuncOpLowering : public OpConversionPattern<func::FuncOp> {
     // we should return i32 for memref types
     llvm::SmallVector<Type, 4> newResultTypes;
     for (auto resultType : funcOp.getFunctionType().getResults()) {
-      resultType.dump();
       if (isa<MemRefType>(resultType)) {
         newResultTypes.push_back(rewriter.getI32Type());
       } else {
