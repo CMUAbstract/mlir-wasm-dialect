@@ -325,7 +325,6 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   // Handle the last operation: Branch to condition block
   Operation *lastUpdateOp = &*updateOpEnd;
   if (!isa<BranchOp>(lastUpdateOp)) {
-    lastUpdateOp->dump();
     loopOp.emitError("Last operation in induction variable update block should "
                      "be a BranchOp");
     return failure();
