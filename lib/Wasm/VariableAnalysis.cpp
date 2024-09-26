@@ -36,8 +36,12 @@ int VariableAnalysis::getLocalIndex(const Value &tempLocal) {
 
 vector<Attribute> VariableAnalysis::getTypeAttrs() {
   vector<Attribute> types;
-  types.reserve(reg2Loc.size());
-  std::transform(reg2Loc.begin(), reg2Loc.end(), std::back_inserter(types),
+  types.reserve(reg2Loc.size() - numArguments);
+  auto it = reg2Loc.begin();
+  for (auto _ = 0; _ < numArguments; _++) {
+    it++;
+  }
+  std::transform(it, reg2Loc.end(), std::back_inserter(types),
                  [](const auto &tempLocal) {
                    return mlir::TypeAttr::get(
                        dyn_cast<LocalType>(tempLocal.getType()).getInner());
