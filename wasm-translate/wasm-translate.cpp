@@ -170,10 +170,145 @@ llvm::LogicalResult translateMulOp(MulOp mulOp, raw_ostream &output) {
   output << watType << ".mul)";
   return success();
 }
+llvm::LogicalResult translateILtUOp(ILtUOp iLtUOp, raw_ostream &output) {
+  output << "(";
+  std::string watType;
+  if (failed(getWatType(iLtUOp.getType(), watType))) {
+    iLtUOp.emitError("unsupported add type");
+    return failure();
+  }
+  output << watType << ".lt_u)";
+  return success();
+}
 
 llvm::LogicalResult translateReturnOp(WasmReturnOp returnOp,
                                       raw_ostream &output) {
   output << "return";
+  return success();
+}
+
+// TODO: move this to header file?
+llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output);
+
+llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
+  auto blockIt = loopOp.getRegion().begin();
+  auto revBlockIt = loopOp.getRegion().rbegin();
+  Block *preheader = &*blockIt;
+  blockIt++;
+  Block *conditionBlock = &*blockIt;
+  blockIt++;
+  // now blockIt points to the body start block
+  Block *terminationBlock = &*revBlockIt;
+  revBlockIt++;
+  Block *inductionVariableUpdateBlock = &*revBlockIt;
+
+  output << "(block " << "$uniquenameofblock" << "\n";
+  output << "(loop " << "$uniquenameofloop" << "\n";
+  // preheader block
+  // assert that preheader does not have an operation except for the branch to
+  // the condition block
+  if (preheader->getOperations().size() != 1) {
+    loopOp.emitError("preheader block should have exactly one operation");
+    return failure();
+  }
+  auto &preheaderBranch = *preheader->getOperations().begin();
+  if (!isa<BranchOp>(preheaderBranch)) {
+    loopOp.emitError(
+        "preheader block should have exactly one operation which is a branch");
+    return failure();
+  }
+  auto preheaderBranchOp = cast<BranchOp>(preheaderBranch);
+  if (preheaderBranchOp.getSuccessor() != conditionBlock) {
+    loopOp.emitError("preheader block should have exactly one operation which "
+                     "is a branch to the condition block");
+    return failure();
+  }
+
+  // condition block
+  // translate all operations in the condition block
+  // except for the last one, which should be a conditional branch
+  auto &conditionOps = conditionBlock->getOperations();
+  if (conditionOps.empty()) {
+    loopOp.emitError("Condition block is empty");
+    return failure();
+  }
+  auto conditionOpIt = conditionOps.begin();
+  auto conditionOpEnd = conditionOps.end();
+  --conditionOpEnd; // Point to the last operation
+  for (; conditionOpIt != conditionOpEnd; ++conditionOpIt) {
+    if (failed(translateOperation(&*conditionOpIt, output))) {
+      conditionOpIt->emitError(
+          "Failed to translate operation in condition block");
+      return failure();
+    }
+    output << "\n";
+  }
+  Operation *lastConditionOp = &*conditionOpEnd;
+  if (!isa<CondBranchOp>(lastConditionOp)) {
+    loopOp.emitError(
+        "Last operation in condition block should be a CondBranchOp");
+    return failure();
+  }
+  output << "br_if $" << "uniquenameofblock" << "\n";
+
+  // bodyStartBlock to bodyEndBlock
+  for (Block *block = &*blockIt; block != inductionVariableUpdateBlock;
+       block++) {
+    // translate all operations in each body block
+    // Translate all operations in each body block
+    for (auto &op : block->getOperations()) {
+      if (failed(translateOperation(&op, output))) {
+        op.emitError("Failed to translate operation in loop body");
+        return failure();
+      }
+      output << "\n";
+    }
+  }
+
+  // inductionVariableUpdateBlock
+  // translate all operations in the inductionVariableUpdateBlock
+  // except for the last one, which should be a branch to the condition block
+  auto &updateOps = inductionVariableUpdateBlock->getOperations();
+  if (updateOps.empty()) {
+    loopOp.emitError("Induction variable update block is empty");
+    return failure();
+  }
+
+  auto updateOpIt = updateOps.begin();
+  auto updateOpEnd = updateOps.end();
+  --updateOpEnd; // Point to the last operation
+  for (; updateOpIt != updateOpEnd; ++updateOpIt) {
+    if (failed(translateOperation(&*updateOpIt, output))) {
+      updateOpIt->emitError(
+          "Failed to translate operation in induction variable update block");
+      return failure();
+    }
+    output << "\n";
+  }
+
+  // Handle the last operation: Branch to condition block
+  Operation *lastUpdateOp = &*updateOpEnd;
+  if (!isa<BranchOp>(lastUpdateOp)) {
+    loopOp.emitError("Last operation in induction variable update block should "
+                     "be a BranchOp");
+    return failure();
+  }
+  output << "br $" << "uniquenameofloop" << "\n";
+
+  // termination block
+  // assert that termination block has exactly one operation which is a loop end
+  if (terminationBlock->getOperations().size() != 1) {
+    loopOp.emitError("Termination block should have exactly one operation");
+    return failure();
+  }
+  auto &terminationOp = *terminationBlock->getOperations().begin();
+  if (!isa<LoopEndOp>(
+          terminationOp)) { // Assuming LoopEndOp represents loop termination
+    loopOp.emitError("Termination block's operation should be a LoopEndOp");
+    return failure();
+  }
+  output << "))\n";
+
   return success();
 }
 
@@ -192,8 +327,12 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateAddOp(addOp, output);
   } else if (auto mulOp = dyn_cast<MulOp>(op)) {
     return translateMulOp(mulOp, output);
+  } else if (auto iLtUOp = dyn_cast<ILtUOp>(op)) {
+    return translateILtUOp(iLtUOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
     return translateReturnOp(returnOp, output);
+  } else if (auto loopOp = dyn_cast<LoopOp>(op)) {
+    return translateLoopOp(loopOp, output);
   } else {
     op->emitError("unsupported operation");
     return failure();
