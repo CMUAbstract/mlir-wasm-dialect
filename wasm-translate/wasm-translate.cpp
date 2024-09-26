@@ -212,9 +212,6 @@ std::string getUniqueBlockName() {
   return "$block" + std::to_string(counter++);
 }
 std::string getUniqueLoopName() { return "$loop" + std::to_string(counter++); }
-std::string getUniqueCondLoopName() {
-  return "$condloop" + std::to_string(counter++);
-}
 
 // TODO: move this to header file?
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output);
@@ -233,7 +230,6 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
 
   std::string blockName = getUniqueBlockName();
   std::string loopName = getUniqueLoopName();
-  std::string condLoopName = getUniqueCondLoopName();
 
   output << "(block " << blockName << "\n";
   output << "(loop " << loopName << "\n";
@@ -260,7 +256,6 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   // condition block
   // translate all operations in the condition block
   // except for the last one, which should be a conditional branch
-  output << "(loop " << condLoopName << "\n";
   auto &conditionOps = conditionBlock->getOperations();
   if (conditionOps.empty()) {
     loopOp.emitError("Condition block is empty");
@@ -304,8 +299,7 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
     loopOp.emitError("Last operation in body block should be a BranchOp");
     return failure();
   }
-  output << "br " << condLoopName << "\n";
-  output << ")\n"; // end of condition loop
+  output << "br " << loopName << "\n";
 
   // inductionVariableUpdateBlock
   // translate all operations in the inductionVariableUpdateBlock
@@ -418,6 +412,7 @@ struct WasmFunctionSignature {
   std::vector<std::string> paramTypes;
   std::vector<std::string> resultTypes;
 
+  WasmFunctionSignature() = default;
   WasmFunctionSignature(WasmFuncOp &funcOp) {
     paramTypes.reserve(funcOp.getNumArguments());
     for (Type argType : funcOp.getFunctionType().getInputs()) {
@@ -505,7 +500,13 @@ llvm::LogicalResult translateFunction(func_signature_map_t &funcSignatureMap,
 
 func_signature_map_t initializeFunctionSignatureMap(ModuleOp &module) {
   func_signature_map_t funcSignatureMap;
-  unsigned typeIndex = 0;
+  // we always import malloc
+  WasmFunctionSignature mallocSignature;
+  mallocSignature.paramTypes.push_back("i32");
+  mallocSignature.resultTypes.push_back("i32");
+  funcSignatureMap[mallocSignature] = 0;
+
+  unsigned typeIndex = 1;
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
     WasmFunctionSignature funcSignature(funcOp);
     if (auto search = funcSignatureMap.find(funcSignature);
@@ -548,6 +549,10 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
   if (failed(translateFunctionSignatures(funcSignatureMap, output))) {
     return failure();
   }
+  output << R""""(
+  (import "env" "__linear_memory" (memory (;0;) 1))
+  (import "env" "malloc" (func $malloc (type 0)))
+  )"""";
 
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
     if (failed(translateFunction(funcSignatureMap, funcOp, output))) {
