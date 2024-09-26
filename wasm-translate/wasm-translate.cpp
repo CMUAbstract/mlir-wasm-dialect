@@ -180,6 +180,26 @@ llvm::LogicalResult translateILtUOp(ILtUOp iLtUOp, raw_ostream &output) {
   output << watType << ".lt_u)";
   return success();
 }
+llvm::LogicalResult translateLoadOp(LoadOp loadOp, raw_ostream &output) {
+  output << "(";
+  std::string watType;
+  if (failed(getWatType(loadOp.getType(), watType))) {
+    loadOp.emitError("unsupported load type");
+    return failure();
+  }
+  output << watType << ".load)";
+  return success();
+}
+llvm::LogicalResult translateStoreOp(StoreOp storeOp, raw_ostream &output) {
+  output << "(";
+  std::string watType;
+  if (failed(getWatType(storeOp.getType(), watType))) {
+    storeOp.emitError("unsupported store type");
+    return failure();
+  }
+  output << watType << ".load)";
+  return success();
+}
 
 llvm::LogicalResult translateReturnOp(WasmReturnOp returnOp,
                                       raw_ostream &output) {
@@ -329,6 +349,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateMulOp(mulOp, output);
   } else if (auto iLtUOp = dyn_cast<ILtUOp>(op)) {
     return translateILtUOp(iLtUOp, output);
+  } else if (auto loadOp = dyn_cast<LoadOp>(op)) {
+    return translateLoadOp(loadOp, output);
+  } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
+    return translateStoreOp(storeOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
     return translateReturnOp(returnOp, output);
   } else if (auto loopOp = dyn_cast<LoopOp>(op)) {
