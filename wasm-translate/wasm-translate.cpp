@@ -299,7 +299,7 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
     loopOp.emitError("Last operation in body block should be a BranchOp");
     return failure();
   }
-  output << "br " << loopName << "\n";
+  // we don't need an explicit branch to the inductionVariableUpdateBlock
 
   // inductionVariableUpdateBlock
   // translate all operations in the inductionVariableUpdateBlock
