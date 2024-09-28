@@ -149,56 +149,32 @@ llvm::LogicalResult translateCallOp(CallOp callOp, raw_ostream &output) {
   return success();
 }
 
+template <typename T>
+LogicalResult translateSimpleOp(T op, raw_ostream &output, std::string opName) {
+  output << "(";
+  std::string watType;
+  if (failed(getWatType(op.getType(), watType))) {
+    op.emitError("unsupported type");
+    return failure();
+  }
+  output << watType << "." << opName << ")";
+  return success();
+}
 // we should use op interface to refactor this to support all arithmetic ops
 llvm::LogicalResult translateAddOp(AddOp addOp, raw_ostream &output) {
-  output << "(";
-  std::string watType;
-  if (failed(getWatType(addOp.getType(), watType))) {
-    addOp.emitError("unsupported add type");
-    return failure();
-  }
-  output << watType << ".add)";
-  return success();
+  return translateSimpleOp(addOp, output, "add");
 }
 llvm::LogicalResult translateMulOp(MulOp mulOp, raw_ostream &output) {
-  output << "(";
-  std::string watType;
-  if (failed(getWatType(mulOp.getType(), watType))) {
-    mulOp.emitError("unsupported add type");
-    return failure();
-  }
-  output << watType << ".mul)";
-  return success();
+  return translateSimpleOp(mulOp, output, "mul");
 }
 llvm::LogicalResult translateILtUOp(ILtUOp iLtUOp, raw_ostream &output) {
-  output << "(";
-  std::string watType;
-  if (failed(getWatType(iLtUOp.getType(), watType))) {
-    iLtUOp.emitError("unsupported add type");
-    return failure();
-  }
-  output << watType << ".lt_u)";
-  return success();
+  return translateSimpleOp(iLtUOp, output, "lt_u");
 }
 llvm::LogicalResult translateLoadOp(LoadOp loadOp, raw_ostream &output) {
-  output << "(";
-  std::string watType;
-  if (failed(getWatType(loadOp.getType(), watType))) {
-    loadOp.emitError("unsupported load type");
-    return failure();
-  }
-  output << watType << ".load)";
-  return success();
+  return translateSimpleOp(loadOp, output, "load");
 }
 llvm::LogicalResult translateStoreOp(StoreOp storeOp, raw_ostream &output) {
-  output << "(";
-  std::string watType;
-  if (failed(getWatType(storeOp.getType(), watType))) {
-    storeOp.emitError("unsupported store type");
-    return failure();
-  }
-  output << watType << ".load)";
-  return success();
+  return translateSimpleOp(storeOp, output, "store");
 }
 
 llvm::LogicalResult translateReturnOp(WasmReturnOp returnOp,
