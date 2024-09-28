@@ -567,6 +567,12 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
     }
   }
 
+  // export all functions
+  for (auto funcOp : module.getOps<WasmFuncOp>()) {
+    output << "(export \"" << funcOp.getName() << "\" (func $"
+           << funcOp.getName() << "))\n";
+  }
+
   output << ")\n";
   return success();
 }
