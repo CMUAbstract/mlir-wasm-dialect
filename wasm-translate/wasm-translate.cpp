@@ -485,13 +485,17 @@ llvm::LogicalResult translateFunction(func_signature_map_t &funcSignatureMap,
 
 func_signature_map_t initializeFunctionSignatureMap(ModuleOp &module) {
   func_signature_map_t funcSignatureMap;
-  // we always import malloc
+  // we always import malloc/free
   WasmFunctionSignature mallocSignature;
   mallocSignature.paramTypes.push_back("i32");
   mallocSignature.resultTypes.push_back("i32");
   funcSignatureMap[mallocSignature] = 0;
 
-  unsigned typeIndex = 1;
+  WasmFunctionSignature freeSignature;
+  freeSignature.paramTypes.push_back("i32");
+  funcSignatureMap[freeSignature] = 1;
+
+  unsigned typeIndex = 2; // 0 and 1 are reserved for malloc and free
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
     WasmFunctionSignature funcSignature(funcOp);
     if (auto search = funcSignatureMap.find(funcSignature);
@@ -537,6 +541,7 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
   output << R""""(
   (import "env" "__linear_memory" (memory (;0;) 1))
   (import "env" "malloc" (func $malloc (type 0)))
+  (import "env" "free" (func $free (type 1)))
   )"""";
 
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
