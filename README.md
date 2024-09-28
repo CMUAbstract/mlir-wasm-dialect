@@ -95,3 +95,12 @@ mlir-translate ./test/conv2d-llvm.mlir --mlir-to-llvmir -o ./test/conv2d.ll
 llc -O0 -filetype=obj -mtriple=wasm32-wasi ./test/conv2d.ll -o ./test/conv2d.o
 wasm2wat ./test/conv2d.o -o ./test/conv2d.wat
 ```
+
+We need to link the wasm file with stdlib
+```sh
+$WASI_SDK_PATH/bin/wasm-ld --no-entry \
+--export-memory --export=main --export=malloc --export=free \
+-L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
+-o ./test/conv2d-linked.wasm ./test/conv2d.o
+wasm2wat ./test/conv2d-linked.wasm -o ./test/conv2d-linked.wat
+```
