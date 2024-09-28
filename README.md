@@ -73,7 +73,7 @@ test/conv2d-linalg.mlir
 # We had to split this into two commands because currently the
 # `--tosa-to-linalg` pass has a bug so that we had to call it using
 # `--pass-pipeline`, which cannot be combined with other named passes.
-mlir-opt conv2d-linalg.mlir \
+mlir-opt test/conv2d-linalg.mlir \
  --one-shot-bufferize="bufferize-function-boundaries" \
  --expand-realloc \
  --canonicalize \
@@ -84,7 +84,7 @@ mlir-opt conv2d-linalg.mlir \
  --normalize-memrefs \
  --convert-linalg-to-affine-loops \
  --lower-affine \
- -o conv2d.mlir
+ -o test/conv2d.mlir
 ```
 
 ## Baseline
@@ -99,7 +99,7 @@ wasm2wat ./test/conv2d.o -o ./test/conv2d.wat
 We need to link the wasm file with stdlib
 ```sh
 $WASI_SDK_PATH/bin/wasm-ld --no-entry \
---export-memory --export=main --export=malloc --export=free \
+--export-memory --export=_mlir_ciface_main --export=malloc --export=free \
 -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
 -o ./test/conv2d-linked.wasm ./test/conv2d.o
 wasm2wat ./test/conv2d-linked.wasm -o ./test/conv2d-linked.wat
