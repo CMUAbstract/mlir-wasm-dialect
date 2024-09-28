@@ -1,0 +1,10 @@
+[package]
+name = "run-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasmtime = "22.0.0"
+wasi-common = "22.0.0"
+bytemuck = { version = "1.16.1", features = ["derive"] }
+aligned-array = "1.0.1"
