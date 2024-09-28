@@ -104,12 +104,32 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   }
 };
 
+struct MinimumFOpLowering : public OpConversionPattern<arith::MinimumFOp> {
+  using OpConversionPattern<arith::MinimumFOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::MinimumFOp minimumFOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    return matchAndRewriteBinaryOp<arith::MinimumFOp, wasm::FMinOp>(
+        minimumFOp, rewriter, typeConverter);
+  }
+};
+
+struct MaximumFOpLowering : public OpConversionPattern<arith::MaximumFOp> {
+  using OpConversionPattern<arith::MaximumFOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::MaximumFOp maximumFOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    return matchAndRewriteBinaryOp<arith::MaximumFOp, wasm::FMaxOp>(
+        maximumFOp, rewriter, typeConverter);
+  }
+};
+
 void populateArithToWasmPatterns(TypeConverter &typeConverter,
                                  RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns
-      .add<AddIOpLowering, AddFOpLowering, MulFOpLowering, ConstantOpLowering>(
-          typeConverter, context);
+  patterns.add<AddIOpLowering, AddFOpLowering, MulFOpLowering,
+               ConstantOpLowering, MinimumFOpLowering, MaximumFOpLowering>(
+      typeConverter, context);
 }
 
 } // namespace mlir::wasm
