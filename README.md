@@ -90,17 +90,8 @@ mlir-opt conv2d-linalg.mlir \
 ## Baseline
 The baseline for comparison (`conv2d.wat`) is produced as follows:
 ```sh
-mlir-opt conv2d.mlir --convert-scf-to-cf --lower-affine --convert-arith-to-llvm="index-bitwidth=32" --convert-func-to-llvm="index-bitwidth=32" --memref-expand --expand-strided-metadata --finalize-memref-to-llvm="index-bitwidth=32" --convert-to-llvm --reconcile-unrealized-casts -o conv2d-llvm.mlir
-```
-
-```sh
-mlir-translate conv2d-llvm.mlir --mlir-to-llvmir -o conv2d.ll
-```
-
-```sh
-llc -O0 -filetype=obj -mtriple=wasm32-wasi conv2d.ll -o conv2d.o
-```
-
-```sh
-wasm2wat conv2d.o -o conv2d.wat
+mlir-opt ./test/conv2d.mlir --convert-scf-to-cf --lower-affine --convert-arith-to-llvm="index-bitwidth=32" --convert-func-to-llvm="index-bitwidth=32" --memref-expand --expand-strided-metadata --finalize-memref-to-llvm="index-bitwidth=32" --convert-to-llvm --reconcile-unrealized-casts -o ./test/conv2d-llvm.mlir
+mlir-translate ./test/conv2d-llvm.mlir --mlir-to-llvmir -o ./test/conv2d.ll
+llc -O0 -filetype=obj -mtriple=wasm32-wasi ./test/conv2d.ll -o ./test/conv2d.o
+wasm2wat ./test/conv2d.o -o ./test/conv2d.wat
 ```
