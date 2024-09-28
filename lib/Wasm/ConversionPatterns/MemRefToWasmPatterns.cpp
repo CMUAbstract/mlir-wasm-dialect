@@ -215,19 +215,19 @@ struct StoreOpLowering : public OpConversionPattern<memref::StoreOp> {
     Location loc = storeOp.getLoc();
     auto value = storeOp.getValueToStore();
 
-    auto castedValue = typeConverter->materializeTargetConversion(
-        rewriter, loc, LocalType::get(rewriter.getContext(), value.getType()),
-        value);
-
-    // push this value to stack
-    rewriter.create<TempLocalGetOp>(loc, castedValue);
-
     LogicalResult result =
         computeAddress(storeOp, storeOp.getMemRef(), storeOp.getMemRefType(),
                        adaptor.getIndices(), typeConverter, rewriter);
     if (failed(result)) {
       return result;
     }
+
+    auto castedValue = typeConverter->materializeTargetConversion(
+        rewriter, loc, LocalType::get(rewriter.getContext(), value.getType()),
+        value);
+
+    // push this value to stack
+    rewriter.create<TempLocalGetOp>(loc, castedValue);
 
     // call wasm.store
     rewriter.replaceOpWithNewOp<StoreOp>(
