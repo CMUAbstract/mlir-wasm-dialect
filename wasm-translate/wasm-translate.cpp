@@ -176,6 +176,12 @@ llvm::LogicalResult translateLoadOp(LoadOp loadOp, raw_ostream &output) {
 llvm::LogicalResult translateStoreOp(StoreOp storeOp, raw_ostream &output) {
   return translateSimpleOp(storeOp, output, "store");
 }
+llvm::LogicalResult translateFMinOp(FMinOp fMinOp, raw_ostream &output) {
+  return translateSimpleOp(fMinOp, output, "min");
+}
+llvm::LogicalResult translateFMaxOp(FMaxOp fMaxOp, raw_ostream &output) {
+  return translateSimpleOp(fMaxOp, output, "max");
+}
 
 llvm::LogicalResult translateReturnOp(WasmReturnOp returnOp,
                                       raw_ostream &output) {
@@ -345,6 +351,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateLoadOp(loadOp, output);
   } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
     return translateStoreOp(storeOp, output);
+  } else if (auto fMinOp = dyn_cast<FMinOp>(op)) {
+    return translateFMinOp(fMinOp, output);
+  } else if (auto fMaxOp = dyn_cast<FMaxOp>(op)) {
+    return translateFMaxOp(fMaxOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
     return translateReturnOp(returnOp, output);
   } else if (auto loopOp = dyn_cast<LoopOp>(op)) {
