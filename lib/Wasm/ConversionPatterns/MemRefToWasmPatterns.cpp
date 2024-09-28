@@ -266,6 +266,21 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
   }
 };
 
+struct DeallocOpLowering : public OpConversionPattern<memref::DeallocOp> {
+  using OpConversionPattern<memref::DeallocOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::DeallocOp deallocOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // push argument to stack
+    rewriter.create<TempLocalGetOp>(deallocOp.getLoc(), adaptor.getMemref());
+    // call free
+    rewriter.replaceOpWithNewOp<CallOp>(
+        deallocOp, StringAttr::get(rewriter.getContext(), "free"));
+    return success();
+  }
+};
+
 struct ExpandShapeLowering : public OpConversionPattern<memref::ExpandShapeOp> {
   using OpConversionPattern<memref::ExpandShapeOp>::OpConversionPattern;
 
@@ -290,8 +305,9 @@ void populateMemRefToWasmPatterns(TypeConverter &typeConverter,
                                   BaseAddrAnalysis &analysis) {
   patterns.add<GlobalOpLowering, GlobalGetOpLowering>(
       typeConverter, patterns.getContext(), analysis);
-  patterns.add<AllocOpLowering, StoreOpLowering, LoadOpLowering,
-               ExpandShapeLowering>(typeConverter, patterns.getContext());
+  patterns.add<AllocOpLowering, DeallocOpLowering, StoreOpLowering,
+               LoadOpLowering, ExpandShapeLowering>(typeConverter,
+                                                    patterns.getContext());
 }
 
 } // namespace mlir::wasm
