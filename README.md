@@ -30,9 +30,33 @@ cmake --build . --target check-wasm
 ```
 
 ## Run
+
+To convert an MLIR file (input.mlir) into the Wasm dialect, use the following
+command:
 ```sh
-export PATH="build/bin:$PATH"
-wasm-opt --convert-to-wasm --reconcile-unrealized-casts --wasm-finalize input.mlir
+build/bin/wasm-opt --convert-to-wasm --reconcile-unrealized-casts --wasm-finalize input.mlir -o output.mlir
+```
+
+The resulting MLIR file (`output.mlir`) can be translated into a textual
+WebAssembly format (`.wat`) using:
+```sh
+build/bin/wasm-translate output.mlir --mlir-to-wat -o output.wat
+```
+
+Note: The generated `.wat` file may not be well-formatted. While there is no
+standard formatter for `.wat` files, you can improve its readability by converting
+the .wat file to a `.wasm` binary and then back to .wat using wasm2wat. Be aware
+that this process might strip off symbol names.
+```sh
+wasm2wat output.wat -o output.wasm
+wasm2wat output.wasm -o output-formatted.wat
+```
+
+To further optimize the WebAssembly output (e.g., to reduce the number of local
+variables), you can use the `wasm-opt` tool from Binaryen (note: this is different
+from the wasm-opt binary we compiled):
+```sh
+wasm-opt output.wat -O4 output-optimized.wasm
 ```
 
 ## Target
