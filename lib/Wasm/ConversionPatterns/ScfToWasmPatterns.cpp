@@ -85,6 +85,13 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
         rewriter.create<TempLocalOp>(loc, indexType).getResult();
     auto castedInductionLocal = typeConverter->materializeSourceConversion(
         rewriter, loc, indexType, inductionLocal);
+
+    // initialize induction variable with lower bound
+    auto castedLowerBound = typeConverter->materializeSourceConversion(
+        rewriter, loc, localIndexType, lowerBound);
+    rewriter.create<TempLocalGetOp>(loc, castedLowerBound);
+    rewriter.create<TempLocalSetOp>(loc, inductionLocal);
+
     rewriter.replaceAllUsesWith(inductionVariable, castedInductionLocal);
     rewriter.create<BranchOp>(loc, conditionBlock);
 
