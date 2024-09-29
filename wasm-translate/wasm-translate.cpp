@@ -21,6 +21,7 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 #include <vector>
@@ -431,16 +432,27 @@ struct WasmFunctionSignature {
   }
 };
 
-using func_signature_map_t = std::map<WasmFunctionSignature, unsigned>;
+using func_signature_list_t = std::vector<WasmFunctionSignature>;
+unsigned getFunctionTypeIndex(func_signature_list_t &funcSignatures,
+                              WasmFunctionSignature &funcSignature) {
+  auto search =
+      std::find(funcSignatures.begin(), funcSignatures.end(), funcSignature);
+  if (search == funcSignatures.end()) {
+    // TODO: handle error
+    return 0;
+  }
+  return std::distance(funcSignatures.begin(), search);
+}
 
-llvm::LogicalResult translateFunction(func_signature_map_t &funcSignatureMap,
+llvm::LogicalResult translateFunction(func_signature_list_t &funcSignatures,
                                       WasmFuncOp funcOp, raw_ostream &output) {
   // Start function declaration
   output << "  (func $" << funcOp.getName() << " ";
 
   // function type
   WasmFunctionSignature funcSignature(funcOp);
-  output << "(type " << funcSignatureMap[funcSignature] << ")";
+  output << "(type " << getFunctionTypeIndex(funcSignatures, funcSignature)
+         << ")";
 
   // function params
   if (!funcSignature.paramTypes.empty()) {
@@ -483,44 +495,41 @@ llvm::LogicalResult translateFunction(func_signature_map_t &funcSignatureMap,
   return success();
 }
 
-func_signature_map_t initializeFunctionSignatureMap(ModuleOp &module) {
-  func_signature_map_t funcSignatureMap;
+func_signature_list_t initializeFunctionSignatureMap(ModuleOp &module) {
+  func_signature_list_t funcSignatures;
   // we always import malloc/free
   WasmFunctionSignature mallocSignature;
   mallocSignature.paramTypes.push_back("i32");
   mallocSignature.resultTypes.push_back("i32");
-  funcSignatureMap[mallocSignature] = 0;
+  funcSignatures.push_back(mallocSignature);
 
   WasmFunctionSignature freeSignature;
   freeSignature.paramTypes.push_back("i32");
-  funcSignatureMap[freeSignature] = 1;
+  funcSignatures.push_back(freeSignature);
 
-  unsigned typeIndex = 2; // 0 and 1 are reserved for malloc and free
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
     WasmFunctionSignature funcSignature(funcOp);
-    if (auto search = funcSignatureMap.find(funcSignature);
-        search == funcSignatureMap.end()) {
-      funcSignatureMap[funcSignature] = typeIndex;
-      typeIndex++;
+    if (auto search = std::find(funcSignatures.begin(), funcSignatures.end(),
+                                funcSignature);
+        search == funcSignatures.end()) {
+      funcSignatures.push_back(funcSignature);
     }
   }
-  return funcSignatureMap;
+  return funcSignatures;
 }
 
-LogicalResult
-translateFunctionSignatures(func_signature_map_t &funcSignatureMap,
-                            raw_ostream &output) {
-  for (auto entry : funcSignatureMap) {
-    output << "(type ";
-    output << "(;" << entry.second << ";) ";
+LogicalResult translateFunctionSignatures(func_signature_list_t &funcSignatures,
+                                          raw_ostream &output) {
+  for (size_t i = 0; i < funcSignatures.size(); i++) {
+    output << "(type " << "(;" << i << ";) ";
     output << "(func ";
-    if (!entry.first.paramTypes.empty()) {
-      for (auto paramType : entry.first.paramTypes) {
+    if (!funcSignatures[i].paramTypes.empty()) {
+      for (auto paramType : funcSignatures[i].paramTypes) {
         output << "(param " << paramType << ") ";
       }
     }
-    if (!entry.first.resultTypes.empty()) {
-      for (auto resultType : entry.first.resultTypes) {
+    if (!funcSignatures[i].resultTypes.empty()) {
+      for (auto resultType : funcSignatures[i].resultTypes) {
         output << "(result " << resultType << ") ";
       }
     }
@@ -530,12 +539,11 @@ translateFunctionSignatures(func_signature_map_t &funcSignatureMap,
 }
 
 LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
-  func_signature_map_t funcSignatureMap =
-      initializeFunctionSignatureMap(module);
+  func_signature_list_t funcSignatures = initializeFunctionSignatureMap(module);
 
   output << "(module\n";
 
-  if (failed(translateFunctionSignatures(funcSignatureMap, output))) {
+  if (failed(translateFunctionSignatures(funcSignatures, output))) {
     return failure();
   }
   output << R""""(
@@ -545,7 +553,7 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
   )"""";
 
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
-    if (failed(translateFunction(funcSignatureMap, funcOp, output))) {
+    if (failed(translateFunction(funcSignatures, funcOp, output))) {
       funcOp.emitError("failed to translate WasmFuncOp");
       return failure();
     }
