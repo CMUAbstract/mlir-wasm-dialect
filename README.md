@@ -48,7 +48,7 @@ standard formatter for `.wat` files, you can improve its readability by converti
 the .wat file to a `.wasm` binary and then back to .wat using wasm2wat. Be aware
 that this process might strip off symbol names.
 ```sh
-wasm2wat output.wat -o output.wasm
+wat2wasm --relocatable output.wat -o output.wasm
 wasm2wat output.wasm -o output-formatted.wat
 ```
 
@@ -58,6 +58,22 @@ from the wasm-opt binary we compiled):
 ```sh
 wasm-opt output.wat -O4 output-optimized.wasm
 ```
+
+### Running wasm file
+
+We first need to convert the `wat` file into a relocatable object and run
+`wasm-ld` to link it with stdlib.
+```sh
+wat2wasm --relocatable ./test/conv2d-out.wat -o ./test/conv2d-out.o
+$WASI_SDK_PATH/bin/wasm-ld --no-entry \
+--export-memory --export=main --export=malloc --export=free \
+-L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
+-o ./test/conv2d-out-linked.wasm ./test/conv2d-out.wasm
+wasm2wat ./test/conv2d-out-linked.wasm -o ./test/conv2d-out-linked.wat
+```
+
+
+
 
 ## Target
 For the MVP, we aim to support lowering `test/conv2d.mlir` to the wasm dialect.
