@@ -217,19 +217,26 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   output << "(block " << blockName << "\n";
   output << "(loop " << loopName << "\n";
   // preheader block
-  // assert that preheader does not have an operation except for the branch to
-  // the condition block
-  if (preheader->getOperations().size() != 1) {
-    loopOp.emitError("preheader block should have exactly one operation");
-    return failure();
+
+  auto &preheaderOps = preheader->getOperations();
+  auto preheaderOpIt = preheaderOps.begin();
+  auto preheaderOpEnd = preheaderOps.end();
+  --preheaderOpEnd; // Point to the last operation
+  for (; preheaderOpIt != preheaderOpEnd; ++preheaderOpIt) {
+    if (failed(translateOperation(&*preheaderOpIt, output))) {
+      preheaderOpIt->emitError(
+          "Failed to translate operation in condition block");
+      return failure();
+    }
+    output << "\n";
   }
-  auto &preheaderBranch = *preheader->getOperations().begin();
-  if (!isa<BranchOp>(preheaderBranch)) {
+
+  if (!isa<BranchOp>(preheaderOpEnd)) {
     loopOp.emitError(
-        "preheader block should have exactly one operation which is a branch");
+        "the last operation in the preheader block should be a branch");
     return failure();
   }
-  auto preheaderBranchOp = cast<BranchOp>(preheaderBranch);
+  auto preheaderBranchOp = cast<BranchOp>(preheaderOpEnd);
   if (preheaderBranchOp.getSuccessor() != conditionBlock) {
     loopOp.emitError("preheader block should have exactly one operation which "
                      "is a branch to the condition block");
