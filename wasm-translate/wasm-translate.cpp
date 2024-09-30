@@ -215,7 +215,6 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   std::string loopName = getUniqueLoopName();
 
   output << "(block " << blockName << "\n";
-  output << "(loop " << loopName << "\n";
   // preheader block
 
   auto &preheaderOps = preheader->getOperations();
@@ -246,6 +245,7 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   // condition block
   // translate all operations in the condition block
   // except for the last one, which should be a conditional branch
+  output << "(loop " << loopName << "\n";
   auto &conditionOps = conditionBlock->getOperations();
   if (conditionOps.empty()) {
     loopOp.emitError("Condition block is empty");
