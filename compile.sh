@@ -1,5 +1,7 @@
 #!/bin/bash
 
+WASI_SDK_PATH=/Users/byeongje/wasm/wasi-sdk-22.0
+
 # Default values for input and output
 OPTIMIZE=false
 
