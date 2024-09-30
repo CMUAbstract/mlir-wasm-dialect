@@ -31,6 +31,21 @@ cmake --build . --target check-wasm
 
 ## Run
 
+### Using Script
+
+We have a script to produce wasm/wat files from mlir files. 
+For example, run the following:
+```sh
+./compile.sh -i test/conv2d.mlir -o test/conv2d-out
+```
+It will produce four files:
+- WAT: `test/conv2d-out.wat`
+- Formatted WAT: `test/conv2d-out-formatted.wat`
+- Linked WASM: `test/conv2d-out-linked.wasm`
+- Linked Formatted WAT: `test/conv2d-out-linked-formatted.wat`
+
+### Manual Execution
+
 To convert an MLIR file (input.mlir) into the Wasm dialect, use the following
 command:
 ```sh
