@@ -172,6 +172,7 @@ LogicalResult computeAddress(Operation *op, Value memref, MemRefType memRefType,
     rewriter.create<MulOp>(loc, rewriter.getI32Type());
     rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(4));
     rewriter.create<MulOp>(loc, rewriter.getI32Type());
+    rewriter.create<AddOp>(loc, rewriter.getI32Type());
   }
   rewriter.create<AddOp>(loc, rewriter.getI32Type());
 
