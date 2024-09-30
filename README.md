@@ -64,14 +64,15 @@ wasm-opt output.wat -O4 output-optimized.wasm
 We first need to convert the `wat` file into a relocatable object and run
 `wasm-ld` to link it with stdlib.
 ```sh
-wat2wasm --relocatable ./test/conv2d-out.wat -o ./test/conv2d-out.o
+wat2wasm --relocatable ./test/output.wat -o ./test/output.o
 $WASI_SDK_PATH/bin/wasm-ld --no-entry \
 --export-memory --export=main --export=malloc --export=free \
 -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
--o ./test/conv2d-out-linked.wasm ./test/conv2d-out.wasm
-wasm2wat ./test/conv2d-out-linked.wasm -o ./test/conv2d-out-linked.wat
+-o ./test/output-linked.wasm ./test/output.o
 ```
 
+The generated output-linked.wasm can be executed using any wasm runtime. An
+example runtime can be found in the run-wasm directory.
 
 
 
