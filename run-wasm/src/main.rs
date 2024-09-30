@@ -1,21 +1,30 @@
 use aligned_array::{Aligned, A32, A8};
 use bytemuck;
-use std::time::Instant;
+use std::{path::PathBuf, time::Instant};
+use structopt::StructOpt;
 use wasmtime::{Engine, Instance, Module, Result, Store};
 
 mod mnist;
 
+#[derive(Debug, StructOpt)]
+struct Opt {
+    /// Activate debug mode
+    // short and long flags (-d, --debug) will be deduced from the field's name
+    #[structopt(short, long)]
+    input: PathBuf,
+
+    #[structopt(long)]
+    indirect_tensor_pointer: bool,
+    // TODO: Take input tensor as argument
+}
+
+// test code for wasm code that takes an input tensor and returns output tensor
+// (10xf32)
 fn main() -> Result<()> {
-    let is_my_compiler = true;
+    let opt = Opt::from_args();
     let engine = Engine::default();
 
-    let src = if is_my_compiler {
-        "../test/conv2d-out-linked.wat"
-    } else {
-        "../test/conv2d-out-linked-mlir.wat"
-    };
-
-    let module = Module::from_file(&engine, src)?;
+    let module = Module::from_file(&engine, opt.input)?;
     let mut store = Store::new(&engine, ());
     let instance = Instance::new(&mut store, &module, &[])?;
     let memory = instance
@@ -37,32 +46,7 @@ fn main() -> Result<()> {
         [tensor_ptr as usize..tensor_ptr as usize + mnist::INPUT_TENSOR_SIZE]
         .copy_from_slice(bytemuck::cast_slice(&scaled_data));
 
-    if is_my_compiler {
-        let main_fn = instance
-            .get_func(&mut store, "main")
-            .expect("main not found")
-            .typed::<i32, i32>(&store)?;
-
-        let now = Instant::now();
-        let output_ptr = main_fn.call(&mut store, tensor_ptr)?;
-        println!("output_ptr: {:?}\n", output_ptr);
-        let elapsed = now.elapsed();
-        println!("Elapsed: {:.2?}", elapsed);
-
-        let mut output_tensor_buffer: Aligned<A8, [u8; 40]> = Aligned([0u8; 40]);
-        memory.read(
-            &store,
-            output_ptr as usize,
-            output_tensor_buffer.as_mut_slice(),
-        )?;
-
-        for (i, score) in bytemuck::cast_slice::<u8, f32>(output_tensor_buffer.as_slice())
-            .iter()
-            .enumerate()
-        {
-            println!("{}: {}", i, score);
-        }
-    } else {
+    if opt.indirect_tensor_pointer {
         let main_fn = instance
             .get_func(&mut store, "_mlir_ciface_main")
             .expect("_mlir_ciface_main not found")
@@ -118,7 +102,7 @@ fn main() -> Result<()> {
         {
             println!("{}: {}", i, score);
         }
-        // expected output
+        // expected output for conv2d.mlir
 
         //    Elapsed: 28.46µs
         //    0: 8.469532
@@ -131,6 +115,31 @@ fn main() -> Result<()> {
         //    7: 0
         //    8: 0
         //    9: 0
+    } else {
+        let main_fn = instance
+            .get_func(&mut store, "main")
+            .expect("main not found")
+            .typed::<i32, i32>(&store)?;
+
+        let now = Instant::now();
+        let output_ptr = main_fn.call(&mut store, tensor_ptr)?;
+        println!("output_ptr: {:?}\n", output_ptr);
+        let elapsed = now.elapsed();
+        println!("Elapsed: {:.2?}", elapsed);
+
+        let mut output_tensor_buffer: Aligned<A8, [u8; 40]> = Aligned([0u8; 40]);
+        memory.read(
+            &store,
+            output_ptr as usize,
+            output_tensor_buffer.as_mut_slice(),
+        )?;
+
+        for (i, score) in bytemuck::cast_slice::<u8, f32>(output_tensor_buffer.as_slice())
+            .iter()
+            .enumerate()
+        {
+            println!("{}: {}", i, score);
+        }
     }
 
     Ok(())
