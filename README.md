@@ -120,6 +120,25 @@ mlir-opt test/conv2d-linalg.mlir \
 ```
 
 ## Baseline
+
+### Using Script
+We have a script to produce wasm/wat files from mlir files. 
+For example, run the following:
+```sh
+./compile-baseline.sh -i test/conv2d.mlir -o test/conv2d-baseline
+```
+It will produce four files:
+- LLVM MLIR: `./test/conv2d-baseline-llvm.mlir`
+- LLVM IR: `./test/conv2d-baseline.ll`
+- Object file: `./test/conv2d-baseline.o`
+- WAT: `./test/conv2d-baseline.wat`
+- Linked WASM: `./test/conv2d-baseline-linked.wasm`
+- Linked Formatted WAT: `./test/conv2d-baseline-linked.wat`
+
+
+### Manual Execution
+
+
 The baseline for comparison (`conv2d.wat`) is produced as follows:
 ```sh
 mlir-opt ./test/conv2d.mlir --convert-scf-to-cf --lower-affine --convert-arith-to-llvm="index-bitwidth=32" --convert-func-to-llvm="index-bitwidth=32" --memref-expand --expand-strided-metadata --finalize-memref-to-llvm="index-bitwidth=32" --convert-to-llvm --reconcile-unrealized-casts -o ./test/conv2d-llvm.mlir
