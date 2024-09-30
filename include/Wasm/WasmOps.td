@@ -92,7 +92,7 @@ def Wasm_IShrUOp : Wasm_IntegerBinaryOp<"shr_u">;
 def Wasm_IRotlOp : Wasm_IntegerBinaryOp<"rotl">;
 def Wasm_IRotrOp : Wasm_IntegerBinaryOp<"rotr">;
 
-def Wasm_ILtUOp : Wasm_IntegerBinaryOp<"lt_u">;
+def Wasm_ILeUOp : Wasm_IntegerBinaryOp<"le_u">;
 
 // floating-point unary operations
 
