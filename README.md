@@ -29,7 +29,7 @@ cmake -G Ninja ..  -DMLIR_DIR=$PREFIX/lib/cmake/mlir  -DLLVM_EXTERNAL_LIT=$BUILD
 cmake --build . --target check-wasm
 ```
 
-## Run
+## Compile
 
 ### Using Script
 
@@ -86,8 +86,13 @@ $WASI_SDK_PATH/bin/wasm-ld --no-entry \
 -o ./test/output-linked.wasm ./test/output.o
 ```
 
-The generated output-linked.wasm can be executed using any wasm runtime. An
-example runtime can be found in the run-wasm directory.
+The generated `output-linked.wasm` can be executed using any wasm runtime. An
+example runtime can be found in the run-wasm directory.  For example, run the
+following to see the execution result of the conv2d example.
+```sh
+cargo run -- -i ../test/conv2d-out-linked.wasm
+```
+Note that the input to the wasm file is hard-coded for now.
 
 
 
@@ -135,6 +140,11 @@ It will produce four files:
 - Linked WASM: `./test/conv2d-baseline-linked.wasm`
 - Linked Formatted WAT: `./test/conv2d-baseline-linked.wat`
 
+The baseline wat file can be executed with the following command
+```sh
+cargo run -- -i ../test/conv2d-baseline-linked.wasm --indirect-tensor-pointer
+```
+Note that the input to the wasm file is hard-coded for now.
 
 ### Manual Execution
 
