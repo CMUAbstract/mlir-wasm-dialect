@@ -99,10 +99,12 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.setInsertionPointToEnd(conditionBlock);
     auto castedUpperBound = typeConverter->materializeTargetConversion(
         rewriter, loc, localIndexType, upperBound);
-    rewriter.create<wasm::TempLocalGetOp>(loc, inductionLocal);
     rewriter.create<wasm::TempLocalGetOp>(loc, castedUpperBound);
+    rewriter.create<wasm::TempLocalGetOp>(loc, inductionLocal);
 
-    rewriter.create<wasm::ILtUOp>(loc, indexType);
+    // check if upper bound <= induction variable
+    // if true, branch to termination block
+    rewriter.create<wasm::ILeUOp>(loc, indexType);
     rewriter.create<wasm::CondBranchOp>(loc, terminationBlock, bodyStartBlock);
 
     // induction variable update block
