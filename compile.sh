@@ -47,7 +47,7 @@ OUTPUT_MLIR="${OUTPUT_BASE}.mlir"
 OUTPUT_WAT="${OUTPUT_BASE}.wat"
 OUTPUT_OBJ="${OUTPUT_BASE}.o"
 OUTPUT_FORMATTED_WAT="${OUTPUT_BASE}-formatted.wat"
-OUTPUT_OPTIMIZED_OBJ="${OUTPUT_BASE}-optimized.obj"
+OUTPUT_OPTIMIZED_OBJ="${OUTPUT_BASE}-optimized.o"
 OUTPUT_LINKED_WASM="${OUTPUT_BASE}-linked.wasm"
 OUTPUT_LINKED_FORMATTED_WAT="${OUTPUT_BASE}-linked-formatted.wat"
 
@@ -80,7 +80,7 @@ echo "Linking the object file with stdlib..."
 $WASI_SDK_PATH/bin/wasm-ld --no-entry \
 --export-memory --export=main --export=malloc --export=free \
 -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
--o "$OUTPUT_LINKED_WASM" "$FINAL_OBJ"
+ --no-gc-sections --no-merge-data-segments -o "$OUTPUT_LINKED_WASM" "$FINAL_OBJ"
 
 
 
