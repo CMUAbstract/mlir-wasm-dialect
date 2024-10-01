@@ -80,7 +80,7 @@ echo "Linking the object file with stdlib..."
 $WASI_SDK_PATH/bin/wasm-ld --no-entry \
 --export-memory --export=main --export=malloc --export=free \
 -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
- --no-gc-sections --no-merge-data-segments -o "$OUTPUT_LINKED_WASM" "$FINAL_OBJ"
+--no-gc-sections -o "$OUTPUT_LINKED_WASM" "$FINAL_OBJ"
 
 
 
