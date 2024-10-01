@@ -2,7 +2,7 @@ use aligned_array::{Aligned, A32, A8};
 use bytemuck;
 use std::{path::PathBuf, time::Instant};
 use structopt::StructOpt;
-use wasmtime::{Engine, Instance, Module, Result, Store};
+use wasmtime::{Engine, Linker, Module, Result, Store};
 
 mod mnist;
 
@@ -23,10 +23,18 @@ struct Opt {
 fn main() -> Result<()> {
     let opt = Opt::from_args();
     let engine = Engine::default();
+    let mut linker = Linker::new(&engine);
+    // these log functions are useful to debug wasm code
+    linker.func_wrap("env", "log_i32", |x: i32| {
+        println!("log_i32: {}", x);
+    })?;
+    linker.func_wrap("env", "log_f32", |x: f32| {
+        println!("log_f32: {}", x);
+    })?;
 
     let module = Module::from_file(&engine, opt.input)?;
     let mut store = Store::new(&engine, ());
-    let instance = Instance::new(&mut store, &module, &[])?;
+    let instance = linker.instantiate(&mut store, &module)?;
     let memory = instance
         .get_memory(&mut store, "memory")
         .expect("memory not found");
@@ -123,7 +131,6 @@ fn main() -> Result<()> {
 
         let now = Instant::now();
         let output_ptr = main_fn.call(&mut store, tensor_ptr)?;
-        println!("output_ptr: {:?}\n", output_ptr);
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
 
