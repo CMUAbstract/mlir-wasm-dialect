@@ -44,6 +44,10 @@ It will produce four files:
 - Linked WASM: `test/conv2d-out-linked.wasm`
 - Linked Formatted WAT: `test/conv2d-out-linked-formatted.wat`
 
+WARNING: There is an issue with linking, so we have to post-process the output
+wat file before executing it. See the comment in compile.sh
+
+
 ### Manual Execution
 
 To convert an MLIR file (input.mlir) into the Wasm dialect, use the following
@@ -86,13 +90,17 @@ $WASI_SDK_PATH/bin/wasm-ld --no-entry \
 -o ./test/output-linked.wasm ./test/output.o
 ```
 
+WARNING: There is an issue with linking, so we have link with `--no-gc-sections`
+and post-process the output wat file before executing it. 
+1. Remove all wasi imports and associated function definitions
+2. Replace the data section with the data section in the object file
+
 The generated `output-linked.wasm` can be executed using any wasm runtime. An
 example runtime can be found in the run-wasm directory.  For example, run the
 following to see the execution result of the conv2d example.
 ```sh
 cargo run -- -i ../test/conv2d-out-linked.wasm
 ```
-Note that the input to the wasm file is hard-coded for now.
 
 
 

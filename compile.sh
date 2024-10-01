@@ -81,6 +81,14 @@ $WASI_SDK_PATH/bin/wasm-ld --no-entry \
 --export-memory --export=main --export=malloc --export=free \
 -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
 --no-gc-sections -o "$OUTPUT_LINKED_WASM" "$FINAL_OBJ"
+# WARNING: `--no-gc-sections` is used to prevent the removal of data section
+# segments
+# We should find a way to keep the data section segments without this flag
+# With this flag, the output file contains unnecessary imports to wasi
+# functions, so we have to remove them manually
+# Also, the produced data section is merged and relocated somehow,
+# so we have to manually revert it to the original form,
+# by copying the data section from the original object file (FINAL_OBJ)
 
 
 
