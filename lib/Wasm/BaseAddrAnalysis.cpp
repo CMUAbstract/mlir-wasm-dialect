@@ -4,7 +4,8 @@
 namespace mlir::wasm {
 
 BaseAddrAnalysis::BaseAddrAnalysis(ModuleOp &moduleOp) {
-  unsigned baseAddr = 0;
+  unsigned baseAddr =
+      1024; // start from 1024. This seems to be the wasm convention
 
   moduleOp.walk([this, &baseAddr](memref::GlobalOp globalOp) {
     baseAddrMap[globalOp.getName().str()] = baseAddr;
