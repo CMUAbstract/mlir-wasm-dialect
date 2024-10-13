@@ -569,9 +569,6 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
   if (failed(translateFunctionSignatures(funcSignatures, output))) {
     return failure();
   }
-  output << R""""(
-  (import "env" "__linear_memory" (memory (;0;) 1))
-  )"""";
   if (addDebugFunctions) {
     output << R""""(
   (import "env" "log_i32" (func $log_i32 (type 0)))
@@ -602,6 +599,22 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
       return failure();
     }
   }
+
+  // FIXME: Do not hardcode the memory size
+  output << R""""(
+    (memory (;0;) 2)
+  )"""";
+
+  // export memory, main, malloc, and free
+  output << R""""(
+  (export "memory" (memory 0))
+  (export "main" (func $main))
+  (export "malloc" (func $malloc))
+  (export "free" (func $free))
+  )"""";
+
+  output << ")\n";
+  return success();
 
   output << ")\n";
   return success();
