@@ -18,7 +18,10 @@
 #include "mlir/InitAllTranslations.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "llvm/Support/ErrorOr.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
@@ -555,9 +558,17 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
   }
   output << R""""(
   (import "env" "__linear_memory" (memory (;0;) 1))
-  (import "env" "malloc" (func $malloc (type 0)))
-  (import "env" "free" (func $free (type 1)))
   )"""";
+
+  // define malloc and free
+  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
+      llvm::MemoryBuffer::getFile("wasm-translate/libc.wat");
+  if (std::error_code EC = FileOrErr.getError()) {
+    llvm::errs() << "Error opening file: " << EC.message() << "\n";
+    return failure();
+  }
+  std::unique_ptr<llvm::MemoryBuffer> &FileBuffer = FileOrErr.get();
+  output << FileBuffer->getBuffer();
 
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
     if (failed(translateFunction(funcSignatures, funcOp, output))) {
