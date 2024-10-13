@@ -4,6 +4,7 @@ WASI_SDK_PATH=/Users/byeongje/wasm/wasi-sdk-22.0
 
 # Default values for input and output
 OPTIMIZE=false
+ADD_DEBUG_FUNCTIONS=false
 
 # Function to display usage information
 usage() {
@@ -11,6 +12,7 @@ usage() {
     echo "  -i, --input      Input MLIR file"
     echo "  -o, --output     Output base name"
     echo "  --optimize       Perform WebAssembly optimization (optional)"
+    echo "  --add-debug-functions    Add debug functions to the output (optional)"
     exit 1
 }
 
@@ -27,6 +29,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --optimize)
             OPTIMIZE=true
+            shift
+            ;;
+        --add-debug-functions)
+            ADD_DEBUG_FUNCTIONS=true
             shift
             ;;
         *)
@@ -49,7 +55,7 @@ OUTPUT_OBJ="${OUTPUT_BASE}.o"
 OUTPUT_FORMATTED_WAT="${OUTPUT_BASE}-formatted.wat"
 OUTPUT_OPTIMIZED_OBJ="${OUTPUT_BASE}-optimized.o"
 OUTPUT_LINKED_WASM="${OUTPUT_BASE}-linked.wasm"
-OUTPUT_LINKED_FORMATTED_WAT="${OUTPUT_BASE}-linked-formatted.wat"
+OUTPUT_LINKED_WAT="${OUTPUT_BASE}-linked.wat"
 
 # Convert MLIR file to the Wasm dialect
 echo "Converting $INPUT_MLIR to Wasm dialect..."
@@ -57,7 +63,11 @@ build/bin/wasm-opt --convert-to-wasm --reconcile-unrealized-casts --wasm-finaliz
 
 # Translate the resulting MLIR file to a .wat file
 echo "Translating $OUTPUT_MLIR to .wat format..."
-build/bin/wasm-translate "$OUTPUT_MLIR" --mlir-to-wat -o "$OUTPUT_WAT"
+if $ADD_DEBUG_FUNCTIONS; then
+    build/bin/wasm-translate "$OUTPUT_MLIR" --mlir-to-wat --add-debug-functions -o "$OUTPUT_WAT"
+else
+    build/bin/wasm-translate "$OUTPUT_MLIR" --mlir-to-wat -o "$OUTPUT_WAT"
+fi
 
 # Improve .wat readability by converting to .wasm and back to .wat
 # This is for debugging purposes only
@@ -65,43 +75,42 @@ echo "Improving .wat readability by converting to .wasm and back to .wat..."
 wat2wasm --relocatable "$OUTPUT_WAT" -o "$OUTPUT_OBJ"
 wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_FORMATTED_WAT"
 
-# Conditionally optimize the WebAssembly output using wasm-opt from Binaryen
-if $OPTIMIZE; then
-    echo "Optimizing the WebAssembly output..."
-    wasm-opt "$OUTPUT_OBJ" -O4 -o "$OUTPUT_OPTIMIZED_OBJ"
-    FINAL_OBJ="$OUTPUT_OPTIMIZED_OBJ"
-else
-    echo "Skipping WebAssembly optimization..."
-    FINAL_OBJ="$OUTPUT_OBJ"
-fi
 
-# Link the object file with the standard library using wasm-ld
-echo "Linking the object file with stdlib..."
-$WASI_SDK_PATH/bin/wasm-ld --no-entry \
---export-memory --export=main --export=malloc --export=free \
--L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
---no-gc-sections -o "$OUTPUT_LINKED_WASM" "$FINAL_OBJ"
+# Link the object file
+echo "Linking the object file with stdlib using wasm-ld..."
+LINK_CMD="$WASI_SDK_PATH/bin/wasm-ld \
+--no-entry --export-memory --export=main \
+--export=malloc --export=free \
+--no-gc-sections --no-merge-data-segments \
+-o $OUTPUT_LINKED_WASM $OUTPUT_OBJ"
+if $OPTIMIZE; then
+    LINK_CMD="$LINK_CMD -O3"
+fi
+if $ADD_DEBUG_FUNCTIONS; then
+    LINK_CMD="$LINK_CMD --allow-undefined"
+fi
+eval $LINK_CMD
 # WARNING: `--no-gc-sections` is used to prevent the removal of data section
 # segments
 # We should find a way to keep the data section segments without this flag
-# With this flag, the output file contains unnecessary imports to wasi
-# functions, so we have to remove them manually
-# Also, the produced data section is merged and relocated somehow,
-# so we have to manually revert it to the original form,
-# by copying the data section from the original object file (FINAL_OBJ)
 
+
+# Conditionally optimize the WebAssembly output using wasm-opt from Binaryen
+if $OPTIMIZE; then
+    echo "Optimizing the WebAssembly output..."
+    wasm-opt "$OUTPUT_LINKED_WASM" -O4 -o "$OUTPUT_LINKED_WASM"
+else
+    echo "Skipping WebAssembly optimization..."
+fi
 
 
 # Produce formatted .wat file of the linked Wasm file
-echo "Formatting the linked Wasm file..."
-wasm2wat "$OUTPUT_LINKED_WASM" -o "$OUTPUT_LINKED_FORMATTED_WAT"
+echo "Print the wat file..."
+wasm2wat "$OUTPUT_LINKED_WASM" -o "$OUTPUT_LINKED_WAT"
 
 echo "Conversion completed! The output files are:"
 echo "  MLIR: $OUTPUT_MLIR"
 echo "  WAT: $OUTPUT_WAT"
 echo "  Formatted WAT: $OUTPUT_FORMATTED_WAT"
-if $OPTIMIZE; then
-    echo "  Optimized WASM: $OUTPUT_OPTIMIZED_WASM"
-fi
 echo "  Linked WASM: $OUTPUT_LINKED_WASM"
-echo "  Linked Formatted WAT: $OUTPUT_LINKED_FORMATTED_WAT"
+echo "  Linked Formatted WAT: $OUTPUT_LINKED_WAT"

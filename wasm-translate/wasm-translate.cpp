@@ -18,6 +18,7 @@
 #include "mlir/InitAllTranslations.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -505,7 +506,8 @@ llvm::LogicalResult translateFunction(func_signature_list_t &funcSignatures,
   return success();
 }
 
-func_signature_list_t initializeFunctionSignatureMap(ModuleOp &module) {
+func_signature_list_t initializeFunctionSignatureMap(ModuleOp &module,
+                                                     bool addDebugFunctions) {
   func_signature_list_t funcSignatures;
   // we always import malloc/free
   WasmFunctionSignature mallocSignature;
@@ -516,6 +518,15 @@ func_signature_list_t initializeFunctionSignatureMap(ModuleOp &module) {
   WasmFunctionSignature freeSignature;
   freeSignature.paramTypes.push_back("i32");
   funcSignatures.push_back(freeSignature);
+
+  // for debugging purposes, we include log functions: log_i32 and log_f32
+  // Note that log_i32 has the same signature as malloc
+  if (addDebugFunctions) {
+    WasmFunctionSignature logF32Signature;
+    logF32Signature.paramTypes.push_back("f32");
+    logF32Signature.resultTypes.push_back("f32");
+    funcSignatures.push_back(logF32Signature);
+  }
 
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
     WasmFunctionSignature funcSignature(funcOp);
@@ -548,8 +559,10 @@ LogicalResult translateFunctionSignatures(func_signature_list_t &funcSignatures,
   return success();
 }
 
-LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
-  func_signature_list_t funcSignatures = initializeFunctionSignatureMap(module);
+LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
+                                   bool addDebugFunctions) {
+  func_signature_list_t funcSignatures =
+      initializeFunctionSignatureMap(module, addDebugFunctions);
 
   output << "(module\n";
 
@@ -559,6 +572,12 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
   output << R""""(
   (import "env" "__linear_memory" (memory (;0;) 1))
   )"""";
+  if (addDebugFunctions) {
+    output << R""""(
+  (import "env" "log_i32" (func $log_i32 (type 0)))
+  (import "env" "log_f32" (func $log_f32 (type 2)))
+  )"""";
+  }
 
   // define malloc and free
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
@@ -591,13 +610,19 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output) {
 
 using namespace mlir;
 
+static llvm::cl::opt<bool>
+    addDebugFunctions("add-debug-functions",
+                      llvm::cl::desc("Add debug functions log_i32 and log_f32"),
+                      llvm::cl::init(false)); // Default value is false
+
 int main(int argc, char **argv) {
   registerAllTranslations();
 
   TranslateFromMLIRRegistration registration(
       "mlir-to-wat", "translate from mlir wasm dialect to wat",
       [](ModuleOp module, raw_ostream &output) {
-        return mlir::wasm::translateModuleToWat(module, output);
+        return mlir::wasm::translateModuleToWat(module, output,
+                                                addDebugFunctions);
       },
       [](DialectRegistry &registry) { registry.insert<wasm::WasmDialect>(); });
 

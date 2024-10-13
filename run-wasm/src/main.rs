@@ -25,11 +25,13 @@ fn main() -> Result<()> {
     let engine = Engine::default();
     let mut linker = Linker::new(&engine);
     // these log functions are useful to debug wasm code
-    linker.func_wrap("env", "log_i32", |x: i32| {
+    linker.func_wrap("env", "log_i32", |x: i32| -> i32 {
         println!("log_i32: {}", x);
+        x
     })?;
-    linker.func_wrap("env", "log_f32", |x: f32| {
+    linker.func_wrap("env", "log_f32", |x: f32| -> f32 {
         println!("log_f32: {}", x);
+        x
     })?;
 
     let module = Module::from_file(&engine, opt.input)?;
