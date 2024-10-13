@@ -1,6 +1,6 @@
   ;; unoptimized wat for malloc and free
-  (global (;0;) (mut i32) (i32.const 98496)) ;; stack pointer
-  (func $helper (type 0) (param i32) (result i32)
+  (global $__stack_pointer (mut i32) (i32.const 98496)) ;; stack pointer
+  (func $sbrk (type 0) (param i32) (result i32)
     local.get 0
     i32.eqz
     if  ;; label = @1
@@ -44,11 +44,11 @@
     local.set 1
     i32.const 0
     local.set 0
-    global.get 0
+    global.get $__stack_pointer
     i32.const 16
     i32.sub
     local.tee 11
-    global.set 0
+    global.set $__stack_pointer
     i32.const 32476
     i32.load
     local.tee 9
@@ -1038,7 +1038,7 @@
                               end
                             end
                             i32.const 0
-                            call $helper
+                            call $sbrk
                             local.tee 1
                             i32.const -1
                             i32.eq
@@ -1096,7 +1096,7 @@
                             end
                             local.get 1
                             local.get 8
-                            call $helper
+                            call $sbrk
                             local.tee 0
                             i32.ne
                             br_if 1 (;@11;)
@@ -1112,7 +1112,7 @@
                           i32.gt_u
                           br_if 4 (;@7;)
                           local.get 8
-                          call $helper
+                          call $sbrk
                           local.set 1
                           local.get 1
                           local.get 0
@@ -1156,7 +1156,7 @@
                             br 7 (;@5;)
                           end
                           local.get 1
-                          call $helper
+                          call $sbrk
                           i32.const -1
                           i32.ne
                           if  ;; label = @12
@@ -1171,7 +1171,7 @@
                           i32.const 0
                           local.get 8
                           i32.sub
-                          call $helper
+                          call $sbrk
                           drop
                           br 4 (;@7;)
                         end
@@ -1207,10 +1207,10 @@
               i32.gt_u
               br_if 1 (;@4;)
               local.get 2
-              call $helper
+              call $sbrk
               local.set 1
               i32.const 0
-              call $helper
+              call $sbrk
               local.set 0
               local.get 1
               i32.const -1
@@ -2864,7 +2864,7 @@
     local.get 11
     i32.const 16
     i32.add
-    global.set 0
+    global.set $__stack_pointer
     local.get 0)
   (func $free (type 1) (param i32)
     (local i32 i32 i32 i32 i32 i32 i32)
