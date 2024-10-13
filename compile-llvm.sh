@@ -65,18 +65,39 @@ mlir-translate "$OUTPUT_LLVM_MLIR" --mlir-to-llvmir -o "$OUTPUT_LL"
 
 # Step 3: Use `llc` to lower the LLVM IR (.ll) to an object file
 echo "Lowering $OUTPUT_LL to object file (.o)..."
-llc -O0 -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
+if $OPTIMIZE; then
+    llc -O3 -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
+else
+    llc -O0 -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
+fi
 
 # Step 4: Convert the object file to WAT format using `wasm2wat`
 echo "Converting $OUTPUT_OBJ to WAT format..."
 wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_WAT"
 
+
 # Step 5: Link the Wasm object file with the standard library using `wasm-ld`
 echo "Linking the object file with stdlib using wasm-ld..."
-$WASI_SDK_PATH/bin/wasm-ld --no-entry \
---export-memory --export=_mlir_ciface_main --export=malloc --export=free \
--L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
--o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
+if $OPTIMIZE; then
+    $WASI_SDK_PATH/bin/wasm-ld --no-entry \
+    --export-memory --export=_mlir_ciface_main --export=malloc --export=free \
+    -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
+    -O3 -o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
+else
+    $WASI_SDK_PATH/bin/wasm-ld --no-entry \
+    --export-memory --export=_mlir_ciface_main --export=malloc --export=free \
+    --global-base=0 -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
+    -o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
+fi
+
+if $OPTIMIZE; then
+    echo "Optimizing the WebAssembly output..."
+    wasm-opt "$OUTPUT_LINKED_WASM" -O4 -o "$OUTPUT_LINKED_WASM"
+else
+    echo "Skipping WebAssembly optimization..."
+fi
+
+
 
 # Step 6: Convert the linked Wasm file to WAT format
 echo "Converting the linked Wasm file to formatted WAT format..."
@@ -88,4 +109,4 @@ echo "  LLVM IR: $OUTPUT_LL"
 echo "  Object file: $OUTPUT_OBJ"
 echo "  WAT: $OUTPUT_WAT"
 echo "  Linked WASM: $OUTPUT_LINKED_WASM"
-echo "  Linked Formatted WAT: $OUTPUT_LINKED_WAT"
+echo "  Linked WAT: $OUTPUT_LINKED_WAT"
