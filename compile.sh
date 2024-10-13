@@ -51,11 +51,9 @@ fi
 # File paths based on output base name
 OUTPUT_MLIR="${OUTPUT_BASE}.mlir"
 OUTPUT_WAT="${OUTPUT_BASE}.wat"
-OUTPUT_OBJ="${OUTPUT_BASE}.o"
+OUTPUT_WASM="${OUTPUT_BASE}.wasm"
 OUTPUT_FORMATTED_WAT="${OUTPUT_BASE}-formatted.wat"
-OUTPUT_OPTIMIZED_OBJ="${OUTPUT_BASE}-optimized.o"
-OUTPUT_LINKED_WASM="${OUTPUT_BASE}-linked.wasm"
-OUTPUT_LINKED_WAT="${OUTPUT_BASE}-linked.wat"
+OUTPUT_OPTIMIZED_WAT="${OUTPUT_BASE}-optimized.wat"
 
 # Convert MLIR file to the Wasm dialect
 echo "Converting $INPUT_MLIR to Wasm dialect..."
@@ -72,45 +70,30 @@ fi
 # Improve .wat readability by converting to .wasm and back to .wat
 # This is for debugging purposes only
 echo "Improving .wat readability by converting to .wasm and back to .wat..."
-wat2wasm --relocatable "$OUTPUT_WAT" -o "$OUTPUT_OBJ"
-wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_FORMATTED_WAT"
+wat2wasm "$OUTPUT_WAT" -o "$OUTPUT_WASM"
+wasm2wat "$OUTPUT_WASM" -o "$OUTPUT_FORMATTED_WAT"
 
 
-# Link the object file
-echo "Linking the object file with stdlib using wasm-ld..."
-LINK_CMD="$WASI_SDK_PATH/bin/wasm-ld \
---no-entry --export-memory --export=main \
---export=malloc --export=free \
---no-gc-sections --no-merge-data-segments \
--o $OUTPUT_LINKED_WASM $OUTPUT_OBJ"
-if $OPTIMIZE; then
-    LINK_CMD="$LINK_CMD -O3"
-fi
-if $ADD_DEBUG_FUNCTIONS; then
-    LINK_CMD="$LINK_CMD --allow-undefined"
-fi
-eval $LINK_CMD
-# WARNING: `--no-gc-sections` is used to prevent the removal of data section
-# segments
-# We should find a way to keep the data section segments without this flag
 
 
 # Conditionally optimize the WebAssembly output using wasm-opt from Binaryen
 if $OPTIMIZE; then
     echo "Optimizing the WebAssembly output..."
-    wasm-opt "$OUTPUT_LINKED_WASM" -O4 -o "$OUTPUT_LINKED_WASM"
+    wasm-opt "$OUTPUT_WASM" -O4 -o "$OUTPUT_WASM"
+    # Produce formatted .wat file of the optimized wasm
+    echo "Print the wat file..."
+    wasm2wat "$OUTPUT_WASM" -o "$OUTPUT_OPTIMIZED_WAT"
 else
     echo "Skipping WebAssembly optimization..."
 fi
 
 
-# Produce formatted .wat file of the linked Wasm file
-echo "Print the wat file..."
-wasm2wat "$OUTPUT_LINKED_WASM" -o "$OUTPUT_LINKED_WAT"
 
 echo "Conversion completed! The output files are:"
 echo "  MLIR: $OUTPUT_MLIR"
 echo "  WAT: $OUTPUT_WAT"
 echo "  Formatted WAT: $OUTPUT_FORMATTED_WAT"
-echo "  Linked WASM: $OUTPUT_LINKED_WASM"
-echo "  Linked Formatted WAT: $OUTPUT_LINKED_WAT"
+echo "  WASM: $OUTPUT_WASM"
+if $OPTIMIZE; then
+echo "  Optimized WAT: $OUTPUT_OPTIMIZED_WAT"
+fi
