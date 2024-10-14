@@ -178,37 +178,30 @@ wasm2wat ./test/conv2d-linked.wasm -o ./test/conv2d-linked.wat
 
 For debugging wasm code, it is useful to use the `log_i32()` and `log_f32()`
 functions (defined in `run-wasm/src/main.rs`). 
-Import these functions in the WAT file by adding the following:
+These functions can be automatically added by giving `--add-debug-functions`
+flag to `compile.sh`.
+For debugging wasm files produced by LLVM backend,
+import these functions in the WAT file by adding the following:
 ```
-(type (;0;) (func (param i32)))
-(type (;1;) (func (param f32)))
+(type (;0;) (func (param i32) (result i32)))
+(type (;1;) (func (param f32) (result f32)))
 (import "env" "log_i32" (func $log_i32 (type 0)))
 (import "env" "log_f32" (func $log_f32 (type 1)))
 ```
 (Reuse function types if possible, and update indices appropriately.)
 
-Since Wasm does not provide an operation to read the top of the stack in a non-destructive way, we have to introduce new local variables.
-
-Add local variables of type `i32` and `f32` at the end of the function that
-needs inspection. 
-Suppose that their indices are n and n+1, respectively. 
-Then, we can add the following lines at points where we want to read the stack
+We can add the following lines at points where we want to read the stack
 value:
 
 If the top of the stack is of type `i32`:
 
-
 ```
-local.tee n
-local.get n
 call $log_i32
 ```
 
 If the top of the stack is of type `f32`:
 
 ```
-local.tee n+1
-local.get n+1
 call $log_f32
 ```
 
