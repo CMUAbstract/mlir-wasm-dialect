@@ -132,6 +132,11 @@ mlir-opt test/conv2d-linalg.mlir \
  -o test/conv2d.mlir
 ```
 
+NOTE: We do not support dynamically shaped memrefs at this time, so we should
+manually add shapes to the memref type of the input argument (as well as other
+dynamically shaped memref values inferred from the input argument). This can be
+done by replacing ? with concrete numbers.
+
 ## Baseline
 
 ### Using Script
