@@ -44,9 +44,6 @@ It will produce four files:
 - Linked WASM: `test/conv2d-out-linked.wasm`
 - Linked Formatted WAT: `test/conv2d-out-linked-formatted.wat`
 
-WARNING: There is an issue with linking, so we have to post-process the output
-wat file before executing it. See the comment in compile.sh
-
 
 ### Manual Execution
 
@@ -76,30 +73,6 @@ variables), you can use the `wasm-opt` tool from Binaryen (note: this is differe
 from the wasm-opt binary we compiled):
 ```sh
 wasm-opt output.wat -O4 output-optimized.wasm
-```
-
-### Running wasm file
-
-We first need to convert the `wat` file into a relocatable object and run
-`wasm-ld` to link it with stdlib.
-```sh
-wat2wasm --relocatable ./test/output.wat -o ./test/output.o
-$WASI_SDK_PATH/bin/wasm-ld --no-entry \
---export-memory --export=main --export=malloc --export=free \
--L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
--o ./test/output-linked.wasm ./test/output.o
-```
-
-WARNING: There is an issue with linking, so we have link with `--no-gc-sections`
-and post-process the output wat file before executing it. 
-1. Remove all wasi imports and associated function definitions
-2. Replace the data section with the data section in the object file
-
-The generated `output-linked.wasm` can be executed using any wasm runtime. An
-example runtime can be found in the run-wasm directory.  For example, run the
-following to see the execution result of the conv2d example.
-```sh
-cargo run -- -i ../test/conv2d-out-linked.wasm
 ```
 
 
@@ -145,13 +118,13 @@ For example, run the following:
 ```sh
 ./compile-baseline.sh -i test/conv2d.mlir -o test/conv2d-baseline
 ```
-It will produce four files:
+It will produce six files:
 - LLVM MLIR: `./test/conv2d-baseline-llvm.mlir`
 - LLVM IR: `./test/conv2d-baseline.ll`
 - Object file: `./test/conv2d-baseline.o`
-- WAT: `./test/conv2d-baseline.wat`
-- Linked WASM: `./test/conv2d-baseline-linked.wasm`
-- Linked Formatted WAT: `./test/conv2d-baseline-linked.wat`
+- WAT: `./test/conv2d-baseline-obj.wat`
+- Linked WASM: `./test/conv2d-baseline.wasm`
+- Linked Formatted WAT: `./test/conv2d-baseline.wat`
 
 The baseline wat file can be executed with the following command
 ```sh
@@ -179,7 +152,20 @@ $WASI_SDK_PATH/bin/wasm-ld --no-entry \
 wasm2wat ./test/conv2d-linked.wasm -o ./test/conv2d-linked.wat
 ```
 
-# Debugging
+## Testing
+We have a testing script to automate aot testing.
+Example usage:
+```
+./run_aot.sh test/lenet.mlir --type=llvm --optimize -- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
+```
+```
+./run_aot.sh test/lenet.mlir --type=mlir --optimize -- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
+```
+
+For testing on interpreter, see `interpreter/README.md`.
+
+
+## Debugging
 
 For debugging wasm code, it is useful to use the `log_i32()` and `log_f32()`
 functions (defined in `run-wasm/src/main.rs`). 
