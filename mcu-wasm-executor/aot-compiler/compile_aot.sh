@@ -41,13 +41,23 @@ fi
 OPTIMIZATION_FLAGS="$@"
 
 
+INPUT_DIR=$(dirname "$INPUT_FILE")
+OUTPUT_DIR=$(dirname "$OUTPUT_FILE")
+INPUT_DIR=$(cd "$INPUT_DIR" && pwd)
+OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
+INPUT_BASENAME=$(basename "$INPUT_FILE")
+OUTPUT_BASENAME=$(basename "$OUTPUT_FILE")
 
 # Copy the input wasm file into the container and perform the computation
-docker run --rm -v "$(pwd)":/host -w /host "$DOCKER_IMAGE" /bin/bash -c "
-    cp $INPUT_FILE /workspace/input.wasm &&
+docker run --rm \
+    -v "$INPUT_DIR":/input_dir \
+    -v "$OUTPUT_DIR":/output_dir \
+    -w /input_dir \
+    "$DOCKER_IMAGE" /bin/bash -c "
+    cp $INPUT_BASENAME /workspace/input.wasm &&
     /workspace/wasm-micro-runtime/wamr-compiler/build/wamrc \
     -o /workspace/output.aot $OPTIMIZATION_FLAGS /workspace/input.wasm \
-    && cp /workspace/output.aot /host/$OUTPUT_FILE"
+    && cp /workspace/output.aot /output_dir/$OUTPUT_FILE"
 
 # Step 3: Check if the result was copied successfully
 if [ -f "$OUTPUT_FILE" ]; then
