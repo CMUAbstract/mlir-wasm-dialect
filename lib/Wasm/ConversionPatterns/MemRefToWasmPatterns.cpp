@@ -168,7 +168,13 @@ LogicalResult computeAddress(Operation *op, Value memref, MemRefType memRefType,
         indices[i]);
     rewriter.create<TempLocalGetOp>(loc, castedIndex);
 
-    rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(strides[i]));
+    // compute stride
+    if (ShapedType::isDynamic(strides[i])) {
+      return rewriter.notifyMatchFailure(
+          op, "Cannot handle dynamic strides in the MemRefType.");
+    } else {
+      rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(strides[i]));
+    }
     rewriter.create<MulOp>(loc, rewriter.getI32Type());
     rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(4));
     rewriter.create<MulOp>(loc, rewriter.getI32Type());
