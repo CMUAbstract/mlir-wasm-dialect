@@ -1,5 +1,7 @@
 build/
 
+src/wasm.h
+
 *.aot
 *.wasm
 *.wat
