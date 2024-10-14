@@ -5,3 +5,11 @@ Since WAMR has limited support for Mac, we use docker to build and use the wamr
 compiler.
 The script currently uses the docker image `byeongjeecmu/wamr:latest`, which is
 compiled from the Dockerfile (taken from WAMR devcontainer).
+
+## Usage
+```
+.compile_aot.sh \
+-i input.wasm \
+-o output.aot -- \
+--opt-level=3 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
+```
