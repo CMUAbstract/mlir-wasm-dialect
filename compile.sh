@@ -55,6 +55,10 @@ OUTPUT_WASM="${OUTPUT_BASE}.wasm"
 OUTPUT_FORMATTED_WAT="${OUTPUT_BASE}-formatted.wat"
 OUTPUT_OPTIMIZED_WAT="${OUTPUT_BASE}-optimized.wat"
 
+# Build the project
+echo "Building the project..."
+cmake --build build
+
 # Convert MLIR file to the Wasm dialect
 echo "Converting $INPUT_MLIR to Wasm dialect..."
 build/bin/wasm-opt --convert-to-wasm --reconcile-unrealized-casts --wasm-finalize "$INPUT_MLIR" -o "$OUTPUT_MLIR"
