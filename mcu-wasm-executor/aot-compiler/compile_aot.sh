@@ -57,7 +57,7 @@ docker run --rm \
     cp $INPUT_BASENAME /workspace/input.wasm &&
     /workspace/wasm-micro-runtime/wamr-compiler/build/wamrc \
     -o /workspace/output.aot $OPTIMIZATION_FLAGS /workspace/input.wasm \
-    && cp /workspace/output.aot /output_dir/$OUTPUT_FILE"
+    && cp /workspace/output.aot /output_dir/$OUTPUT_BASENAME"
 
 # Step 3: Check if the result was copied successfully
 if [ -f "$OUTPUT_FILE" ]; then

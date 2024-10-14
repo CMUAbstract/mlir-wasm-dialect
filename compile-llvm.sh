@@ -46,9 +46,9 @@ fi
 OUTPUT_LLVM_MLIR="${OUTPUT_BASE}-llvm.mlir"
 OUTPUT_LL="${OUTPUT_BASE}.ll"
 OUTPUT_OBJ="${OUTPUT_BASE}.o"
-OUTPUT_WAT="${OUTPUT_BASE}.wat"
-OUTPUT_LINKED_WASM="${OUTPUT_BASE}-linked.wasm"
-OUTPUT_LINKED_WAT="${OUTPUT_BASE}-linked.wat"
+OUTPUT_WAT="${OUTPUT_BASE}-obj.wat"
+OUTPUT_LINKED_WASM="${OUTPUT_BASE}.wasm"
+OUTPUT_LINKED_WAT="${OUTPUT_BASE}.wat"
 
 # Step 1: Convert the MLIR file to LLVM dialect
 echo "Converting $INPUT_MLIR to LLVM dialect..."
