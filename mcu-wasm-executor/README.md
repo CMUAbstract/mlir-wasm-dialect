@@ -4,10 +4,16 @@ export ZEPHYRPROJECT=/Users/byeongje/zephyrproject
 
 source $ZEPHYRPROJECT/.venv/bin/activate
 
+xxd -i -n wasm_file filename src/wasm.h
+
 west build . -b apollo4p_blue_kxr_evb -p
 west flash
-
 ```
+
+`filename` can be a path to either an `wasm` or `aot` file.
+This does not support the `wat` file extenstion.
+
+
 # Monitoring Output
 This example uses `printf` to produce output, which can be read from the serial
 console.
@@ -15,7 +21,7 @@ I use `minicom` to monitor the console.
 First, install `minicom`:
 ```sh
 brew install minicom #  macOS
-sudo apt install minico # ubunbu
+sudo apt install minicom # ubunbu
 ```
 
 To find the console device, run:
