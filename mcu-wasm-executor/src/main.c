@@ -17,11 +17,6 @@
 #define CONFIG_APP_HEAP_SIZE 256000
 #define CONFIG_GLOBAL_HEAP_BUF_SIZE WASM_GLOBAL_HEAP_SIZE
 
-#define EXECUTION_TYPE 0
-// 0 : llvm (use main_ciface)
-// 1 : mlir (use main)
-// 2 : tflm (use main_argc_argv)
-
 void gpio_toggle(wasm_exec_env_t exec_env) {
   am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
 }
@@ -65,7 +60,9 @@ static void *app_instance_main(wasm_module_inst_t module_inst) {
     return NULL;
   }
 
-  if (EXECUTION_TYPE == 0 || EXECUTION_TYPE == 1) {
+  printf("WASM_EXECUTION_TYPE: %d\n", WASM_EXECUTION_TYPE);
+
+  if (WASM_EXECUTION_TYPE == 0 || WASM_EXECUTION_TYPE == 1) {
     wasm_function_inst_t malloc_fn =
         wasm_runtime_lookup_function(module_inst, "malloc");
     if (!malloc_fn) {
@@ -109,7 +106,7 @@ static void *app_instance_main(wasm_module_inst_t module_inst) {
     wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
     uint32_t output_ptr = argv[0];
 
-    if (EXECUTION_TYPE == 0) {
+    if (WASM_EXECUTION_TYPE == 0) {
       // load main
       wasm_function_inst_t main_func =
           wasm_runtime_lookup_function(module_inst, "_mlir_ciface_main");
@@ -144,7 +141,7 @@ static void *app_instance_main(wasm_module_inst_t module_inst) {
         printk("%d: %f\n", i, output_tensor_native_ptr[i]);
       }
 
-    } else if (EXECUTION_TYPE == 1) {
+    } else if (WASM_EXECUTION_TYPE == 1) {
       // load main
       wasm_function_inst_t main_func =
           wasm_runtime_lookup_function(module_inst, "main");
@@ -173,7 +170,7 @@ static void *app_instance_main(wasm_module_inst_t module_inst) {
         printk("%d: %f\n", i, output_tensor_native_ptr[i]);
       }
     }
-  } else if (EXECUTION_TYPE == 2) {
+  } else if (WASM_EXECUTION_TYPE == 2) {
     wasm_function_inst_t main_func =
         wasm_runtime_lookup_function(module_inst, "__main_argc_argv");
     if (!main_func) {
