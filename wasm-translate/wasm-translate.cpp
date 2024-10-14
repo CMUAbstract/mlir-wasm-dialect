@@ -532,7 +532,7 @@ func_signature_list_t initializeFunctionSignatureMap(ModuleOp &module,
   // for debugging purposes, we include log functions: log_i32 and log_f32
   // Note that log_i32 has the same signature as malloc
   if (addDebugFunctions) {
-    WasmFunctionSignature logF32Signature;
+    WasmFunctionSignature logF32Signature; // type 4
     logF32Signature.paramTypes.push_back("f32");
     logF32Signature.resultTypes.push_back("f32");
     funcSignatures.push_back(logF32Signature);
@@ -582,7 +582,7 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
   if (addDebugFunctions) {
     output << R""""(
   (import "env" "log_i32" (func $log_i32 (type 0)))
-  (import "env" "log_f32" (func $log_f32 (type 2)))
+  (import "env" "log_f32" (func $log_f32 (type 4)))
   )"""";
   }
 
