@@ -11,7 +11,7 @@ fi
 
 # Initialize variables
 MLIR_FILE=""
-COMPILATION_TYPE="mlir"  # Default type is mlir
+COMPILER="mlir"  # Default type is mlir
 OPTIMIZE_FLAG=false
 USE_AOT=true  # Default is to use AOT
 AOT_FLAGS=""
@@ -20,8 +20,8 @@ EXECUTION_TYPE=0
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
-        --type=*)
-            COMPILATION_TYPE="${1#*=}"
+        --compiler=*)
+            COMPILER="${1#*=}"
             shift
             ;;
         --optimize)
@@ -45,7 +45,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Check for valid values of --type
-if [[ "$COMPILATION_TYPE" != "mlir" && "$COMPILATION_TYPE" != "llvm" ]]; then
+if [[ "$COMPILER" != "mlir" && "$COMPILER" != "llvm" ]]; then
     echo "Error: --type must be either 'mlir' or 'llvm'."
     exit 1
 fi
@@ -65,7 +65,7 @@ TEMP_DIR=$(mktemp -d "./tmp_${BASENAME}_$(date +%Y%m%d_%H%M%S)")
 echo "Temporary directory created: $TEMP_DIR"
 
 # Step 2: Compile input file to Wasm (depending on the type)
-if [ "$COMPILATION_TYPE" = "mlir" ]; then
+if [ "$COMPILER" = "mlir" ]; then
     COMPILE_CMD="./compile.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME"
 else
     COMPILE_CMD="./compile-llvm.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME"
@@ -76,7 +76,7 @@ if [ "$OPTIMIZE_FLAG" = true ]; then
     COMPILE_CMD="$COMPILE_CMD --optimize"
 fi
 
-echo "Compiling $COMPILATION_TYPE to Wasm with command: $COMPILE_CMD"
+echo "Compiling $COMPILER to Wasm with command: $COMPILE_CMD"
 eval "$COMPILE_CMD"
 
 # Check if the Wasm file was created successfully
@@ -106,7 +106,7 @@ else
 fi
 
 # Set the execution type for LLVM or MLIR
-if [ "$COMPILATION_TYPE" = "llvm" ]; then
+if [ "$COMPILER" = "llvm" ]; then
     EXECUTION_TYPE=1
 fi
 
