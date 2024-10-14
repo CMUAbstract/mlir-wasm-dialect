@@ -156,10 +156,7 @@ wasm2wat ./test/conv2d-linked.wasm -o ./test/conv2d-linked.wat
 We have a testing script to automate aot testing.
 Example usage:
 ```
-./run_aot.sh test/lenet.mlir --type=llvm --optimize -- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
-```
-```
-./run_aot.sh test/lenet.mlir --type=mlir --optimize -- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
+./run.sh test/lenet.mlir --use-aot=true --type=llvm --optimize -- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
 ```
 
 For testing on interpreter, see `interpreter/README.md`.
