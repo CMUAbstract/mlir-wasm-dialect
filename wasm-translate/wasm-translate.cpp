@@ -510,14 +510,24 @@ func_signature_list_t initializeFunctionSignatureMap(ModuleOp &module,
                                                      bool addDebugFunctions) {
   func_signature_list_t funcSignatures;
   // we always import malloc/free
-  WasmFunctionSignature mallocSignature;
+  WasmFunctionSignature mallocSignature; // type 0
   mallocSignature.paramTypes.push_back("i32");
   mallocSignature.resultTypes.push_back("i32");
   funcSignatures.push_back(mallocSignature);
 
-  WasmFunctionSignature freeSignature;
+  WasmFunctionSignature freeSignature; // type 1
   freeSignature.paramTypes.push_back("i32");
   funcSignatures.push_back(freeSignature);
+
+  WasmFunctionSignature prependAllocSignature; // type 2
+  prependAllocSignature.paramTypes.push_back("i32");
+  prependAllocSignature.paramTypes.push_back("i32");
+  prependAllocSignature.paramTypes.push_back("i32");
+  prependAllocSignature.resultTypes.push_back("i32");
+  funcSignatures.push_back(prependAllocSignature);
+
+  WasmFunctionSignature abortSignature; // type 3
+  funcSignatures.push_back(abortSignature);
 
   // for debugging purposes, we include log functions: log_i32 and log_f32
   // Note that log_i32 has the same signature as malloc
@@ -602,7 +612,7 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
 
   // FIXME: Do not hardcode the memory size
   output << R""""(
-    (memory (;0;) 2)
+    (memory (;0;) 3)
   )"""";
 
   // export memory, main, malloc, and free
