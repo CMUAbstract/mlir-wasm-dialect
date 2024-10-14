@@ -25,6 +25,8 @@ set (WAMR_BUILD_GLOBAL_HEAP_SIZE 1638912)
 
 
 
+add_compile_definitions(WASM_EXECUTION_TYPE=${EXECUTION_TYPE})
+
 include (${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 include (${WAMR_ROOT_DIR}/core/shared/platform/common/math/platform_api_math.cmake)
 
