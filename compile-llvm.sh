@@ -82,7 +82,7 @@ if $OPTIMIZE; then
     $WASI_SDK_PATH/bin/wasm-ld --no-entry \
     --export-memory --export=_mlir_ciface_main --export=malloc --export=free \
     -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
-    -O3 -o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
+    -O3 --lto-CGO3 --lto-O3 -o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
 else
     $WASI_SDK_PATH/bin/wasm-ld --no-entry \
     --export-memory --export=_mlir_ciface_main --export=malloc --export=free \
