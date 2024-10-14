@@ -297,6 +297,22 @@ struct ExpandShapeLowering : public OpConversionPattern<memref::ExpandShapeOp> {
   }
 };
 
+struct CollapseShapeLowering
+    : public OpConversionPattern<memref::CollapseShapeOp> {
+  using OpConversionPattern<memref::CollapseShapeOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::CollapseShapeOp collapseShapeOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+        collapseShapeOp, collapseShapeOp.getResult().getType(),
+        collapseShapeOp.getOperand());
+
+    return success();
+  }
+};
+
 // TODO: pre-processing
 // - compute the offset of each data segment
 // - add (import "malloc")
@@ -307,8 +323,8 @@ void populateMemRefToWasmPatterns(TypeConverter &typeConverter,
   patterns.add<GlobalOpLowering, GlobalGetOpLowering>(
       typeConverter, patterns.getContext(), analysis);
   patterns.add<AllocOpLowering, DeallocOpLowering, StoreOpLowering,
-               LoadOpLowering, ExpandShapeLowering>(typeConverter,
-                                                    patterns.getContext());
+               LoadOpLowering, ExpandShapeLowering, CollapseShapeLowering>(
+      typeConverter, patterns.getContext());
 }
 
 } // namespace mlir::wasm
