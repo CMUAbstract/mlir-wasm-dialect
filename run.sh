@@ -14,7 +14,7 @@ fi
 # Initialize variables
 MLIR_FILE=""
 COMPILER="mlir"  # Default type is mlir
-OPTIMIZE_FLAG=false
+BINARYEN_OPT_FLAGS=""
 USE_AOT=true  # Default is to use AOT
 AOT_FLAGS=""
 EXECUTION_TYPE=0
@@ -26,8 +26,8 @@ while [[ "$#" -gt 0 ]]; do
             COMPILER="${1#*=}"
             shift
             ;;
-        --optimize)
-            OPTIMIZE_FLAG=true
+        --binaryen-opt-flags=*)
+            BINARYEN_OPT_FLAGS="${1#*=}"
             shift
             ;;
         --use-aot=*)
@@ -46,6 +46,7 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
+echo "BIN FLAGS: $BINARYEN_OPT_FLAGS"
 # Check for valid values of --type
 if [[ "$COMPILER" != "mlir" && "$COMPILER" != "llvm" ]]; then
     echo "Error: --type must be either 'mlir' or 'llvm'."
@@ -70,14 +71,9 @@ echo $CMDARGS > $TEMP_DIR/cmdargs
 
 # Step 2: Compile input file to Wasm (depending on the type)
 if [ "$COMPILER" = "mlir" ]; then
-    COMPILE_CMD="./compile.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME"
+    COMPILE_CMD="./compile.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
 else
-    COMPILE_CMD="./compile-llvm.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME"
-fi
-
-# Add optimization flag if true
-if [ "$OPTIMIZE_FLAG" = true ]; then
-    COMPILE_CMD="$COMPILE_CMD --optimize"
+    COMPILE_CMD="./compile-llvm.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
 fi
 
 echo "Compiling $COMPILER to Wasm with command: $COMPILE_CMD"

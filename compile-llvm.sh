@@ -3,18 +3,17 @@
 WASI_SDK_PATH=/Users/byeongje/wasm/wasi-sdk-22.0
 
 # Default values for input and output
-OPTIMIZE=false
+BINARYEN_OPT_FLAGS=""
 
 # Function to display usage information
 usage() {
-    echo "Usage: $0 -i <input_mlir_file> -o <output_base_name> [--optimize]"
+    echo "Usage: $0 -i <input_mlir_file> -o <output_base_name> [--binaryen-opt-flags]"
     echo "  -i, --input      Input MLIR file"
     echo "  -o, --output     Output base name"
-    echo "  --optimize       Perform WebAssembly optimization (optional)"
+    echo "  --binaryen-opt-flags       Perform WebAssembly optimization (optional)"
     exit 1
 }
 
-# Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -i|--input)
@@ -25,13 +24,14 @@ while [[ "$#" -gt 0 ]]; do
             OUTPUT_BASE="$2"
             shift 2
             ;;
-        --optimize)
-            OPTIMIZE=true
-            shift
+        --binaryen-opt-flags=*)
+            BINARYEN_OPT_FLAGS="${1#*=}"
+            shift 
             ;;
         *)
             echo "Unknown parameter: $1"
             usage
+            exit 1
             ;;
     esac
 done
@@ -65,11 +65,8 @@ mlir-translate "$OUTPUT_LLVM_MLIR" --mlir-to-llvmir -o "$OUTPUT_LL"
 
 # Step 3: Use `llc` to lower the LLVM IR (.ll) to an object file
 echo "Lowering $OUTPUT_LL to object file (.o)..."
-if $OPTIMIZE; then
-    llc -O3 -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
-else
-    llc -O0 -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
-fi
+# We always use -O3 optimization level
+llc -O3 -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
 
 # Step 4: Convert the object file to WAT format using `wasm2wat`
 echo "Converting $OUTPUT_OBJ to WAT format..."
@@ -78,21 +75,15 @@ wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_WAT"
 
 # Step 5: Link the Wasm object file with the standard library using `wasm-ld`
 echo "Linking the object file with stdlib using wasm-ld..."
-if $OPTIMIZE; then
-    $WASI_SDK_PATH/bin/wasm-ld --no-entry \
-    --export-memory --export=_mlir_ciface_main --export=malloc --export=free \
-    -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
-    -O3 --lto-CGO3 --lto-O3 -o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
-else
-    $WASI_SDK_PATH/bin/wasm-ld --no-entry \
-    --export-memory --export=_mlir_ciface_main --export=malloc --export=free \
-    --global-base=0 -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
-    -o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
-fi
+# We always use -O3 optimization level
+$WASI_SDK_PATH/bin/wasm-ld --no-entry \
+--export-memory --export=_mlir_ciface_main --export=malloc --export=free \
+-L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
+-O3 --lto-CGO3 --lto-O3 -o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
 
-if $OPTIMIZE; then
+if $BINARYEN_OPT_FLAGS; then
     echo "Optimizing the WebAssembly output..."
-    wasm-opt "$OUTPUT_LINKED_WASM" -O4 -o "$OUTPUT_LINKED_WASM"
+    wasm-opt "$OUTPUT_LINKED_WASM" -o "$OUTPUT_LINKED_WASM" "$BINARYEN_OPT_FLAGS"
 else
     echo "Skipping WebAssembly optimization..."
 fi

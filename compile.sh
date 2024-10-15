@@ -3,15 +3,15 @@
 WASI_SDK_PATH=/Users/byeongje/wasm/wasi-sdk-22.0
 
 # Default values for input and output
-OPTIMIZE=false
 ADD_DEBUG_FUNCTIONS=false
+BINARYEN_OPT_FLAGS=""
 
 # Function to display usage information
 usage() {
-    echo "Usage: $0 -i <input_mlir_file> -o <output_base_name> [--optimize]"
+    echo "Usage: $0 -i <input_mlir_file> -o <output_base_name> [--binaryen-opt-flags]"
     echo "  -i, --input      Input MLIR file"
     echo "  -o, --output     Output base name"
-    echo "  --optimize       Perform WebAssembly optimization (optional)"
+    echo "  --binaryen-opt-flags       Perform WebAssembly optimization (optional)"
     echo "  --add-debug-functions    Add debug functions to the output (optional)"
     exit 1
 }
@@ -27,9 +27,9 @@ while [[ "$#" -gt 0 ]]; do
             OUTPUT_BASE="$2"
             shift 2
             ;;
-        --optimize)
-            OPTIMIZE=true
-            shift
+        --binaryen-opt-flags=*)
+            BINARYEN_OPT_FLAGS="${1#*=}"
+            shift 
             ;;
         --add-debug-functions)
             ADD_DEBUG_FUNCTIONS=true
@@ -80,10 +80,10 @@ wasm2wat "$OUTPUT_WASM" -o "$OUTPUT_FORMATTED_WAT"
 
 
 
-# Conditionally optimize the WebAssembly output using wasm-opt from Binaryen
-if $OPTIMIZE; then
+# Conditionally binaryen-opt-flags the WebAssembly output using wasm-opt from Binaryen
+if $BINARYEN_OPT_FLAGS; then
     echo "Optimizing the WebAssembly output..."
-    wasm-opt "$OUTPUT_WASM" -O4 -o "$OUTPUT_WASM"
+    wasm-opt "$OUTPUT_WASM" -O4 -o "$OUTPUT_WASM" "$BINARYEN_OPT_FLAGS"
     # Produce formatted .wat file of the optimized wasm
     echo "Print the wat file..."
     wasm2wat "$OUTPUT_WASM" -o "$OUTPUT_OPTIMIZED_WAT"
@@ -98,6 +98,6 @@ echo "  MLIR: $OUTPUT_MLIR"
 echo "  WAT: $OUTPUT_WAT"
 echo "  Formatted WAT: $OUTPUT_FORMATTED_WAT"
 echo "  WASM: $OUTPUT_WASM"
-if $OPTIMIZE; then
+if $BINARYEN_OPT_FLAGS; then
 echo "  Optimized WAT: $OUTPUT_OPTIMIZED_WAT"
 fi
