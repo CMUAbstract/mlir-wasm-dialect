@@ -34,7 +34,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --)
             shift
-            AOT_FLAGS="$1"
+            AOT_FLAGS="$@"
             break
             ;;
         *)
