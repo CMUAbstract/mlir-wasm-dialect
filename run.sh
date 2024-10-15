@@ -3,6 +3,8 @@
 # Configure this
 ZEPHYRPROJECT="/Users/byeongje/zephyrproject/zephyr"
 
+CMDARGS="$@"
+
 # Check if the minimum number of arguments is provided
 if [ "$#" -lt 2 ]; then
     echo "Usage: $0 <mlir_file> --type=[mlir|llvm] [--optimize] [--use-aot=<true|false>] -- <aot_flags>"
@@ -63,6 +65,8 @@ BASENAME=$(basename "$MLIR_FILE" .mlir)
 TEMP_DIR=$(mktemp -d "./tmp_${BASENAME}_$(date +%Y%m%d_%H%M%S)")
 
 echo "Temporary directory created: $TEMP_DIR"
+
+echo $CMDARGS > $TEMP_DIR/cmdargs
 
 # Step 2: Compile input file to Wasm (depending on the type)
 if [ "$COMPILER" = "mlir" ]; then
