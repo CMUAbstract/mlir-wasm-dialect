@@ -109,6 +109,34 @@ static void *app_instance_main(wasm_module_inst_t module_inst) {
     if (WASM_EXECUTION_TYPE == 0) {
       // load main
       wasm_function_inst_t main_func =
+          wasm_runtime_lookup_function(module_inst, "main");
+      if (!main_func) {
+        printk("Fail to find function: main\n");
+        return NULL;
+      }
+      // setup arguments
+      argv[0] = input_tensor_ptr;
+
+      // call main
+      am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
+      if (!wasm_runtime_call_wasm(exec_env, main_func, 1, argv)) {
+        printk("call main fail\n");
+      }
+      am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
+
+      if ((exception = wasm_runtime_get_exception(module_inst)))
+        printk("%s\n", exception);
+
+      // read and print output
+      output_tensor_native_ptr =
+          wasm_runtime_addr_app_to_native(module_inst, argv[0]);
+
+      for (int i = 0; i < 10; i++) {
+        printk("%d: %f\n", i, output_tensor_native_ptr[i]);
+      }
+    } else if (WASM_EXECUTION_TYPE == 1) {
+      // load main
+      wasm_function_inst_t main_func =
           wasm_runtime_lookup_function(module_inst, "_mlir_ciface_main");
       if (!main_func) {
         printk("Fail to find function: _mlir_ciface_main\n");
@@ -136,35 +164,6 @@ static void *app_instance_main(wasm_module_inst_t module_inst) {
       memcpy(&output, output_native_ptr, sizeof(Output));
       output_tensor_native_ptr =
           wasm_runtime_addr_app_to_native(module_inst, output.data);
-
-      for (int i = 0; i < 10; i++) {
-        printk("%d: %f\n", i, output_tensor_native_ptr[i]);
-      }
-
-    } else if (WASM_EXECUTION_TYPE == 1) {
-      // load main
-      wasm_function_inst_t main_func =
-          wasm_runtime_lookup_function(module_inst, "main");
-      if (!main_func) {
-        printk("Fail to find function: main\n");
-        return NULL;
-      }
-      // setup arguments
-      argv[0] = input_tensor_ptr;
-
-      // call main
-      am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
-      if (!wasm_runtime_call_wasm(exec_env, main_func, 1, argv)) {
-        printk("call main fail\n");
-      }
-      am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
-
-      if ((exception = wasm_runtime_get_exception(module_inst)))
-        printk("%s\n", exception);
-
-      // read and print output
-      output_tensor_native_ptr =
-          wasm_runtime_addr_app_to_native(module_inst, argv[0]);
 
       for (int i = 0; i < 10; i++) {
         printk("%d: %f\n", i, output_tensor_native_ptr[i]);
