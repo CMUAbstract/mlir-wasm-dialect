@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configure this
-ZEPHYRPROJECT="/Users/byeongje/zephyrproject/zephyr"
+ZEPHYRPROJECT="/Users/byeongje/zephyrproject"
 
 CMDARGS="$@"
 
