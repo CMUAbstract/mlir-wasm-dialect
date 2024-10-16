@@ -46,7 +46,6 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-echo "BIN FLAGS: $BINARYEN_OPT_FLAGS"
 # Check for valid values of --type
 if [[ "$COMPILER" != "mlir" && "$COMPILER" != "llvm" ]]; then
     echo "Error: --type must be either 'mlir' or 'llvm'."
