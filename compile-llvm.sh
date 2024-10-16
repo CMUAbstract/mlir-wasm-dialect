@@ -81,9 +81,9 @@ $WASI_SDK_PATH/bin/wasm-ld --no-entry \
 -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
 -O3 --lto-CGO3 --lto-O3 -o "$OUTPUT_LINKED_WASM" "$OUTPUT_OBJ"
 
-if $BINARYEN_OPT_FLAGS; then
+if [[ -n "$BINARYEN_OPT_FLAGS" ]]; then
     echo "Optimizing the WebAssembly output..."
-    wasm-opt "$OUTPUT_LINKED_WASM" -o "$OUTPUT_LINKED_WASM" "$BINARYEN_OPT_FLAGS"
+    wasm-opt "$OUTPUT_LINKED_WASM" "$BINARYEN_OPT_FLAGS" -o "$OUTPUT_LINKED_WASM"
 else
     echo "Skipping WebAssembly optimization..."
 fi
