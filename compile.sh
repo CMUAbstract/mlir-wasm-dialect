@@ -81,9 +81,9 @@ wasm2wat "$OUTPUT_WASM" -o "$OUTPUT_FORMATTED_WAT"
 
 
 # Conditionally binaryen-opt-flags the WebAssembly output using wasm-opt from Binaryen
-if $BINARYEN_OPT_FLAGS; then
+if [[ -n "$BINARYEN_OPT_FLAGS" ]]; then
     echo "Optimizing the WebAssembly output..."
-    wasm-opt "$OUTPUT_WASM" -O4 -o "$OUTPUT_WASM" "$BINARYEN_OPT_FLAGS"
+    wasm-opt "$OUTPUT_WASM" "$BINARYEN_OPT_FLAGS" -o "$OUTPUT_WASM"
     # Produce formatted .wat file of the optimized wasm
     echo "Print the wat file..."
     wasm2wat "$OUTPUT_WASM" -o "$OUTPUT_OPTIMIZED_WAT"
