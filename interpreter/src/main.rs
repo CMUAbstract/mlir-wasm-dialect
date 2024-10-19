@@ -1,8 +1,9 @@
 use aligned_array::{Aligned, A32, A8};
 use bytemuck;
+use std::fs;
 use std::{path::PathBuf, time::Instant};
 use structopt::StructOpt;
-use wasmtime::{Engine, Linker, Module, Result, Store};
+use wasmtime::{Config, Engine, Linker, Module, OptLevel, Result, Store};
 
 mod mnist;
 
@@ -16,13 +17,33 @@ struct Opt {
     #[structopt(long)]
     indirect_tensor_pointer: bool,
     // TODO: Take input tensor as argument
+    #[structopt(long)]
+    aot: bool,
+    #[structopt(long)]
+    optimize: bool,
 }
 
 // test code for wasm code that takes an input tensor and returns output tensor
 // (10xf32)
 fn main() -> Result<()> {
     let opt = Opt::from_args();
-    let engine = Engine::default();
+
+    let mut config = Config::new();
+    config.cranelift_opt_level(if opt.optimize {
+        OptLevel::Speed
+    } else {
+        OptLevel::None
+    });
+
+    let engine = Engine::new(&config)?;
+    let wasm_bytes = fs::read(opt.input)?;
+
+    let module = if opt.aot {
+        let compiled_wasm_bytes = engine.precompile_module(&wasm_bytes)?;
+        unsafe { Module::deserialize(&engine, &compiled_wasm_bytes)? }
+    } else {
+        Module::from_binary(&engine, &wasm_bytes)?
+    };
     let mut linker = Linker::new(&engine);
     // these log functions are useful to debug wasm code
     linker.func_wrap("env", "log_i32", |x: i32| -> i32 {
@@ -34,7 +55,6 @@ fn main() -> Result<()> {
         x
     })?;
 
-    let module = Module::from_file(&engine, opt.input)?;
     let mut store = Store::new(&engine, ());
     let instance = linker.instantiate(&mut store, &module)?;
     let memory = instance
