@@ -98,6 +98,6 @@ echo "  MLIR: $OUTPUT_MLIR"
 echo "  WAT: $OUTPUT_WAT"
 echo "  Formatted WAT: $OUTPUT_FORMATTED_WAT"
 echo "  WASM: $OUTPUT_WASM"
-if $BINARYEN_OPT_FLAGS; then
+if [[ -n "$BINARYEN_OPT_FLAGS" ]]; then
 echo "  Optimized WAT: $OUTPUT_OPTIMIZED_WAT"
 fi
