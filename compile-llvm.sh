@@ -3,6 +3,7 @@
 WASI_SDK_PATH=/Users/byeongje/wasm/wasi-sdk-22.0
 
 # Default values for input and output
+LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
 
 # Function to display usage information
@@ -10,6 +11,7 @@ usage() {
     echo "Usage: $0 -i <input_mlir_file> -o <output_base_name> [--binaryen-opt-flags]"
     echo "  -i, --input      Input MLIR file"
     echo "  -o, --output     Output base name"
+    echo "  --llvm-opt-flags       Perform LLVM optimization (optional)"
     echo "  --binaryen-opt-flags       Perform WebAssembly optimization (optional)"
     exit 1
 }
@@ -23,6 +25,10 @@ while [[ "$#" -gt 0 ]]; do
         -o|--output)
             OUTPUT_BASE="$2"
             shift 2
+            ;;
+        --llvm-opt-flags=*)
+            LLVM_OPT_FLAGS="${1#*=}"
+            shift 
             ;;
         --binaryen-opt-flags=*)
             BINARYEN_OPT_FLAGS="${1#*=}"
@@ -65,8 +71,7 @@ mlir-translate "$OUTPUT_LLVM_MLIR" --mlir-to-llvmir -o "$OUTPUT_LL"
 
 # Step 3: Use `llc` to lower the LLVM IR (.ll) to an object file
 echo "Lowering $OUTPUT_LL to object file (.o)..."
-# We always use -O3 optimization level
-llc -O3 -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
+llc "$LLVM_OPT_FLAGS" -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
 
 # Step 4: Convert the object file to WAT format using `wasm2wat`
 echo "Converting $OUTPUT_OBJ to WAT format..."

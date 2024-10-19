@@ -14,6 +14,7 @@ fi
 # Initialize variables
 MLIR_FILE=""
 COMPILER="mlir"  # Default type is mlir
+LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
 USE_AOT=true  # Default is to use AOT
 AOT_FLAGS=""
@@ -24,6 +25,10 @@ while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --compiler=*)
             COMPILER="${1#*=}"
+            shift
+            ;;
+        --llvm-opt-flags=*)
+            LLVM_OPT_FLAGS="${1#*=}"
             shift
             ;;
         --binaryen-opt-flags=*)
@@ -72,7 +77,7 @@ echo $CMDARGS > $TEMP_DIR/cmdargs
 if [ "$COMPILER" = "mlir" ]; then
     COMPILE_CMD="./compile.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
 else
-    COMPILE_CMD="./compile-llvm.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
+    COMPILE_CMD="./compile-llvm.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --llvm-opt-flags=\"$LLVM_OPT_FLAGS\" --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
 fi
 
 echo "Compiling $COMPILER to Wasm with command: $COMPILE_CMD"
