@@ -1,0 +1,28 @@
+[package]
+name = "run-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "run_wasm_lib"
+path = "src/lib.rs"
+bench = false
+
+[[bin]]
+name = "run_wasm_bin"
+path = "src/main.rs"
+bench = false
+
+[dependencies]
+wasmtime = "25.0.2"
+wasi-common = "22.0.0"
+bytemuck = { version = "1.16.1", features = ["derive"] }
+aligned-array = "1.0.1"
+structopt = "0.3.26"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "wasmtime_bench"
+harness = false

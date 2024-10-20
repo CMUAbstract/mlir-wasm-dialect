@@ -1,16 +1,13 @@
 use aligned_array::{Aligned, A32, A8};
 use bytemuck;
+use run_wasm_lib::mnist;
 use std::fs;
 use std::{path::PathBuf, time::Instant};
 use structopt::StructOpt;
 use wasmtime::{Config, Engine, Linker, Module, OptLevel, Result, Store};
 
-mod mnist;
-
 #[derive(Debug, StructOpt)]
 struct Opt {
-    /// Activate debug mode
-    // short and long flags (-d, --debug) will be deduced from the field's name
     #[structopt(short, long)]
     input: PathBuf,
 
@@ -132,19 +129,6 @@ fn main() -> Result<()> {
         {
             println!("{}: {}", i, score);
         }
-        // expected output for conv2d.mlir
-
-        //    Elapsed: 28.46µs
-        //    0: 8.469532
-        //    1: 0
-        //    2: 0
-        //    3: 0
-        //    4: 0
-        //    5: 0
-        //    6: 0
-        //    7: 0
-        //    8: 0
-        //    9: 0
     } else {
         let main_fn = instance
             .get_func(&mut store, "main")
