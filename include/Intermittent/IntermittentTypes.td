@@ -19,7 +19,14 @@ include "Intermittent/IntermittentDialect.td"
 
 class Intermittent_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<Intermittent_Dialect, name, traits> {
-  let mnemonic = typeMnemonic;
+    let mnemonic = typeMnemonic;
 }
+
+def NonVolatile : Intermittent_Type<"NonVolatile", "nonvolatile"> {
+    let parameters = (ins AnyType:$elementType);
+    let assemblyFormat = "`nonvolatile` `<` $elementType `>`";
+    // let builders = [TypeBuilder<(ins "Type":$elementType)>];
+}
+
 
 #endif // INTERMITTENT_TYPES
