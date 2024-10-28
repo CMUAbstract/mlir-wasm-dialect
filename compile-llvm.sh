@@ -71,7 +71,7 @@ mlir-translate "$OUTPUT_LLVM_MLIR" --mlir-to-llvmir -o "$OUTPUT_LL"
 
 # Step 3: Use `llc` to lower the LLVM IR (.ll) to an object file
 echo "Lowering $OUTPUT_LL to object file (.o)..."
-llc "$LLVM_OPT_FLAGS" -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
+llc $LLVM_OPT_FLAGS -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
 
 # Step 4: Convert the object file to WAT format using `wasm2wat`
 echo "Converting $OUTPUT_OBJ to WAT format..."
