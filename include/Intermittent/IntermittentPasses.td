@@ -15,6 +15,7 @@ def ConvertIntermittentToWasm : Pass<"convert-intermittent-to-wasm", "ModuleOp">
   let summary = "Converts Intermittent dialect to Wasm dialect";
   let dependentDialects = [
     "intermittent::IntermittentDialect",
+    "wasm::WasmDialect"
   ];
 }
 
