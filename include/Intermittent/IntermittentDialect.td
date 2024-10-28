@@ -33,10 +33,10 @@ def Intermittent_Dialect : Dialect {
 }
 
 //===----------------------------------------------------------------------===//
-// Base wasm operation definition.
+// Base intermittent operation definition.
 //===----------------------------------------------------------------------===//
 
-class Wasm_Op<string mnemonic, list<Trait> traits = []> :
+class Intermittent_Op<string mnemonic, list<Trait> traits = []> :
         Op<Intermittent_Dialect, mnemonic, traits>;
 
 #endif // INTERMITTENT_DIALECT

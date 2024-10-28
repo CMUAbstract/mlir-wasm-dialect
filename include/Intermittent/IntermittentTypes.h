@@ -12,6 +12,6 @@
 #include "mlir/IR/BuiltinTypes.h"
 
 #define GET_TYPEDEF_CLASSES
-#include "Wasm/WasmTypes.h.inc"
+#include "Intermittent/IntermittentTypes.h.inc"
 
 #endif // INTERMITTENT_INTERMITTENTTYPES_H
