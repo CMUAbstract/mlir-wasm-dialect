@@ -1,0 +1,16 @@
+set(LLVM_TARGET_DEFINITIONS IntermittentOps.td)
+mlir_tablegen(IntermittentOps.h.inc -gen-op-decls)
+mlir_tablegen(IntermittentOps.cpp.inc -gen-op-defs)
+mlir_tablegen(IntermittentTypes.h.inc -gen-typedef-decls -typedefs-dialect=intermittent)
+mlir_tablegen(IntermittentTypes.cpp.inc -gen-typedef-defs -typedefs-dialect=intermittent)
+mlir_tablegen(IntermittentDialect.h.inc -gen-dialect-decls -dialect=intermittent)
+mlir_tablegen(IntermittentDialect.cpp.inc -gen-dialect-defs -dialect=intermittent)
+add_public_tablegen_target(MLIRIntermittentOpsIncGen)
+add_dependencies(mlir-headers MLIRIntermittentOpsIncGen)
+
+add_mlir_doc(IntermittentDialect IntermittentDialect Wasm/ -gen-dialect-doc)
+add_mlir_doc(IntermittentOps IntermittentOps Wasm/ -gen-op-doc)
+
+set(LLVM_TARGET_DEFINITIONS IntermittentPasses.td)
+mlir_tablegen(IntermittentPasses.h.inc --gen-pass-decls)
+add_public_tablegen_target(MLIRIntermittentPassesIncGen)
