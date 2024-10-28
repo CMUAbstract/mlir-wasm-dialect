@@ -12,13 +12,15 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#include "Intermittent/IntermittentDialect.h"
+#include "Intermittent/IntermittentPasses.h"
 #include "Wasm/WasmDialect.h"
 #include "Wasm/WasmPasses.h"
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::wasm::registerPasses();
-  // TODO: Register wasm passes here.
+  mlir::intermittent::registerPasses();
 
   mlir::DialectRegistry registry;
   registry.insert<mlir::wasm::WasmDialect, mlir::arith::ArithDialect,
