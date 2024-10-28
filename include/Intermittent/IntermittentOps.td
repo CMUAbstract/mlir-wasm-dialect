@@ -21,7 +21,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // high level ops
 
-// intermittent.task.new
+// intermittent.task
 // intermittent.task.transition_to
 
 // mid level ops
@@ -36,12 +36,6 @@ def NonVolatileNewOp : Intermittent_Op<"nonvolatile.new", [
     let arguments = (ins TypeAttr:$type);
     let results = (outs NonVolatile:$result);
     let assemblyFormat = "`<` type($result) `>` attr-dict";
-    // let hasCustomAssemblyFormat = 1;
-    // let builders = [OpBuilder<(ins "Type":$type), [{
-    //     // Create NonVolatile from the provided type
-    //     auto nonVolatileType = NonVolatileType::get($_builder.getContext(), type);
-    //     build($_builder, $_state, nonVolatileType);
-    // }]>];
 }
 
 def NonVolatileLoadOp : Intermittent_Op<"nonvolatile.load", [
@@ -61,11 +55,6 @@ def NonVolatileStoreOp : Intermittent_Op<"nonvolatile.store", [
                      "::llvm::cast<NonVolatileType>($_self).getElementType()">,
 ]> {
     let arguments = (ins NonVolatile:$var, AnyType:$value);
-    // let builders = [
-    // OpBuilder<(ins "Value":$var, "Value":$ValueToStore), [{
-    //   $_state.addOperands(var);
-    //   $_state.addOperands(valueToStore);
-    // }]>];
       let assemblyFormat = [{
         $value `,` $var attr-dict `:` type($var)
     }];
@@ -73,6 +62,5 @@ def NonVolatileStoreOp : Intermittent_Op<"nonvolatile.store", [
 }
 
 // intermittent.commit_vars
-// takes a list of 
 
 #endif // INTERMITTENT_OPS
