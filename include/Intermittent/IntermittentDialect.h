@@ -9,7 +9,6 @@
 #ifndef INTERMITTENT_INTERMITTENTDIALECT_H
 #define INTERMITTENT_INTERMITTENTDIALECT_H
 
-#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Dialect.h"
 
 #include "Intermittent/IntermittentDialect.h.inc"
