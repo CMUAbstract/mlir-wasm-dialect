@@ -24,7 +24,7 @@ class Intermittent_Type<string name, string typeMnemonic, list<Trait> traits = [
 
 def NonVolatile : Intermittent_Type<"NonVolatile", "nonvolatile"> {
     let parameters = (ins AnyType:$elementType);
-    let assemblyFormat = "`nonvolatile` `<` $elementType `>`";
+    let assemblyFormat = "`<` $elementType `>`";
     // let builders = [TypeBuilder<(ins "Type":$elementType)>];
 }
 

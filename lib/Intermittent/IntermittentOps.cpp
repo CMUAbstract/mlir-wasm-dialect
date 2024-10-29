@@ -19,8 +19,8 @@ namespace mlir::intermittent {
 ParseResult IdempotentTaskOp::parse(OpAsmParser &parser,
                                     OperationState &result) {
   // Parse the symbol name.
-  StringAttr symNameAttr;
-  if (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),
+  StringAttr nameAttr;
+  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
                              result.attributes))
     return failure();
 
@@ -34,11 +34,29 @@ ParseResult IdempotentTaskOp::parse(OpAsmParser &parser,
 
 void IdempotentTaskOp::print(OpAsmPrinter &p) {
   p << " " << '@' << getSymName();
-  p.printOptionalAttrDictWithKeyword(
-      (*this)->getAttrs(),
-      /*elidedAttrs=*/{SymbolTable::getSymbolAttrName()});
   p << ' ';
   p.printRegion(getBody());
+}
+
+ParseResult NonVolatileNewOp::parse(OpAsmParser &parser,
+                                    OperationState &result) {
+  if (parser.parseLParen() || parser.parseRParen() || parser.parseColon())
+    return failure();
+
+  NonVolatileType nonVolatileType;
+  if (parser.parseCustomTypeWithFallback(nonVolatileType))
+    return failure();
+  result.addTypes({nonVolatileType});
+  auto elementType = nonVolatileType.getElementType();
+
+  result.addAttribute("inner", TypeAttr::get(elementType));
+  return success();
+}
+
+void NonVolatileNewOp::print(::mlir::OpAsmPrinter &p) {
+  p << "() : ";
+  NonVolatileType type = NonVolatileType::get(getContext(), getInner());
+  p.printType(type);
 }
 
 } // namespace mlir::intermittent
