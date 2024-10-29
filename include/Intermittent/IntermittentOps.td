@@ -16,6 +16,7 @@ include "mlir/Bytecode/BytecodeOpInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/CommonTypeConstraints.td"
 
+include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -26,8 +27,23 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // mid level ops
 
-// intermittent.task.idempotent
-// intermittent.var.local
+def IdempotentTaskOp : Intermittent_Op<"task.idempotent", [
+    AffineScope, AutomaticAllocationScope, IsolatedFromAbove]> {
+    let arguments = (ins SymbolNameAttr:$sym_name);
+    let regions = (region AnyRegion:$body);
+    let hasCustomAssemblyFormat = 1;
+}
+
+def TransitionToOp : Intermittent_Op<"task.transition_to", [
+    Pure, HasParent<"IdempotentTaskOp">, Terminator]> {
+    let arguments 
+        = (ins OptionalAttr<FlatSymbolRefAttr>:$next_task, 
+            Variadic<NonVolatile>:$varsToStore);
+    let builders = [OpBuilder<(ins), [{
+        build($_builder, $_state, std::nullopt, std::nullopt);
+    }]>];
+    let assemblyFormat = "$next_task `(` $varsToStore `:` type($varsToStore) `)` attr-dict";
+}
 
 // low level ops
 
