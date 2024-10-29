@@ -38,20 +38,21 @@ def TransitionToOp : Intermittent_Op<"task.transition_to", [
     Pure, HasParent<"IdempotentTaskOp">, Terminator]> {
     let arguments 
         = (ins OptionalAttr<FlatSymbolRefAttr>:$next_task, 
-            Variadic<NonVolatile>:$varsToStore);
-    let builders = [OpBuilder<(ins), [{
-        build($_builder, $_state, std::nullopt, std::nullopt);
-    }]>];
-    let assemblyFormat = "$next_task `(` $varsToStore `:` type($varsToStore) `)` attr-dict";
+            Variadic<NonVolatile>:$vars_to_store);
+    let assemblyFormat = [{
+       ( $next_task^ )?
+       ( `(` $vars_to_store^ `:` type($vars_to_store) `)` )?
+       attr-dict
+    }];
 }
 
 // low level ops
 
 def NonVolatileNewOp : Intermittent_Op<"nonvolatile.new", [
     Pure]> { 
-    let arguments = (ins TypeAttr:$type);
+    let arguments = (ins TypeAttr:$inner);
     let results = (outs NonVolatile:$result);
-    let assemblyFormat = "`<` type($result) `>` attr-dict";
+    let hasCustomAssemblyFormat = 1;
 }
 
 def NonVolatileLoadOp : Intermittent_Op<"nonvolatile.load", [
