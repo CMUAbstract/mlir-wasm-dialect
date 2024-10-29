@@ -5,11 +5,13 @@ add_llvm_library(WasmPlugin
 
         DEPENDS
         MLIRWasm
+        MLIRIntermittent
         PLUGIN_TOOL
         mlir-opt
 
         LINK_LIBS
         MLIRWasm
+        MLIRIntermittent
         )
 target_include_directories(
         WasmPlugin
