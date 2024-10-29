@@ -21,7 +21,12 @@ public:
       ConvertIntermittentToWasm>::ConvertIntermittentToWasmBase;
 
   void runOnOperation() final {
-    // TODO
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    ConversionTarget target(*context);
+
+    target.addLegalDialect<wasm::WasmDialect>();
+    target.addLegalDialect<arith::ArithDialect>();
   }
 };
 
