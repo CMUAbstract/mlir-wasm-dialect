@@ -6,6 +6,7 @@ set(LIBS
         MLIRArithDialect
         MLIROptLib
         MLIRWasm
+        MLIRIntermittent
         )
 add_llvm_executable(wasm-opt wasm-opt.cpp)
 
