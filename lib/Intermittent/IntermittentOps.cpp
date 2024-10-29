@@ -14,5 +14,31 @@
 #define GET_OP_CLASSES
 #include "Intermittent/IntermittentOps.cpp.inc"
 
-namespace mlir::intermittent {}
-// namespace mlir::intermittent
+namespace mlir::intermittent {
+
+ParseResult IdempotentTaskOp::parse(OpAsmParser &parser,
+                                    OperationState &result) {
+  // Parse the symbol name.
+  StringAttr symNameAttr;
+  if (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),
+                             result.attributes))
+    return failure();
+
+  // Parse the body region.
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body))
+    return failure();
+
+  return success();
+}
+
+void IdempotentTaskOp::print(OpAsmPrinter &p) {
+  p << " " << '@' << getSymName();
+  p.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      /*elidedAttrs=*/{SymbolTable::getSymbolAttrName()});
+  p << ' ';
+  p.printRegion(getBody());
+}
+
+} // namespace mlir::intermittent
