@@ -474,4 +474,82 @@ def Wasm_WasmReturnOp : Wasm_Op<"return", [Pure, Terminator, HasParent<"WasmFunc
     let assemblyFormat = "attr-dict";
 }
 
+
+def WasmFunctionTypeOp : Wasm_Op<"type.func", [Pure]> {
+    let summary = "Declare a function type";
+    let description = [{
+        Declares a function type with specified parameter and result types.
+    }];
+    
+    // TODO: Add typechecking
+    let arguments = (ins SymbolNameAttr:$name, TypeAttrOf<FunctionType>:$function_type);
+    let assemblyFormat = [{
+        $name $function_type attr-dict
+    }];
+}
+
+def WasmContinuationTypeOp : Wasm_Op<"type.ct", [Pure]> {
+  let summary = "Declares a continuation type";
+  let description = [{
+    Declares a control tag with specified parameter and result types.
+  }];
+  let arguments = (ins SymbolNameAttr:$name, FlatSymbolRefAttr:$func);
+  let assemblyFormat = "`type` $name `(` `cont` $func `)` attr-dict";
+}
+
+def WasmTagOp : Wasm_Op<"tag", [Pure]> {
+  let summary = "Declares a control tag";
+  let description = [{
+    Declares a control tag with specified parameter and result types.
+  }];
+  let arguments = (ins SymbolNameAttr:$name);
+  let assemblyFormat = "`tag` $name attr-dict";
+}
+
+def WasmFuncRefOp : Wasm_Op<"func.ref"> {
+  let summary = "Creates a function reference";
+  let description = [{
+    Creates a function reference and pushes it onto the stack.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$func);
+  let assemblyFormat = "`ref` $func attr-dict";
+}
+
+def WasmContNewOp : Wasm_Op<"cont.new"> {
+  let summary = "Creates a suspended continuation from a function";
+  let description = [{
+    Creates a suspended continuation from a function reference and pushes it onto the stack.
+    Assumes that a function reference is on the top of the stack.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$ct);
+  // NOTE: We cannot use cont.new because it includes a dot
+  let assemblyFormat = "`cont` `_` `new` $ct attr-dict";
+}
+
+// TODO: Ideally, `resume` operation should
+// take a variadic list of handlers. 
+// For now, we are assuming that there is only one handler
+// of form (on $e switch)
+def WasmResumeSwitchOp : Wasm_Op<"resume.switch"> {
+  let summary = "Resume a continuation under a handler";
+  let description = [{
+    Resumes a continuation under a specified handler.
+    Assumes that a continuation is on the top of the stack.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$ct, FlatSymbolRefAttr:$tag); 
+  let assemblyFormat = "`resume` $ct `(` `on` $tag `switch` `)` attr-dict";
+}
+
+def WasmSwitchOp : Wasm_Op<"switch"> {
+  let summary = "Switch to a continuation";
+  let description = [{
+    Switches to a continuation under a specified handler.
+    Assumes that a continuation is on the top of the stack.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$ct, FlatSymbolRefAttr:$tag); 
+  let assemblyFormat = "`switch` $ct `(` `on` $tag `)` attr-dict";
+}
+
+
+
 #endif // WASM_OPS
