@@ -93,6 +93,65 @@ public:
   }
 };
 
+struct NonVolatileNewOpLowering : public OpConversionPattern<NonVolatileNewOp> {
+  using OpConversionPattern<NonVolatileNewOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(NonVolatileNewOp newOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<wasm::TempGlobalOp>(newOp, newOp.getInner());
+    return success();
+  }
+};
+struct NonVolatileLoadOpLowering
+    : public OpConversionPattern<NonVolatileLoadOp> {
+  using OpConversionPattern<NonVolatileLoadOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(NonVolatileLoadOp loadOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = loadOp.getLoc();
+    MLIRContext *context = loadOp.getContext();
+    auto elementType = loadOp.getVar().getType().getElementType();
+
+    auto globalCastOp = rewriter.create<UnrealizedConversionCastOp>(
+        loc, wasm::GlobalType::get(context, elementType), adaptor.getVar());
+
+    auto localOp = rewriter.create<wasm::TempLocalOp>(loc, elementType);
+
+    // get the global variable and set it to the local variable
+    // because we currently use local variables to pass information
+    // across patterns
+    rewriter.create<wasm::TempGlobalGetOp>(loc, globalCastOp.getResult(0));
+    rewriter.create<wasm::TempLocalSetOp>(loc, localOp.getResult());
+
+    auto localCastOp = rewriter.create<UnrealizedConversionCastOp>(
+        loc, elementType, localOp.getResult());
+
+    rewriter.replaceOp(loadOp, localCastOp.getResult(0));
+
+    return success();
+  }
+};
+
+struct NonVolatileStoreOpLowering
+    : public OpConversionPattern<NonVolatileStoreOp> {
+  using OpConversionPattern<NonVolatileStoreOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(NonVolatileStoreOp storeOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = storeOp.getLoc();
+    MLIRContext *context = storeOp.getContext();
+
+    auto castOp = rewriter.create<UnrealizedConversionCastOp>(
+        loc, wasm::LocalType::get(context, adaptor.getValue().getType()),
+        adaptor.getValue());
+    rewriter.create<wasm::TempLocalGetOp>(loc, castOp.getResult(0));
+
+    rewriter.replaceOpWithNewOp<wasm::TempGlobalSetOp>(storeOp,
+                                                       adaptor.getVar());
+    return success();
+  }
+};
+
 struct IdempotentTaskOpLowering {};
 
 struct TransitionToOpLowering {};
@@ -113,7 +172,20 @@ public:
     target.addLegalDialect<arith::ArithDialect>();
     target.addLegalDialect<func::FuncDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
-    target.addIllegalDialect<intermittent::IntermittentDialect>();
+    // TODO: make it illegal
+    target.addIllegalOp<NonVolatileNewOp>();
+    target.addIllegalOp<NonVolatileLoadOp>();
+    target.addIllegalOp<NonVolatileStoreOp>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
+    target.addLegalDialect<IntermittentDialect>();
+
+    RewritePatternSet patterns(context);
+    patterns.add<NonVolatileNewOpLowering, NonVolatileLoadOpLowering,
+                 NonVolatileStoreOpLowering>(context);
+
+    if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
   }
 };
 
