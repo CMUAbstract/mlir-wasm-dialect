@@ -179,6 +179,27 @@ def Wasm_TempLocalSetOp : Wasm_Op<"temp.local.set", []> {
     let hasCustomAssemblyFormat = 1;
 }
 
+def Wasm_TempGlobalOp : Wasm_Op<"temp.global", []> {
+    let arguments = (ins TypeAttr:$type);
+    let results = (outs Global:$global);
+    // TODO: Improve assembly format
+    let assemblyFormat = [{ `<` $type `>` attr-dict `:` type(results) }];
+
+    let builders = [
+        OpBuilder<(ins "Type": $inner)>,
+    ];
+}
+
+def Wasm_TempGlobalGetOp : Wasm_Op<"temp.global.get", []> {
+    let arguments = (ins Global:$global);
+    let hasCustomAssemblyFormat = 1;
+}
+
+def Wasm_TempGlobalSetOp : Wasm_Op<"temp.global.set", []> {
+    let arguments = (ins Global:$global);
+    let hasCustomAssemblyFormat = 1;
+}
+
 // local instructions
 
 def Wasm_LocalOp : Wasm_Op<"local", []> {

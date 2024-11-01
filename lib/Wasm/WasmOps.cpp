@@ -110,4 +110,46 @@ TempGetGlobalOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return success();
 }
 
+void TempGlobalOp::build(OpBuilder &builder, OperationState &state,
+                         mlir::Type inner) {
+  auto context = inner.getContext();
+  auto globalType = mlir::wasm::GlobalType::get(context, inner);
+  state.addTypes(globalType);
+  state.addAttribute("type", mlir::TypeAttr::get(inner));
+}
+
+ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand global;
+  Type globalInnerType;
+
+  if (parser.parseOperand(global) || parser.parseColonType(globalInnerType))
+    return failure();
+
+  auto globalType = GlobalType::get(parser.getContext(), globalInnerType);
+  if (parser.resolveOperand(global, globalType, result.operands))
+    return failure();
+
+  return success();
+}
+
+ParseResult TempGlobalGetOp::parse(OpAsmParser &parser,
+                                   OperationState &result) {
+  return parseGlobalOp(parser, result);
+}
+
+void TempGlobalGetOp::print(OpAsmPrinter &p) {
+  p << " " << getGlobal();
+  p << " : " << getGlobal().getType().getInner();
+}
+
+ParseResult TempGlobalSetOp::parse(OpAsmParser &parser,
+                                   OperationState &result) {
+  return parseGlobalOp(parser, result);
+}
+
+void TempGlobalSetOp::print(OpAsmPrinter &p) {
+  p << " " << getGlobal();
+  p << " : " << getGlobal().getType().getInner();
+}
+
 } // namespace mlir::wasm
