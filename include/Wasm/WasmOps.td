@@ -475,7 +475,7 @@ def Wasm_WasmReturnOp : Wasm_Op<"return", [Pure, Terminator, HasParent<"WasmFunc
 }
 
 
-def WasmFunctionTypeOp : Wasm_Op<"type.func", [Pure]> {
+def Wasm_FuncTypeOp : Wasm_Op<"type.func", [Pure]> {
     let summary = "Declare a function type";
     let description = [{
         Declares a function type with specified parameter and result types.
@@ -488,7 +488,7 @@ def WasmFunctionTypeOp : Wasm_Op<"type.func", [Pure]> {
     }];
 }
 
-def WasmContinuationTypeOp : Wasm_Op<"type.ct", [Pure]> {
+def Wasm_ContinuationTypeOp : Wasm_Op<"type.ct", [Pure]> {
   let summary = "Declares a continuation type";
   let description = [{
     Declares a control tag with specified parameter and result types.
@@ -497,7 +497,7 @@ def WasmContinuationTypeOp : Wasm_Op<"type.ct", [Pure]> {
   let assemblyFormat = "`type` $name `(` `cont` $func `)` attr-dict";
 }
 
-def WasmTagOp : Wasm_Op<"tag", [Pure]> {
+def Wasm_TagOp : Wasm_Op<"tag", [Pure]> {
   let summary = "Declares a control tag";
   let description = [{
     Declares a control tag with specified parameter and result types.
@@ -506,7 +506,7 @@ def WasmTagOp : Wasm_Op<"tag", [Pure]> {
   let assemblyFormat = "`tag` $name attr-dict";
 }
 
-def WasmFuncRefOp : Wasm_Op<"func.ref"> {
+def Wasm_FuncRefOp : Wasm_Op<"func.ref"> {
   let summary = "Creates a function reference";
   let description = [{
     Creates a function reference and pushes it onto the stack.
@@ -515,7 +515,7 @@ def WasmFuncRefOp : Wasm_Op<"func.ref"> {
   let assemblyFormat = "`ref` $func attr-dict";
 }
 
-def WasmContNewOp : Wasm_Op<"cont.new"> {
+def Wasm_ContNewOp : Wasm_Op<"cont.new"> {
   let summary = "Creates a suspended continuation from a function";
   let description = [{
     Creates a suspended continuation from a function reference and pushes it onto the stack.
@@ -530,7 +530,7 @@ def WasmContNewOp : Wasm_Op<"cont.new"> {
 // take a variadic list of handlers. 
 // For now, we are assuming that there is only one handler
 // of form (on $e switch)
-def WasmResumeSwitchOp : Wasm_Op<"resume.switch"> {
+def Wasm_ResumeSwitchOp : Wasm_Op<"resume.switch"> {
   let summary = "Resume a continuation under a handler";
   let description = [{
     Resumes a continuation under a specified handler.
@@ -540,7 +540,7 @@ def WasmResumeSwitchOp : Wasm_Op<"resume.switch"> {
   let assemblyFormat = "`resume` $ct `(` `on` $tag `switch` `)` attr-dict";
 }
 
-def WasmSwitchOp : Wasm_Op<"switch"> {
+def Wasm_SwitchOp : Wasm_Op<"switch"> {
   let summary = "Switch to a continuation";
   let description = [{
     Switches to a continuation under a specified handler.
@@ -548,6 +548,17 @@ def WasmSwitchOp : Wasm_Op<"switch"> {
   }];
   let arguments = (ins FlatSymbolRefAttr:$ct, FlatSymbolRefAttr:$tag); 
   let assemblyFormat = "`switch` $ct `(` `on` $tag `)` attr-dict";
+}
+
+def Wasm_ImportFuncOp : Wasm_Op<"import"> {
+    let summary = "Import function operation";
+    let description = [{
+        The `import` operation imports a function from the environment.
+    }];
+    let arguments = (ins SymbolNameAttr:$name, TypeAttrOf<FunctionType>:$function_type);
+    let assemblyFormat = [{
+       `import` $name $function_type attr-dict
+    }];
 }
 
 
