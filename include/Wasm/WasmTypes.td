@@ -28,6 +28,11 @@ def Local : Wasm_Type<"Local", "local"> {
    let assemblyFormat = "`<` $inner `>`";
 }
 
+def Global : Wasm_Type<"Global", "global"> {
+   let parameters = (ins AnyType:$inner);
+   let assemblyFormat = "`<` $inner `>`";
+}
+
 // TODO
 def RefType : Type<CPred<"true">, "reference type">;
 
