@@ -28,7 +28,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 // mid level ops
 
 def IdempotentTaskOp : Intermittent_Op<"task.idempotent", [
-    AffineScope, AutomaticAllocationScope, IsolatedFromAbove]> {
+    AffineScope, AutomaticAllocationScope]> {
     let arguments = (ins SymbolNameAttr:$sym_name);
     let regions = (region AnyRegion:$body);
     let hasCustomAssemblyFormat = 1;
