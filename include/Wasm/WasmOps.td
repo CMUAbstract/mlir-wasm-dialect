@@ -218,13 +218,22 @@ def Wasm_LocalTeeOp : Wasm_Op<"local.tee", []> {
     let assemblyFormat = [{ $idx attr-dict }];
 }
 
+def Wasm_GlobalOp : Wasm_Op<"global", []> {
+    let summary = "Global declaration operation";
+    let description = [{
+        The `global` operation declares a global variable.
+    }];
+    let arguments = (ins SymbolNameAttr:$name, TypeAttr:$type);
+    let assemblyFormat = [{ $name `:` $type attr-dict }];
+}
+
 def Wasm_GlobalGetOp : Wasm_Op<"global.get", []> {
     let summary = "Global get operation";
     let description = [{
         The `global.get` operation reads a global variable.
     }];
-    let arguments = (ins IndexAttr:$idx);
-    let assemblyFormat = [{ $idx attr-dict }];
+    let arguments = (ins FlatSymbolRefAttr:$name);
+    let assemblyFormat = [{ $name attr-dict }];
 }
 
 def Wasm_GlobalSetOp : Wasm_Op<"global.set", []> {
@@ -232,11 +241,20 @@ def Wasm_GlobalSetOp : Wasm_Op<"global.set", []> {
     let description = [{
         The `global.set` operation writes a global variable.
     }];
-    let arguments = (ins IndexAttr:$idx);
-    let assemblyFormat = [{ $idx attr-dict }];
+    let arguments = (ins FlatSymbolRefAttr:$name);
+    let assemblyFormat = [{ $name attr-dict }];
 }
 
 // table instructions
+
+def Wasm_ContinuationTableOp : Wasm_Op<"table", [Pure]> {
+    let summary = "Table declaration operation";
+    let description = [{
+        The `table` operation declares a table.
+    }];
+    let arguments = (ins SymbolNameAttr:$name, I32Attr:$size, FlatSymbolRefAttr:$ct);
+    let assemblyFormat = [{ `table` $name $size `:` `(` `ref` $ct `)` attr-dict }];
+}
 
 def Wasm_TableGetOp : Wasm_Op<"table.get", []> {
     let summary = "Table get operation";
@@ -494,7 +512,7 @@ def Wasm_ContinuationTypeOp : Wasm_Op<"type.ct", [Pure]> {
     Declares a control tag with specified parameter and result types.
   }];
   let arguments = (ins SymbolNameAttr:$name, FlatSymbolRefAttr:$func);
-  let assemblyFormat = "`type` $name `(` `cont` $func `)` attr-dict";
+  let assemblyFormat = "$name `(` `cont` $func `)` attr-dict";
 }
 
 def Wasm_TagOp : Wasm_Op<"tag", [Pure]> {
@@ -503,7 +521,7 @@ def Wasm_TagOp : Wasm_Op<"tag", [Pure]> {
     Declares a control tag with specified parameter and result types.
   }];
   let arguments = (ins SymbolNameAttr:$name);
-  let assemblyFormat = "`tag` $name attr-dict";
+  let assemblyFormat = "$name attr-dict";
 }
 
 def Wasm_FuncRefOp : Wasm_Op<"func.ref"> {
@@ -512,7 +530,7 @@ def Wasm_FuncRefOp : Wasm_Op<"func.ref"> {
     Creates a function reference and pushes it onto the stack.
   }];
   let arguments = (ins FlatSymbolRefAttr:$func);
-  let assemblyFormat = "`ref` $func attr-dict";
+  let assemblyFormat = "$func attr-dict";
 }
 
 def Wasm_ContNewOp : Wasm_Op<"cont.new"> {
@@ -522,8 +540,7 @@ def Wasm_ContNewOp : Wasm_Op<"cont.new"> {
     Assumes that a function reference is on the top of the stack.
   }];
   let arguments = (ins FlatSymbolRefAttr:$ct);
-  // NOTE: We cannot use cont.new because it includes a dot
-  let assemblyFormat = "`cont` `_` `new` $ct attr-dict";
+  let assemblyFormat = "$ct attr-dict";
 }
 
 // TODO: Ideally, `resume` operation should
@@ -537,7 +554,7 @@ def Wasm_ResumeSwitchOp : Wasm_Op<"resume.switch"> {
     Assumes that a continuation is on the top of the stack.
   }];
   let arguments = (ins FlatSymbolRefAttr:$ct, FlatSymbolRefAttr:$tag); 
-  let assemblyFormat = "`resume` $ct `(` `on` $tag `switch` `)` attr-dict";
+  let assemblyFormat = "$ct `(` `on` $tag `switch` `)` attr-dict";
 }
 
 def Wasm_SwitchOp : Wasm_Op<"switch"> {
@@ -547,7 +564,7 @@ def Wasm_SwitchOp : Wasm_Op<"switch"> {
     Assumes that a continuation is on the top of the stack.
   }];
   let arguments = (ins FlatSymbolRefAttr:$ct, FlatSymbolRefAttr:$tag); 
-  let assemblyFormat = "`switch` $ct `(` `on` $tag `)` attr-dict";
+  let assemblyFormat = "$ct `(` `on` $tag `)` attr-dict";
 }
 
 def Wasm_ImportFuncOp : Wasm_Op<"import"> {
@@ -557,7 +574,7 @@ def Wasm_ImportFuncOp : Wasm_Op<"import"> {
     }];
     let arguments = (ins SymbolNameAttr:$name, TypeAttrOf<FunctionType>:$function_type);
     let assemblyFormat = [{
-       `import` $name $function_type attr-dict
+       $name $function_type attr-dict
     }];
 }
 
