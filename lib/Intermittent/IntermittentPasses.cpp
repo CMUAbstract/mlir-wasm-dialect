@@ -20,60 +20,56 @@ namespace mlir::intermittent {
 #define GEN_PASS_DEF_CONVERTINTERMITTENTTASKTOWASM
 #include "Intermittent/IntermittentPasses.h.inc"
 
-void importHostFunctions(PatternRewriter &rewriter, Location loc) {
-  auto simpleFuncType = rewriter.getFunctionType({}, {});
-  rewriter.create<wasm::ImportFuncOp>(loc, "begin_commit", simpleFuncType);
-  rewriter.create<wasm::ImportFuncOp>(loc, "end_commit", simpleFuncType);
-  rewriter.create<wasm::ImportFuncOp>(
+void importHostFunctions(OpBuilder &builder, Location loc) {
+  auto simpleFuncType = builder.getFunctionType({}, {});
+  builder.create<wasm::ImportFuncOp>(loc, "begin_commit", simpleFuncType);
+  builder.create<wasm::ImportFuncOp>(loc, "end_commit", simpleFuncType);
+  builder.create<wasm::ImportFuncOp>(
       loc, "set_i32",
-      rewriter.getFunctionType({rewriter.getI32Type(), rewriter.getI32Type()},
-                               {}));
-  rewriter.create<wasm::ImportFuncOp>(
+      builder.getFunctionType({builder.getI32Type(), builder.getI32Type()},
+                              {}));
+  builder.create<wasm::ImportFuncOp>(
       loc, "set_i64",
-      rewriter.getFunctionType({rewriter.getI32Type(), rewriter.getI64Type()},
-                               {}));
-  rewriter.create<wasm::ImportFuncOp>(
+      builder.getFunctionType({builder.getI32Type(), builder.getI64Type()},
+                              {}));
+  builder.create<wasm::ImportFuncOp>(
       loc, "set_f32",
-      rewriter.getFunctionType({rewriter.getI32Type(), rewriter.getF32Type()},
-                               {}));
-  rewriter.create<wasm::ImportFuncOp>(
+      builder.getFunctionType({builder.getI32Type(), builder.getF32Type()},
+                              {}));
+  builder.create<wasm::ImportFuncOp>(
       loc, "set_f64",
-      rewriter.getFunctionType({rewriter.getI32Type(), rewriter.getF64Type()},
-                               {}));
-  rewriter.create<wasm::ImportFuncOp>(
+      builder.getFunctionType({builder.getI32Type(), builder.getF64Type()},
+                              {}));
+  builder.create<wasm::ImportFuncOp>(
       loc, "get_i32",
-      rewriter.getFunctionType({rewriter.getI32Type()},
-                               {rewriter.getI32Type()}));
-  rewriter.create<wasm::ImportFuncOp>(
+      builder.getFunctionType({builder.getI32Type()}, {builder.getI32Type()}));
+  builder.create<wasm::ImportFuncOp>(
       loc, "get_i64",
-      rewriter.getFunctionType({rewriter.getI32Type()},
-                               {rewriter.getI64Type()}));
-  rewriter.create<wasm::ImportFuncOp>(
+      builder.getFunctionType({builder.getI32Type()}, {builder.getI64Type()}));
+  builder.create<wasm::ImportFuncOp>(
       loc, "get_f32",
-      rewriter.getFunctionType({rewriter.getI32Type()},
-                               {rewriter.getF32Type()}));
-  rewriter.create<wasm::ImportFuncOp>(
+      builder.getFunctionType({builder.getI32Type()}, {builder.getF32Type()}));
+  builder.create<wasm::ImportFuncOp>(
       loc, "get_f64",
-      rewriter.getFunctionType({rewriter.getI32Type()},
-                               {rewriter.getF64Type()}));
+      builder.getFunctionType({builder.getI32Type()}, {builder.getF64Type()}));
 }
 
-void addTypes(PatternRewriter &rewriter, Location loc) {
-  rewriter.create<wasm::FuncTypeOp>(loc, "$ft",
-                                    rewriter.getFunctionType({}, {}));
-  rewriter.create<wasm::ContinuationTypeOp>(loc, "$ct", "$ft");
+void addTypes(OpBuilder &builder, Location loc) {
+  builder.create<wasm::FuncTypeOp>(loc, "$ft", builder.getFunctionType({}, {}));
+  builder.create<wasm::ContinuationTypeOp>(loc, "$ct", "$ft");
 }
 
-void addTag(PatternRewriter &rewriter, Location loc) {
-  rewriter.create<wasm::TagOp>(loc, "$yield");
+void addTag(OpBuilder &builder, Location loc) {
+  builder.create<wasm::TagOp>(loc, "$yield");
 }
 
-void addGlobalVariables(PatternRewriter &rewriter, Location loc) {
-  // TODO
+void addGlobalVariables(OpBuilder &builder, Location loc) {
+  builder.create<wasm::GlobalOp>(loc, "$curr_task", builder.getI32Type());
 }
-
-void addTable(PatternRewriter &rewriter, Location loc) {
-  // TODO
+void addTable(OpBuilder &builder, Location loc) {
+  // TODO: Configure size
+  builder.create<wasm::ContinuationTableOp>(loc, "$task_table", 100, "$ct");
+  // TODO: Add each task to the table
 }
 
 class PrepareForIntermittent
@@ -85,13 +81,15 @@ public:
   void runOnOperation() final {
     auto moduleOp = getOperation();
     MLIRContext *context = moduleOp.getContext();
-    PatternRewriter rewriter(context);
+    OpBuilder builder(context);
+    builder.setInsertionPoint(moduleOp.getBody(), moduleOp.getBody()->begin());
 
     auto loc = moduleOp.getLoc();
-    importHostFunctions(rewriter, loc);
-    addTypes(rewriter, loc);
-    addTag(rewriter, loc);
-    addGlobalVariables(rewriter, loc);
+    importHostFunctions(builder, loc);
+    addTypes(builder, loc);
+    addTag(builder, loc);
+    addGlobalVariables(builder, loc);
+    addTable(builder, loc);
   }
 };
 
