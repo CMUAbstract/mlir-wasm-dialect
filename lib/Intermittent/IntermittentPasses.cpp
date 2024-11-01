@@ -55,20 +55,20 @@ void importHostFunctions(OpBuilder &builder, Location loc) {
 }
 
 void addTypes(OpBuilder &builder, Location loc) {
-  builder.create<wasm::FuncTypeOp>(loc, "$ft", builder.getFunctionType({}, {}));
-  builder.create<wasm::ContinuationTypeOp>(loc, "$ct", "$ft");
+  builder.create<wasm::FuncTypeOp>(loc, "ft", builder.getFunctionType({}, {}));
+  builder.create<wasm::ContinuationTypeOp>(loc, "ct", "ft");
 }
 
 void addTag(OpBuilder &builder, Location loc) {
-  builder.create<wasm::TagOp>(loc, "$yield");
+  builder.create<wasm::TagOp>(loc, "yield");
 }
 
 void addGlobalVariables(OpBuilder &builder, Location loc) {
-  builder.create<wasm::GlobalOp>(loc, "$curr_task", builder.getI32Type());
+  builder.create<wasm::GlobalOp>(loc, "curr_task", builder.getI32Type());
 }
 void addTable(OpBuilder &builder, Location loc) {
   // TODO: Configure size
-  builder.create<wasm::ContinuationTableOp>(loc, "$task_table", 100, "$ct");
+  builder.create<wasm::ContinuationTableOp>(loc, "task_table", 100, "ct");
   // TODO: Add each task to the table
 }
 
