@@ -11,12 +11,21 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertIntermittentToWasm : Pass<"convert-intermittent-to-wasm", "ModuleOp"> {
+def PrepareForIntermittent : Pass<"prepare-for-intermittent", "ModuleOp"> {
+  let summary = "Add preludes";
+  let dependentDialects = [
+    "intermittent::IntermittentDialect",
+    "wasm::WasmDialect"
+  ];
+}
+
+def ConvertIntermittentTaskToWasm : Pass<"convert-intermittent-task-to-wasm", "ModuleOp"> {
   let summary = "Converts Intermittent dialect to Wasm dialect";
   let dependentDialects = [
     "intermittent::IntermittentDialect",
     "wasm::WasmDialect"
   ];
 }
+
 
 #endif // INTERMITTENT_PASS
