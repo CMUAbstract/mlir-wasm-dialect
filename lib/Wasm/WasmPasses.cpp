@@ -21,7 +21,7 @@
 
 namespace mlir::wasm {
 #define GEN_PASS_DEF_CONVERTTOWASM
-#define GEN_PASS_DEF_WASMFINALIZE
+#define GEN_PASS_DEF_WASMFINALIZEFUNCTIONS
 #include "Wasm/WasmPasses.h.inc"
 
 class WasmTypeConverter : public TypeConverter {
@@ -110,9 +110,11 @@ public:
   }
 };
 
-class WasmFinalize : public impl::WasmFinalizeBase<WasmFinalize> {
+class WasmFinalizeFunctions
+    : public impl::WasmFinalizeFunctionsBase<WasmFinalizeFunctions> {
 public:
-  using impl::WasmFinalizeBase<WasmFinalize>::WasmFinalizeBase;
+  using impl::WasmFinalizeFunctionsBase<
+      WasmFinalizeFunctions>::WasmFinalizeFunctionsBase;
 
   void runOnOperation() final {
     wasm::WasmFuncOp func = getOperation();
