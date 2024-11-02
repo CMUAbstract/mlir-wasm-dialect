@@ -66,10 +66,19 @@ void addTag(OpBuilder &builder, Location loc) {
 void addGlobalVariables(OpBuilder &builder, Location loc) {
   builder.create<wasm::GlobalOp>(loc, "curr_task", builder.getI32Type());
 }
-void addTable(OpBuilder &builder, Location loc) {
-  // TODO: Configure size
-  builder.create<wasm::ContinuationTableOp>(loc, "task_table", 100, "ct");
-  // TODO: Add each task to the table
+void addTable(ModuleOp &moduleOp, MLIRContext *context, OpBuilder &builder,
+              Location loc) {
+  int numTasks = 0;
+  llvm::SmallVector<mlir::Attribute, 4> symbolRefs;
+  moduleOp.walk([&](IdempotentTaskOp taskOp) {
+    numTasks++;
+    symbolRefs.push_back(FlatSymbolRefAttr::get(context, taskOp.getSymName()));
+  });
+  builder.create<wasm::ContinuationTableOp>(loc, "task_table", numTasks, "ct");
+
+  mlir::ArrayAttr symbolsAttr = builder.getArrayAttr(symbolRefs);
+  builder.create<wasm::ContinuationElemSegmentOp>(loc, "task_table",
+                                                  symbolsAttr);
 }
 
 class PrepareForIntermittent
@@ -89,7 +98,7 @@ public:
     addTypes(builder, loc);
     addTag(builder, loc);
     addGlobalVariables(builder, loc);
-    addTable(builder, loc);
+    addTable(moduleOp, context, builder, loc);
   }
 };
 
