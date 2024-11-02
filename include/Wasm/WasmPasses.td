@@ -25,8 +25,8 @@ def ConvertToWasm : Pass<"convert-to-wasm", "ModuleOp"> {
   ];
 }
 
-def WasmFinalize : Pass<"wasm-finalize", "wasm::WasmFuncOp"> {
-  let summary = "Finalizes Wasm dialect";
+def WasmFinalizeFunctions : Pass<"wasm-finalize-functions", "wasm::WasmFuncOp"> {
+  let summary = "Finalizes Wasm functions";
   let description = [{
     Transforms temporary local variable accesses into index accesses.
   }];
