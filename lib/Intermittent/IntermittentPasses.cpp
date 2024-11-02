@@ -98,7 +98,7 @@ struct NonVolatileNewOpLowering : public OpConversionPattern<NonVolatileNewOp> {
   LogicalResult
   matchAndRewrite(NonVolatileNewOp newOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<wasm::TempGlobalOp>(newOp, newOp.getInner());
+    rewriter.replaceOpWithNewOp<wasm::TempGlobalOp>(newOp, adaptor.getInner());
     return success();
   }
 };
@@ -163,7 +163,10 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     rewriter.inlineRegionBefore(taskOp.getBody(), funcOp.getBody(),
                                 funcOp.end());
 
-    rewriter.eraseOp(funcOp);
+    rewriter.setInsertionPointToEnd(&funcOp.getBody().back());
+    rewriter.create<wasm::WasmReturnOp>(taskOp.getLoc());
+
+    rewriter.replaceOp(taskOp, funcOp);
     return success();
   }
 };
@@ -173,7 +176,26 @@ struct TransitionToOpLowering : public OpConversionPattern<TransitionToOp> {
   LogicalResult
   matchAndRewrite(TransitionToOp transitionToOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO: Store variables
+    Location loc = transitionToOp.getLoc();
+    rewriter.create<wasm::CallOp>(loc, "begin_commit");
+    for (auto var : adaptor.getVarsToStore()) {
+      rewriter.create<wasm::TempGlobalGetOp>(loc, var);
+
+      if (auto intType = dyn_cast<IntegerType>(var.getType())) {
+        if (intType.getWidth() == 32) {
+          rewriter.create<wasm::CallOp>(loc, "set_i32");
+        } else if (intType.getWidth() == 64) {
+          rewriter.create<wasm::CallOp>(loc, "set_i64");
+        }
+      } else if (auto floatType = dyn_cast<FloatType>(var.getType())) {
+        if (floatType.getWidth() == 32) {
+          rewriter.create<wasm::CallOp>(loc, "set_f32");
+        } else if (floatType.getWidth() == 64) {
+          rewriter.create<wasm::CallOp>(loc, "set_f64");
+        }
+      }
+    }
+    rewriter.create<wasm::CallOp>(loc, "end_commit");
 
     rewriter.replaceOpWithNewOp<wasm::SwitchOp>(transitionToOp, "ct", "yield");
     return success();
@@ -196,12 +218,8 @@ public:
     target.addLegalDialect<arith::ArithDialect>();
     target.addLegalDialect<func::FuncDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
-    // TODO: make it illegal
-    target.addIllegalOp<NonVolatileNewOp>();
-    target.addIllegalOp<NonVolatileLoadOp>();
-    target.addIllegalOp<NonVolatileStoreOp>();
+    target.addIllegalDialect<IntermittentDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
-    target.addLegalDialect<IntermittentDialect>();
 
     RewritePatternSet patterns(context);
     patterns.add<NonVolatileNewOpLowering, NonVolatileLoadOpLowering,
