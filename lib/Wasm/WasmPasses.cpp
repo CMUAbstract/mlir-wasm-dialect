@@ -16,7 +16,7 @@
 #include "Wasm/ConversionPatterns/MemRefToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/ScfToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/WasmFinalizePatterns.h"
-#include "Wasm/VariableAnalysis.h"
+#include "Wasm/LocalNumbering.h"
 #include "Wasm/WasmPasses.h"
 
 namespace mlir::wasm {
@@ -117,7 +117,7 @@ public:
   void runOnOperation() final {
     wasm::WasmFuncOp func = getOperation();
     MLIRContext *context = func.getContext();
-    VariableAnalysis analysis(func);
+    LocalNumbering localNumbering(func);
 
     ConversionTarget target(*context);
     target.addLegalDialect<wasm::WasmDialect>();
@@ -129,7 +129,7 @@ public:
     // target.addIllegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
-    populateWasmFinalizePatterns(context, analysis, patterns);
+    populateWasmFinalizePatterns(context, localNumbering, patterns);
 
     // TODO: place it somewhere else
     // declare local at the beginning of the function
@@ -138,13 +138,9 @@ public:
     PatternRewriter rewriter(context);
     Operation *firstOp = &(*func->getRegion(0).getBlocks().begin()->begin());
     rewriter.setInsertionPoint(firstOp);
-    std::vector<mlir::Attribute> types;
-    for (auto typeAttr : analysis.getTypeAttrs()) {
-      types.push_back(typeAttr);
-    }
-    llvm::ArrayRef<mlir::Attribute> typesRef(types);
+    auto localTypesRef = localNumbering.getLocalTypesRef();
     rewriter.create<wasm::LocalOp>(func.getLoc(),
-                                   rewriter.getArrayAttr(typesRef));
+                                   rewriter.getArrayAttr(localTypesRef));
 
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
