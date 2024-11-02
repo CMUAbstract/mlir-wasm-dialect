@@ -152,9 +152,33 @@ struct NonVolatileStoreOpLowering
   }
 };
 
-struct IdempotentTaskOpLowering {};
+struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
+  using OpConversionPattern<IdempotentTaskOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(IdempotentTaskOp taskOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
 
-struct TransitionToOpLowering {};
+    auto funcOp = rewriter.create<wasm::WasmFuncOp>(
+        taskOp.getLoc(), taskOp.getSymName(), rewriter.getFunctionType({}, {}));
+    rewriter.inlineRegionBefore(taskOp.getBody(), funcOp.getBody(),
+                                funcOp.end());
+
+    rewriter.eraseOp(funcOp);
+    return success();
+  }
+};
+
+struct TransitionToOpLowering : public OpConversionPattern<TransitionToOp> {
+  using OpConversionPattern<TransitionToOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(TransitionToOp transitionToOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // TODO: Store variables
+
+    rewriter.replaceOpWithNewOp<wasm::SwitchOp>(transitionToOp, "ct", "yield");
+    return success();
+  }
+};
 
 class ConvertIntermittentTaskToWasm
     : public impl::ConvertIntermittentTaskToWasmBase<
@@ -181,7 +205,8 @@ public:
 
     RewritePatternSet patterns(context);
     patterns.add<NonVolatileNewOpLowering, NonVolatileLoadOpLowering,
-                 NonVolatileStoreOpLowering>(context);
+                 NonVolatileStoreOpLowering, IdempotentTaskOpLowering,
+                 TransitionToOpLowering>(context);
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();
