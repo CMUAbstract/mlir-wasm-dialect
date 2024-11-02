@@ -69,16 +69,15 @@ void addGlobalVariables(OpBuilder &builder, Location loc) {
 void addTable(ModuleOp &moduleOp, MLIRContext *context, OpBuilder &builder,
               Location loc) {
   int numTasks = 0;
-  llvm::SmallVector<mlir::Attribute, 4> symbolRefs;
+  llvm::SmallVector<mlir::Attribute, 4> taskNames;
   moduleOp.walk([&](IdempotentTaskOp taskOp) {
     numTasks++;
-    symbolRefs.push_back(FlatSymbolRefAttr::get(context, taskOp.getSymName()));
+    taskNames.push_back(FlatSymbolRefAttr::get(context, taskOp.getSymName()));
   });
   builder.create<wasm::ContinuationTableOp>(loc, "task_table", numTasks, "ct");
 
-  mlir::ArrayAttr symbolsAttr = builder.getArrayAttr(symbolRefs);
-  builder.create<wasm::ContinuationElemSegmentOp>(loc, "task_table",
-                                                  symbolsAttr);
+  builder.create<wasm::ContinuationElemSegmentOp>(
+      loc, "task_table", 0, builder.getArrayAttr(taskNames));
 }
 
 class PrepareForIntermittent
