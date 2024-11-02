@@ -472,7 +472,7 @@ def Wasm_NoOp : Wasm_Op<"noop", []> {
     }];
 }
 
-def Wasm_WasmFuncOp : Wasm_Op<"func", [FunctionOpInterface, IsolatedFromAbove]> {
+def Wasm_WasmFuncOp : Wasm_Op<"func", [FunctionOpInterface]> {
 
     let arguments = (ins
         SymbolNameAttr:$sym_name,
