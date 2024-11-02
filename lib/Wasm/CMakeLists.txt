@@ -6,7 +6,7 @@ add_mlir_dialect_library(MLIRWasm
         WasmOps.cpp
         WasmPasses.cpp
         BaseAddrAnalysis.cpp
-        VariableAnalysis.cpp
+        LocalNumbering.cpp
         utility.cpp
         ${CONVERSION_SRC_FILES}
 

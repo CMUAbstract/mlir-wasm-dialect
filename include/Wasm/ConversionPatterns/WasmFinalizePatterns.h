@@ -4,57 +4,28 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-#include "Wasm/VariableAnalysis.h"
+#include "Wasm/LocalNumbering.h"
 #include "Wasm/WasmOps.h"
 
 namespace mlir::wasm {
 
 void populateWasmFinalizePatterns(MLIRContext *context,
-                                  VariableAnalysis &analysis,
+                                  LocalNumbering &localNumbering,
                                   RewritePatternSet &patterns);
 
 template <typename SourceOp>
 class OpConversionPatternWithAnalysis : public OpConversionPattern<SourceOp> {
 public:
   OpConversionPatternWithAnalysis(MLIRContext *context,
-                                  VariableAnalysis &analysis,
+                                  LocalNumbering &localNumbering,
                                   PatternBenefit benefit = 1)
-      : OpConversionPattern<SourceOp>(context, benefit), analysis(analysis) {}
+      : OpConversionPattern<SourceOp>(context, benefit),
+        localNumbering(localNumbering) {}
 
-  VariableAnalysis &getAnalysis() const { return analysis; }
+  LocalNumbering &getLocalNumbering() const { return localNumbering; }
 
 private:
-  VariableAnalysis &analysis;
-};
-
-struct FinalizeTempLocalOp
-    : public OpConversionPatternWithAnalysis<TempLocalOp> {
-  using OpConversionPatternWithAnalysis<
-      TempLocalOp>::OpConversionPatternWithAnalysis;
-
-  LogicalResult
-  matchAndRewrite(TempLocalOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override;
-};
-
-struct FinalizeTempLocalGetOp
-    : public OpConversionPatternWithAnalysis<TempLocalGetOp> {
-  using OpConversionPatternWithAnalysis<
-      TempLocalGetOp>::OpConversionPatternWithAnalysis;
-
-  LogicalResult
-  matchAndRewrite(TempLocalGetOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override;
-};
-
-struct FinalizeTempLocalSetOp
-    : public OpConversionPatternWithAnalysis<TempLocalSetOp> {
-  using OpConversionPatternWithAnalysis<
-      TempLocalSetOp>::OpConversionPatternWithAnalysis;
-
-  LogicalResult
-  matchAndRewrite(TempLocalSetOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override;
+  LocalNumbering &localNumbering;
 };
 
 } // namespace mlir::wasm
