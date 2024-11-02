@@ -600,8 +600,8 @@ def Wasm_ImportFuncOp : Wasm_Op<"import"> {
 }
 
 def Wasm_ContinuationElemSegmentOp : Wasm_Op<"elem.declare.cont"> {
-    let arguments = (ins FlatSymbolRefAttr:$table_name, ArrayAttr:$funcs);
-    let assemblyFormat = [{ $table_name `(` `cont.new` `(` `ref.func` $funcs  `)` `)` attr-dict }];
+    let arguments = (ins FlatSymbolRefAttr:$table_name, I32Attr:$idx, ArrayAttr:$funcs);
+    let assemblyFormat = [{ $table_name `(` `i32.const` $idx `)` `(` `cont.new` `(` `ref.func` $funcs  `)` `)` attr-dict }];
 }
 
 
