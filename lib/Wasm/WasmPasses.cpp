@@ -16,12 +16,12 @@
 #include "Wasm/ConversionPatterns/MemRefToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/ScfToWasmPatterns.h"
 #include "Wasm/ConversionPatterns/WasmFinalizePatterns.h"
-#include "Wasm/LocalNumbering.h"
+#include "Wasm/WasmFinalizeAnalysis.h"
 #include "Wasm/WasmPasses.h"
 
 namespace mlir::wasm {
 #define GEN_PASS_DEF_CONVERTTOWASM
-#define GEN_PASS_DEF_WASMFINALIZEFUNCTIONS
+#define GEN_PASS_DEF_WASMFINALIZE
 #include "Wasm/WasmPasses.h.inc"
 
 class WasmTypeConverter : public TypeConverter {
@@ -110,41 +110,42 @@ public:
   }
 };
 
-class WasmFinalizeFunctions
-    : public impl::WasmFinalizeFunctionsBase<WasmFinalizeFunctions> {
+class WasmFinalize : public impl::WasmFinalizeBase<WasmFinalize> {
 public:
-  using impl::WasmFinalizeFunctionsBase<
-      WasmFinalizeFunctions>::WasmFinalizeFunctionsBase;
+  using impl::WasmFinalizeBase<WasmFinalize>::WasmFinalizeBase;
 
   void runOnOperation() final {
-    wasm::WasmFuncOp func = getOperation();
-    MLIRContext *context = func.getContext();
-    LocalNumbering localNumbering(func);
+    ModuleOp moduleOp = getOperation();
+    MLIRContext *context = moduleOp.getContext();
+    WasmFinalizeAnalysis analysis(moduleOp);
 
     ConversionTarget target(*context);
     target.addLegalDialect<wasm::WasmDialect>();
-    target.addLegalDialect<func::FuncDialect>();
+    target.addIllegalOp<wasm::TempGlobalOp>();
+    target.addIllegalOp<wasm::TempGlobalGetOp>();
+    target.addIllegalOp<wasm::TempGlobalSetOp>();
     target.addIllegalOp<wasm::TempLocalOp>();
     target.addIllegalOp<wasm::TempLocalGetOp>();
     target.addIllegalOp<wasm::TempLocalSetOp>();
-    // TODO: mark this as illegal after implementing function argument handling
-    // target.addIllegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
-    populateWasmFinalizePatterns(context, localNumbering, patterns);
+    populateWasmFinalizePatterns(context, analysis, patterns);
 
     // TODO: place it somewhere else
-    // declare local at the beginning of the function
-    // note that analysis.getTypesAttrs() must be called before applying the
+    // declare local at the beginning of each function
+    // note that analysis.getLocalTypesRef() must be called before applying the
     // conversion because mlir Values are erased during the conversion
     PatternRewriter rewriter(context);
-    Operation *firstOp = &(*func->getRegion(0).getBlocks().begin()->begin());
-    rewriter.setInsertionPoint(firstOp);
-    auto localTypesRef = localNumbering.getLocalTypesRef();
-    rewriter.create<wasm::LocalOp>(func.getLoc(),
-                                   rewriter.getArrayAttr(localTypesRef));
+    moduleOp.walk([&](WasmFuncOp funcOp) {
+      Operation *funcFirstOp =
+          &(*funcOp->getRegion(0).getBlocks().begin()->begin());
+      rewriter.setInsertionPoint(funcFirstOp);
+      auto localTypesRef = analysis.getLocalTypesRef(funcOp.getOperation());
+      rewriter.create<wasm::LocalOp>(funcOp.getLoc(),
+                                     rewriter.getArrayAttr(localTypesRef));
+    });
 
-    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
