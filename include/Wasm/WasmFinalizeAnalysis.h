@@ -16,12 +16,14 @@ public:
   WasmFinalizeAnalysis(ModuleOp &op);
   string getGlobalName(const Value &reg);
   int getLocalIndex(Operation *func, const Value &reg);
-  ArrayRef<Attribute> getLocalTypesRef(Operation *func);
+  vector<Attribute> getLocalTypesAttr(Operation *func);
+  int numLocals(Operation *func);
 
 private:
   map<Operation *, int> numArgumentsOf;
   map<Operation *, vector<Value>> reg2LocOf;
   vector<Value> reg2Global;
+  map<Operation *, vector<Attribute>> localTypesAttrOf;
 };
 } // namespace mlir::wasm
 
