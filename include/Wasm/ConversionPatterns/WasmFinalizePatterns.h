@@ -4,30 +4,29 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-#include "Wasm/LocalNumbering.h"
+#include "Wasm/WasmFinalizeAnalysis.h"
 #include "Wasm/WasmOps.h"
 
 namespace mlir::wasm {
 
 void populateWasmFinalizePatterns(MLIRContext *context,
-                                  LocalNumbering &localNumbering,
+                                  WasmFinalizeAnalysis &analysis,
                                   RewritePatternSet &patterns);
 
 template <typename SourceOp>
 class OpConversionPatternWithAnalysis : public OpConversionPattern<SourceOp> {
 public:
   OpConversionPatternWithAnalysis(MLIRContext *context,
-                                  LocalNumbering &localNumbering,
+                                  WasmFinalizeAnalysis &analysis,
                                   PatternBenefit benefit = 1)
-      : OpConversionPattern<SourceOp>(context, benefit),
-        localNumbering(localNumbering) {}
+      : OpConversionPattern<SourceOp>(context, benefit), analysis(analysis) {}
 
-  LocalNumbering &getLocalNumbering() const { return localNumbering; }
+  WasmFinalizeAnalysis &getAnalysis() const { return analysis; }
 
 private:
-  LocalNumbering &localNumbering;
+  WasmFinalizeAnalysis &analysis;
 };
 
 } // namespace mlir::wasm
 
-#endif // WASM_WASMFINALIZEPATTERNS_H
+#endif // WASM_WASMFINALIZEMODULESPATTERNS_H
