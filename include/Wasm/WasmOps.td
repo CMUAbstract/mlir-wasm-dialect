@@ -180,13 +180,13 @@ def Wasm_TempLocalSetOp : Wasm_Op<"temp.local.set", []> {
 }
 
 def Wasm_TempGlobalOp : Wasm_Op<"temp.global", []> {
-    let arguments = (ins TypeAttr:$type);
+    let arguments = (ins BoolAttr:$is_mutable, TypeAttr:$type);
     let results = (outs Global:$global);
     // TODO: Improve assembly format
-    let assemblyFormat = [{ `<` $type `>` attr-dict `:` type(results) }];
+    let assemblyFormat = [{ `<` $type `>` attr-dict `:` `mut` `:` $is_mutable `,` type(results) }];
 
     let builders = [
-        OpBuilder<(ins "Type": $inner)>,
+        OpBuilder<(ins "bool": $is_mutable, "Type": $inner)>,
     ];
 }
 
@@ -244,8 +244,8 @@ def Wasm_GlobalOp : Wasm_Op<"global", []> {
     let description = [{
         The `global` operation declares a global variable.
     }];
-    let arguments = (ins SymbolNameAttr:$name, TypeAttr:$type);
-    let assemblyFormat = [{ $name `:` $type attr-dict }];
+    let arguments = (ins SymbolNameAttr:$name, BoolAttr:$is_mutable, TypeAttr:$type);
+    let assemblyFormat = [{ $name `:` `mut` `:` $is_mutable `,` $type attr-dict }];
 }
 
 def Wasm_GlobalGetOp : Wasm_Op<"global.get", []> {
