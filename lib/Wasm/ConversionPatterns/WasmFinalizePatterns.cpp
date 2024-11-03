@@ -12,9 +12,10 @@ struct FinalizeTempGlobalOp
   matchAndRewrite(TempGlobalOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     std::string name = getAnalysis().getGlobalName(op.getResult());
-    rewriter.create<GlobalOp>(op.getLoc(),
-                              StringAttr::get(rewriter.getContext(), name),
-                              TypeAttr::get(op.getType()));
+    rewriter.create<GlobalOp>(
+        op.getLoc(), StringAttr::get(rewriter.getContext(), name),
+        BoolAttr::get(rewriter.getContext(), op.getIsMutable()),
+        TypeAttr::get(op.getType()));
     rewriter.eraseOp(op);
     return success();
   }

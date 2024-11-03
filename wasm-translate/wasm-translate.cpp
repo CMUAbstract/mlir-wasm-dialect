@@ -762,6 +762,10 @@ LogicalResult translateTableElemOps(ModuleOp &moduleOp, raw_ostream &output) {
 LogicalResult translateGlobalOps(ModuleOp &moduleOp, raw_ostream &output) {
   moduleOp.walk([&](GlobalOp globalOp) {
     output << "(global $" << globalOp.getName() << " ";
+    output << "(";
+    if (globalOp.getIsMutable()) {
+      output << "mut ";
+    }
     std::string watType;
     if (failed(getWatType(globalOp.getType(), watType))) {
       globalOp.emitError("unsupported global type");

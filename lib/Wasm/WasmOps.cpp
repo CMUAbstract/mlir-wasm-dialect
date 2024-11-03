@@ -111,10 +111,11 @@ TempGetGlobalOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 }
 
 void TempGlobalOp::build(OpBuilder &builder, OperationState &state,
-                         mlir::Type inner) {
+                         bool isMutable, mlir::Type inner) {
   auto context = inner.getContext();
   auto globalType = mlir::wasm::GlobalType::get(context, inner);
   state.addTypes(globalType);
+  state.addAttribute("is_mutable", builder.getBoolAttr(isMutable));
   state.addAttribute("type", mlir::TypeAttr::get(inner));
 }
 

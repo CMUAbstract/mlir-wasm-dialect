@@ -64,7 +64,7 @@ void addTag(OpBuilder &builder, Location loc) {
 }
 
 void addGlobalVariables(OpBuilder &builder, Location loc) {
-  builder.create<wasm::GlobalOp>(loc, "curr_task", builder.getI32Type());
+  builder.create<wasm::GlobalOp>(loc, "curr_task", true, builder.getI32Type());
 }
 void addTable(ModuleOp &moduleOp, MLIRContext *context, OpBuilder &builder,
               Location loc) {
@@ -106,7 +106,8 @@ struct NonVolatileNewOpLowering : public OpConversionPattern<NonVolatileNewOp> {
   LogicalResult
   matchAndRewrite(NonVolatileNewOp newOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<wasm::TempGlobalOp>(newOp, adaptor.getInner());
+    rewriter.replaceOpWithNewOp<wasm::TempGlobalOp>(newOp, true,
+                                                    adaptor.getInner());
     return success();
   }
 };
