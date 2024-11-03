@@ -342,6 +342,30 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   return success();
 }
 
+LogicalResult translateGlobalGetOp(GlobalGetOp globalGetOp,
+                                   raw_ostream &output) {
+  output << "(global.get " << globalGetOp.getName() << ")";
+  return success();
+}
+
+LogicalResult translateGlobalSetOp(GlobalSetOp globalSetOp,
+                                   raw_ostream &output) {
+  output << "(global.set " << globalSetOp.getName() << ")";
+  return success();
+}
+
+LogicalResult translateResumeSwitchOp(ResumeSwitchOp resumeSwitchOp,
+                                      raw_ostream &output) {
+  output << "(resume $" << resumeSwitchOp.getCt() << "(on $"
+         << resumeSwitchOp.getTag() << "switch)";
+  return success();
+}
+
+LogicalResult translateSwitchOp(SwitchOp switchOp, raw_ostream &output) {
+  output << "(switch $" << switchOp.getCt() << " $" << switchOp.getTag() << ")";
+  return success();
+}
+
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
   if (auto constantOp = dyn_cast<ConstantOp>(op)) {
     return translateConstantOp(constantOp, output);
@@ -371,6 +395,14 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateReturnOp(returnOp, output);
   } else if (auto loopOp = dyn_cast<LoopOp>(op)) {
     return translateLoopOp(loopOp, output);
+  } else if (auto globalGetOp = dyn_cast<GlobalGetOp>(op)) {
+    return translateGlobalGetOp(globalGetOp, output);
+  } else if (auto globalSetOp = dyn_cast<GlobalSetOp>(op)) {
+    return translateGlobalSetOp(globalSetOp, output);
+  } else if (auto resumeSwitchOp = dyn_cast<ResumeSwitchOp>(op)) {
+    return translateResumeSwitchOp(resumeSwitchOp, output);
+  } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
+    return translateSwitchOp(switchOp, output);
   } else {
     op->emitError("unsupported operation");
     return failure();
