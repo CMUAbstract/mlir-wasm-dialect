@@ -680,7 +680,7 @@ LogicalResult translateFunctionSignatures(FuncSignatureList &funcSignatureList,
            << " ";
     output << "(func ";
     if (!funcSignatureList.get(i).paramTypes.empty()) {
-      output << "<(param ";
+      output << "(param ";
       for (auto paramType : funcSignatureList.get(i).paramTypes) {
         output << paramType;
         output << " ";
