@@ -405,12 +405,52 @@ llvm::LogicalResult translateData(DataOp dataOp, raw_ostream &output) {
   return success();
 }
 
-struct WasmFunctionSignature {
+struct FuncSignature {
   std::vector<std::string> paramTypes;
   std::vector<std::string> resultTypes;
 
-  WasmFunctionSignature() = default;
-  WasmFunctionSignature(WasmFuncOp &funcOp) {
+  FuncSignature() = default;
+  FuncSignature(FuncTypeOp &funcTypeOp) {
+    for (Type argType : funcTypeOp.getFunctionType().getInputs()) {
+      // function arguments are always local variables
+      std::string watType;
+      if (failed(getWatType(argType, watType))) {
+        funcTypeOp.emitError("unsupported argument type");
+        // TODO: handle error
+      }
+      paramTypes.push_back(watType);
+    }
+    resultTypes.reserve(funcTypeOp.getFunctionType().getResults().size());
+    for (auto resultType : funcTypeOp.getFunctionType().getResults()) {
+      std::string watType;
+      if (failed(getWatType(resultType, watType))) {
+        funcTypeOp.emitError("unsupported result type");
+        // TODO: handle error
+      }
+      resultTypes.push_back(watType);
+    }
+  }
+  FuncSignature(ImportFuncOp &importFuncOp) {
+    for (Type argType : importFuncOp.getFunctionType().getInputs()) {
+      // function arguments are always local variables
+      std::string watType;
+      if (failed(getWatType(argType, watType))) {
+        importFuncOp.emitError("unsupported argument type");
+        // TODO: handle error
+      }
+      paramTypes.push_back(watType);
+    }
+    resultTypes.reserve(importFuncOp.getFunctionType().getResults().size());
+    for (auto resultType : importFuncOp.getFunctionType().getResults()) {
+      std::string watType;
+      if (failed(getWatType(resultType, watType))) {
+        importFuncOp.emitError("unsupported result type");
+        // TODO: handle error
+      }
+      resultTypes.push_back(watType);
+    }
+  }
+  FuncSignature(WasmFuncOp &funcOp) {
     paramTypes.reserve(funcOp.getNumArguments());
     for (Type argType : funcOp.getFunctionType().getInputs()) {
       // function arguments are always local variables
@@ -433,37 +473,82 @@ struct WasmFunctionSignature {
     }
   }
 
-  bool operator<(const WasmFunctionSignature &other) const {
+  bool operator<(const FuncSignature &other) const {
     if (paramTypes != other.paramTypes)
       return paramTypes < other.paramTypes;
     return resultTypes < other.resultTypes;
   }
-  bool operator==(const WasmFunctionSignature &other) const {
+  bool operator==(const FuncSignature &other) const {
     return paramTypes == other.paramTypes && resultTypes == other.resultTypes;
   }
 };
 
-using func_signature_list_t = std::vector<WasmFunctionSignature>;
-unsigned getFunctionTypeIndex(func_signature_list_t &funcSignatures,
-                              WasmFunctionSignature &funcSignature) {
-  auto search =
-      std::find(funcSignatures.begin(), funcSignatures.end(), funcSignature);
-  if (search == funcSignatures.end()) {
-    // TODO: handle error
-    return 0;
+class FuncSignatureList {
+public:
+  std::string getFunctionTypeNameOrIndex(FuncSignature &funcSignature) {
+    auto search =
+        std::find_if(funcSignatureList.begin(), funcSignatureList.end(),
+                     [&](const std::pair<FuncSignature, std::string> &entry) {
+                       return entry.first == funcSignature;
+                     });
+    if (search == funcSignatureList.end()) {
+      // TODO: handle error
+      return "UNKNOWN";
+    }
+    if (search->second != "") {
+      return search->second;
+    }
+    return std::to_string(std::distance(funcSignatureList.begin(), search));
   }
-  return std::distance(funcSignatures.begin(), search);
-}
 
-llvm::LogicalResult translateFunction(func_signature_list_t &funcSignatures,
+  std::string getFunctionTypeNameOrIndex(size_t index) {
+    auto name = funcSignatureList[index].second;
+    if (name != "") {
+      return "$" + name;
+    }
+    return "(;" + std::to_string(index) + ";)";
+  }
+
+  size_t size() { return funcSignatureList.size(); }
+
+  void push_back(FuncSignature &funcSignature, std::string name) {
+    auto search =
+        std::find_if(funcSignatureList.begin(), funcSignatureList.end(),
+                     [&](const std::pair<FuncSignature, std::string> &entry) {
+                       return entry.first == funcSignature;
+                     });
+    if (search == funcSignatureList.end()) {
+      funcSignatureList.push_back(std::make_pair(funcSignature, name));
+    } else {
+      search->second = name;
+    }
+  }
+  void push_back(FuncSignature &funcSignature) {
+    auto search =
+        std::find_if(funcSignatureList.begin(), funcSignatureList.end(),
+                     [&](const std::pair<FuncSignature, std::string> &entry) {
+                       return entry.first == funcSignature;
+                     });
+    if (search == funcSignatureList.end()) {
+      funcSignatureList.push_back(std::make_pair(funcSignature, ""));
+    }
+  }
+
+  FuncSignature get(size_t index) { return funcSignatureList[index].first; }
+
+private:
+  std::vector<std::pair<FuncSignature, std::string>> funcSignatureList;
+};
+
+llvm::LogicalResult translateFunction(FuncSignatureList &funcSignatureList,
                                       WasmFuncOp funcOp, raw_ostream &output) {
   // Start function declaration
   output << "  (func $" << funcOp.getName() << " ";
 
   // function type
-  WasmFunctionSignature funcSignature(funcOp);
-  output << "(type " << getFunctionTypeIndex(funcSignatures, funcSignature)
-         << ")";
+  FuncSignature funcSignature(funcOp);
+  output << "(type "
+         << funcSignatureList.getFunctionTypeNameOrIndex(funcSignature) << ")";
 
   // function params
   if (!funcSignature.paramTypes.empty()) {
@@ -506,98 +591,228 @@ llvm::LogicalResult translateFunction(func_signature_list_t &funcSignatures,
   return success();
 }
 
-func_signature_list_t initializeFunctionSignatureMap(ModuleOp &module,
-                                                     bool addDebugFunctions) {
-  func_signature_list_t funcSignatures;
+FuncSignatureList initializeFuncSignatureList(ModuleOp &moduleOp,
+                                              bool addDebugFunctions) {
+  FuncSignatureList funcSignatureList;
   // we always import malloc/free
-  WasmFunctionSignature mallocSignature; // type 0
+  FuncSignature mallocSignature; // type 0
   mallocSignature.paramTypes.push_back("i32");
   mallocSignature.resultTypes.push_back("i32");
-  funcSignatures.push_back(mallocSignature);
+  funcSignatureList.push_back(mallocSignature);
 
-  WasmFunctionSignature freeSignature; // type 1
+  FuncSignature freeSignature; // type 1
   freeSignature.paramTypes.push_back("i32");
-  funcSignatures.push_back(freeSignature);
+  funcSignatureList.push_back(freeSignature);
 
-  WasmFunctionSignature prependAllocSignature; // type 2
+  FuncSignature prependAllocSignature; // type 2
   prependAllocSignature.paramTypes.push_back("i32");
   prependAllocSignature.paramTypes.push_back("i32");
   prependAllocSignature.paramTypes.push_back("i32");
   prependAllocSignature.resultTypes.push_back("i32");
-  funcSignatures.push_back(prependAllocSignature);
+  funcSignatureList.push_back(prependAllocSignature);
 
-  WasmFunctionSignature abortSignature; // type 3
-  funcSignatures.push_back(abortSignature);
+  FuncSignature abortSignature; // type 3
+  funcSignatureList.push_back(abortSignature);
 
   // for debugging purposes, we include log functions: log_i32 and log_f32
   // Note that log_i32 has the same signature as malloc
   if (addDebugFunctions) {
-    WasmFunctionSignature logF32Signature; // type 4
+    FuncSignature logF32Signature; // type 4
     logF32Signature.paramTypes.push_back("f32");
     logF32Signature.resultTypes.push_back("f32");
-    funcSignatures.push_back(logF32Signature);
+    funcSignatureList.push_back(logF32Signature);
   }
 
-  for (auto funcOp : module.getOps<WasmFuncOp>()) {
-    WasmFunctionSignature funcSignature(funcOp);
-    if (auto search = std::find(funcSignatures.begin(), funcSignatures.end(),
-                                funcSignature);
-        search == funcSignatures.end()) {
-      funcSignatures.push_back(funcSignature);
-    }
+  // add defined signatures
+  for (auto funcTypeOp : moduleOp.getOps<FuncTypeOp>()) {
+    FuncSignature funcSignature(funcTypeOp);
+    funcSignatureList.push_back(funcSignature, funcTypeOp.getName().str());
   }
-  return funcSignatures;
+
+  // add signatures of functions, if they are not already in the list
+  for (auto importFuncOp : moduleOp.getOps<ImportFuncOp>()) {
+    FuncSignature funcSignature(importFuncOp);
+    funcSignatureList.push_back(funcSignature);
+  }
+  for (auto funcOp : moduleOp.getOps<WasmFuncOp>()) {
+    FuncSignature funcSignature(funcOp);
+    funcSignatureList.push_back(funcSignature);
+  }
+  return funcSignatureList;
 }
 
-LogicalResult translateFunctionSignatures(func_signature_list_t &funcSignatures,
+LogicalResult translateFunctionSignatures(FuncSignatureList &funcSignatureList,
                                           raw_ostream &output) {
-  for (size_t i = 0; i < funcSignatures.size(); i++) {
-    output << "(type " << "(;" << i << ";) ";
+  for (size_t i = 0; i < funcSignatureList.size(); i++) {
+    output << "(type " << funcSignatureList.getFunctionTypeNameOrIndex(i)
+           << " ";
     output << "(func ";
-    if (!funcSignatures[i].paramTypes.empty()) {
-      for (auto paramType : funcSignatures[i].paramTypes) {
-        output << "(param " << paramType << ") ";
+    if (!funcSignatureList.get(i).paramTypes.empty()) {
+      output << "<(param ";
+      for (auto paramType : funcSignatureList.get(i).paramTypes) {
+        output << paramType;
+        output << " ";
       }
+      output << ") ";
     }
-    if (!funcSignatures[i].resultTypes.empty()) {
-      for (auto resultType : funcSignatures[i].resultTypes) {
-        output << "(result " << resultType << ") ";
+    if (!funcSignatureList.get(i).resultTypes.empty()) {
+      output << "(result ";
+      for (auto resultType : funcSignatureList.get(i).resultTypes) {
+        output << resultType;
+        output << " ";
       }
+      output << ")";
     }
     output << "))\n";
   }
   return success();
 }
 
+LogicalResult translateImportOps(ModuleOp &moduleOp, raw_ostream &output,
+                                 FuncSignatureList &funcSignatureList,
+                                 bool addDebugFunctions) {
+  moduleOp.walk([&](ImportFuncOp importFuncOp) {
+    // FIXME
+    FuncSignature signature(importFuncOp);
+    output << "(import \"" << "env" << "\"" << " " << "\""
+           << importFuncOp.getName() << "\"" << " "
+           << "(func $" << importFuncOp.getName() << ")" << " " << "(type "
+           << funcSignatureList.getFunctionTypeNameOrIndex(signature) << ")"
+           << ")\n";
+  });
+
+  if (addDebugFunctions) {
+    output << R""""(
+   (import "env" "log_i32" (func $log_i32 (type 0)))
+   (import "env" "log_f32" (func $log_f32 (type 4)))
+   )"""";
+  }
+  return success();
+}
+
+LogicalResult translateTagOps(ModuleOp &moduleOp, raw_ostream &output) {
+  moduleOp.walk(
+      [&](TagOp tagOp) { output << "(tag $" << tagOp.getName() << ")\n"; });
+  return success();
+}
+
+LogicalResult translateContinuationTypeOps(ModuleOp &moduleOp,
+                                           raw_ostream &output) {
+  moduleOp.walk([&](ContinuationTypeOp continuationTypeOp) {
+    output << "(type $" << continuationTypeOp.getName() << " (cont $"
+           << continuationTypeOp.getFunc() << "))\n";
+  });
+  return success();
+}
+
+LogicalResult translateTableOps(ModuleOp &moduleOp, raw_ostream &output) {
+  moduleOp.walk([&](ContinuationTableOp continuationTableOp) {
+    output << "(table $" << continuationTableOp.getName() << " "
+           << continuationTableOp.getSize() << " " << "(ref $"
+           << continuationTableOp.getCt() << "))\n";
+  });
+  return success();
+}
+
+LogicalResult translateTableElemOps(ModuleOp &moduleOp, raw_ostream &output) {
+  moduleOp.walk([&](ContinuationElemSegmentOp continuationElemSegmentOp) {
+    output << "(elem $" << continuationElemSegmentOp.getTableName() << " "
+           << continuationElemSegmentOp.getOffset();
+    for (auto func : continuationElemSegmentOp.getFuncs()) {
+      output << " (cont.new (ref.func ";
+      output << "$" << func << "))";
+    }
+    output << ")\n";
+  });
+  return success();
+}
+
+LogicalResult translateGlobalOps(ModuleOp &moduleOp, raw_ostream &output) {
+  moduleOp.walk([&](GlobalOp globalOp) {
+    output << "(global $" << globalOp.getName() << " ";
+    std::string watType;
+    if (failed(getWatType(globalOp.getType(), watType))) {
+      globalOp.emitError("unsupported global type");
+    }
+    output << watType << ")\n";
+  });
+  return success();
+}
+
+LogicalResult addLibc(ModuleOp &moduleOp, raw_ostream &output) {
+  bool hasMemoryOp = false;
+
+  moduleOp.walk([&](Operation *op) {
+    if (isa<LoadOp>(op) || isa<StoreOp>(op)) {
+      hasMemoryOp = true;
+    }
+  });
+  if (hasMemoryOp) {
+    llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
+        llvm::MemoryBuffer::getFile("wasm-translate/libc.wat");
+    if (std::error_code EC = FileOrErr.getError()) {
+      llvm::errs() << "Error opening file: " << EC.message() << "\n";
+      return failure();
+    }
+    std::unique_ptr<llvm::MemoryBuffer> &FileBuffer = FileOrErr.get();
+    output << FileBuffer->getBuffer();
+  }
+
+  return success();
+}
+
 LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
                                    bool addDebugFunctions) {
-  func_signature_list_t funcSignatures =
-      initializeFunctionSignatureMap(module, addDebugFunctions);
+  FuncSignatureList funcSignatureList =
+      initializeFuncSignatureList(module, addDebugFunctions);
 
   output << "(module\n";
 
-  if (failed(translateFunctionSignatures(funcSignatures, output))) {
+  if (failed(translateFunctionSignatures(funcSignatureList, output))) {
     return failure();
   }
-  if (addDebugFunctions) {
-    output << R""""(
-  (import "env" "log_i32" (func $log_i32 (type 0)))
-  (import "env" "log_f32" (func $log_f32 (type 4)))
-  )"""";
+
+  if (failed(translateContinuationTypeOps(module, output))) {
+    module.emitError("failed to translate continuation types");
+    return failure();
+  }
+
+  if (failed(translateTagOps(module, output))) {
+    module.emitError("failed to translate tags");
+    return failure();
+  }
+
+  if (failed(translateTableOps(module, output))) {
+    module.emitError("failed to translate tables");
+    return failure();
+  }
+
+  if (failed(translateTableElemOps(module, output))) {
+    module.emitError("failed to translate table elements");
+    return failure();
+  }
+
+  if (failed(translateGlobalOps(module, output))) {
+    module.emitError("failed to translate globals");
+    return failure();
+  }
+
+  // Imports
+  if (failed(translateImportOps(module, output, funcSignatureList,
+                                addDebugFunctions))) {
+    module.emitError("failed to translate imports");
+    return failure();
   }
 
   // define malloc and free
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
-      llvm::MemoryBuffer::getFile("wasm-translate/libc.wat");
-  if (std::error_code EC = FileOrErr.getError()) {
-    llvm::errs() << "Error opening file: " << EC.message() << "\n";
+  if (failed(addLibc(module, output))) {
+    module.emitError("failed to add libc");
     return failure();
   }
-  std::unique_ptr<llvm::MemoryBuffer> &FileBuffer = FileOrErr.get();
-  output << FileBuffer->getBuffer();
 
+  // translate each function
   for (auto funcOp : module.getOps<WasmFuncOp>()) {
-    if (failed(translateFunction(funcSignatures, funcOp, output))) {
+    if (failed(translateFunction(funcSignatureList, funcOp, output))) {
       funcOp.emitError("failed to translate WasmFuncOp");
       return failure();
     }
