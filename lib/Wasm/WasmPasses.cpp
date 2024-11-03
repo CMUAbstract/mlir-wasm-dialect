@@ -127,23 +127,24 @@ public:
     target.addIllegalOp<wasm::TempLocalOp>();
     target.addIllegalOp<wasm::TempLocalGetOp>();
     target.addIllegalOp<wasm::TempLocalSetOp>();
+    // Wasm Func Op is illegal if it has local variables
+    // and does not have a Local Op
+    target.addDynamicallyLegalOp<wasm::WasmFuncOp>(
+        [&](wasm::WasmFuncOp funcOp) {
+          if (analysis.numLocals(funcOp.getOperation()) == 0) {
+            return true;
+          }
+          bool hasLocalOp = false;
+          funcOp.walk([&](wasm::LocalOp op) {
+            hasLocalOp = true;
+            return WalkResult::interrupt();
+          });
+          return hasLocalOp;
+          // TODO
+        });
 
     RewritePatternSet patterns(context);
     populateWasmFinalizePatterns(context, analysis, patterns);
-
-    // TODO: place it somewhere else
-    // declare local at the beginning of each function
-    // note that analysis.getLocalTypesRef() must be called before applying the
-    // conversion because mlir Values are erased during the conversion
-    PatternRewriter rewriter(context);
-    moduleOp.walk([&](WasmFuncOp funcOp) {
-      Operation *funcFirstOp =
-          &(*funcOp->getRegion(0).getBlocks().begin()->begin());
-      rewriter.setInsertionPoint(funcFirstOp);
-      auto localTypesRef = analysis.getLocalTypesRef(funcOp.getOperation());
-      rewriter.create<wasm::LocalOp>(funcOp.getLoc(),
-                                     rewriter.getArrayAttr(localTypesRef));
-    });
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();

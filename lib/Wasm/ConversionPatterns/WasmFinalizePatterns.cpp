@@ -12,9 +12,10 @@ struct FinalizeTempGlobalOp
   matchAndRewrite(TempGlobalOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     std::string name = getAnalysis().getGlobalName(op.getResult());
-    rewriter.replaceOpWithNewOp<GlobalOp>(
-        op, StringAttr::get(rewriter.getContext(), name),
-        TypeAttr::get(op.getType()));
+    rewriter.create<GlobalOp>(op.getLoc(),
+                              StringAttr::get(rewriter.getContext(), name),
+                              TypeAttr::get(op.getType()));
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -104,13 +105,42 @@ struct FinalizeTempLocalSetOp
   }
 };
 
+struct InsertLocalOp : public OpConversionPatternWithAnalysis<WasmFuncOp> {
+  using OpConversionPatternWithAnalysis<
+      WasmFuncOp>::OpConversionPatternWithAnalysis;
+
+  LogicalResult
+  matchAndRewrite(WasmFuncOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    WasmFinalizeAnalysis &analysis = getAnalysis();
+
+    if (op.getBody().empty()) {
+      op.emitError("function body must have at least one "
+                   "block when inserting local variables");
+      return failure();
+    }
+
+    Block &entryBlock = op.getBody().front();
+    rewriter.setInsertionPointToStart(&entryBlock);
+
+    vector<Attribute> typesAttr = analysis.getLocalTypesAttr(op.getOperation());
+    ArrayRef<Attribute> types(typesAttr);
+    rewriter.create<wasm::LocalOp>(op.getLoc(), rewriter.getArrayAttr(types));
+
+    rewriter.startOpModification(op);
+    rewriter.finalizeOpModification(op);
+
+    return success();
+  }
+};
+
 void populateWasmFinalizePatterns(MLIRContext *context,
                                   WasmFinalizeAnalysis &analysis,
                                   RewritePatternSet &patterns) {
   patterns.add<FinalizeTempLocalOp, FinalizeTempLocalGetOp,
                FinalizeTempLocalSetOp, FinalizeTempGlobalOp,
-               FinalizeTempGlobalGetOp, FinalizeTempGlobalSetOp>(context,
-                                                                 analysis);
+               FinalizeTempGlobalGetOp, FinalizeTempGlobalSetOp, InsertLocalOp>(
+      context, analysis);
 }
 
 } // namespace mlir::wasm

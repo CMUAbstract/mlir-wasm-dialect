@@ -20,6 +20,20 @@ WasmFinalizeAnalysis::WasmFinalizeAnalysis(ModuleOp &moduleOp) {
         reg2LocOf[funcOpPtr].push_back(result);
       }
     });
+
+    auto reg2Loc = reg2LocOf[funcOp];
+    auto numArguments = numArgumentsOf[funcOp];
+
+    vector<Attribute> types;
+    types.reserve(reg2Loc.size() - numArguments);
+    auto it = reg2Loc.begin();
+    std::advance(it, numArguments);
+    for (; it != reg2Loc.end(); it++) {
+      auto typeAttr =
+          TypeAttr::get(dyn_cast<LocalType>(it->getType()).getInner());
+      types.push_back(typeAttr);
+    }
+    localTypesAttrOf[funcOpPtr] = types;
   });
 }
 
@@ -31,7 +45,7 @@ std::string WasmFinalizeAnalysis::getGlobalName(const Value &tempGlobal) {
     index = result - reg2Global.begin();
   }
 
-  std::string name = "_global_" + std::to_string(index);
+  std::string name = "global_" + std::to_string(index);
   return name;
 }
 
@@ -44,23 +58,12 @@ int WasmFinalizeAnalysis::getLocalIndex(Operation *funcOp, const Value &reg) {
   // TODO: Error handling
   return -1;
 }
-ArrayRef<Attribute> WasmFinalizeAnalysis::getLocalTypesRef(Operation *funcOp) {
-  auto reg2Loc = reg2LocOf[funcOp];
-  auto numArguments = numArgumentsOf[funcOp];
+vector<Attribute> WasmFinalizeAnalysis::getLocalTypesAttr(Operation *funcOp) {
+  return localTypesAttrOf[funcOp];
+}
 
-  vector<Attribute> types;
-  types.reserve(reg2Loc.size() - numArguments);
-  auto it = reg2Loc.begin();
-  for (auto _ = 0; _ < numArguments; _++) {
-    it++;
-  }
-  for (; it != reg2Loc.end(); it++) {
-    auto typeAttr =
-        TypeAttr::get(dyn_cast<LocalType>(it->getType()).getInner());
-    types.push_back(typeAttr);
-  }
-  ArrayRef<Attribute> typesRef(types);
-  return typesRef;
+int WasmFinalizeAnalysis::numLocals(Operation *funcOp) {
+  return localTypesAttrOf[funcOp].size();
 }
 
 } // namespace mlir::wasm
