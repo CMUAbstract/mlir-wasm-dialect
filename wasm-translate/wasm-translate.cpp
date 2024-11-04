@@ -386,6 +386,12 @@ LogicalResult translateContNewOp(ContNewOp contNewOp, raw_ostream &output) {
   return success();
 }
 
+LogicalResult translateElemDeclareFuncOp(ElemDeclareFuncOp elemDeclareFuncOp,
+                                         raw_ostream &output) {
+  output << "(elem declare func $" << elemDeclareFuncOp.getFuncName() << ")";
+  return success();
+}
+
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
   if (auto constantOp = dyn_cast<ConstantOp>(op)) {
     return translateConstantOp(constantOp, output);
@@ -789,7 +795,7 @@ LogicalResult translateGlobalOps(ModuleOp &moduleOp, raw_ostream &output) {
     if (failed(getWatType(globalOp.getType(), watType))) {
       globalOp.emitError("unsupported global type");
     }
-    output << watType << ")\n";
+    output << watType << ")";
     output << " ";
     // FIXME: handle initialization at operation level
     output << "(" << watType << ".const " << 0 << "))\n";
@@ -870,6 +876,15 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
       funcOp.emitError("failed to translate WasmFuncOp");
       return failure();
     }
+  }
+
+  // translate elem declare func
+  for (auto elemDeclareFuncOp : module.getOps<ElemDeclareFuncOp>()) {
+    if (failed(translateElemDeclareFuncOp(elemDeclareFuncOp, output))) {
+      elemDeclareFuncOp.emitError("failed to translate ElemDeclareFuncOp");
+      return failure();
+    }
+    output << "\n";
   }
 
   for (auto dataOp : module.getOps<DataOp>()) {

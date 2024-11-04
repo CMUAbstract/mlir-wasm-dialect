@@ -216,6 +216,11 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     rewriter.create<wasm::WasmReturnOp>(taskOp.getLoc());
 
     rewriter.replaceOp(taskOp, funcOp);
+
+    // after the end of the function, add a declaration for the function
+    rewriter.setInsertionPointAfter(taskOp);
+    rewriter.create<wasm::ElemDeclareFuncOp>(taskOp.getLoc(),
+                                             taskOp.getSymName());
     return success();
   }
 };
