@@ -284,7 +284,7 @@ def Wasm_ContinuationTableOp : Wasm_Op<"table", [Pure]> {
         The `table` operation declares a table.
     }];
     let arguments = (ins SymbolNameAttr:$name, I32Attr:$size, FlatSymbolRefAttr:$ct);
-    let assemblyFormat = [{ `table` $name $size `:` `(` `ref` $ct `)` attr-dict }];
+    let assemblyFormat = [{ `table` $name $size `:` `(` `ref` `null` $ct `)` attr-dict }];
 }
 
 def Wasm_TableGetOp : Wasm_Op<"table.get", []> {

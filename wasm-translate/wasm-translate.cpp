@@ -770,8 +770,9 @@ LogicalResult translateContinuationTypeOps(ModuleOp &moduleOp,
 
 LogicalResult translateTableOps(ModuleOp &moduleOp, raw_ostream &output) {
   moduleOp.walk([&](ContinuationTableOp continuationTableOp) {
+    // FIXME: handle nullability at operation level
     output << "(table $" << continuationTableOp.getName() << " "
-           << continuationTableOp.getSize() << " " << "(ref $"
+           << continuationTableOp.getSize() << " " << "(ref null $"
            << continuationTableOp.getCt() << "))\n";
   });
   return success();
@@ -788,7 +789,10 @@ LogicalResult translateGlobalOps(ModuleOp &moduleOp, raw_ostream &output) {
     if (failed(getWatType(globalOp.getType(), watType))) {
       globalOp.emitError("unsupported global type");
     }
-    output << watType << "))\n";
+    output << watType << ")\n";
+    output << " ";
+    // FIXME: handle initialization at operation level
+    output << "(" << watType << ".const " << 0 << "))\n";
   });
   return success();
 }
