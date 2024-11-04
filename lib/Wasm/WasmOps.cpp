@@ -153,4 +153,14 @@ void TempGlobalSetOp::print(OpAsmPrinter &p) {
   p << " : " << getGlobal().getType().getInner();
 }
 
+ParseResult TempGlobalIndexOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+  return parseGlobalOp(parser, result);
+}
+
+void TempGlobalIndexOp::print(OpAsmPrinter &p) {
+  p << " " << getGlobal();
+  p << " : " << getGlobal().getType().getInner();
+}
+
 } // namespace mlir::wasm

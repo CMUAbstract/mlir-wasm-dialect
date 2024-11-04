@@ -55,6 +55,24 @@ struct FinalizeTempGlobalSetOp
   }
 };
 
+struct FinalizeTempGlobalIndexOp
+    : public OpConversionPatternWithAnalysis<TempGlobalIndexOp> {
+  using OpConversionPatternWithAnalysis<
+      TempGlobalIndexOp>::OpConversionPatternWithAnalysis;
+
+  LogicalResult
+  matchAndRewrite(TempGlobalIndexOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    WasmFinalizeAnalysis &analysis = getAnalysis();
+
+    rewriter.replaceOpWithNewOp<ConstantOp>(
+        op,
+        rewriter.getIntegerAttr(rewriter.getIntegerType(32),
+                                analysis.getGlobalIndex(op->getOperand(0))));
+    return success();
+  }
+};
+
 struct FinalizeTempLocalOp
     : public OpConversionPatternWithAnalysis<TempLocalOp> {
   using OpConversionPatternWithAnalysis<
@@ -138,10 +156,11 @@ struct InsertLocalOp : public OpConversionPatternWithAnalysis<WasmFuncOp> {
 void populateWasmFinalizePatterns(MLIRContext *context,
                                   WasmFinalizeAnalysis &analysis,
                                   RewritePatternSet &patterns) {
-  patterns.add<FinalizeTempLocalOp, FinalizeTempLocalGetOp,
-               FinalizeTempLocalSetOp, FinalizeTempGlobalOp,
-               FinalizeTempGlobalGetOp, FinalizeTempGlobalSetOp, InsertLocalOp>(
-      context, analysis);
+  patterns
+      .add<FinalizeTempLocalOp, FinalizeTempLocalGetOp, FinalizeTempLocalSetOp,
+           FinalizeTempGlobalOp, FinalizeTempGlobalGetOp,
+           FinalizeTempGlobalSetOp, FinalizeTempGlobalIndexOp, InsertLocalOp>(
+          context, analysis);
 }
 
 } // namespace mlir::wasm

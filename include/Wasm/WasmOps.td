@@ -200,6 +200,16 @@ def Wasm_TempGlobalSetOp : Wasm_Op<"temp.global.set", []> {
     let hasCustomAssemblyFormat = 1;
 }
 
+def Wasm_TempGlobalIndexOp : Wasm_Op<"temp.global.index", []> {
+    let description = [{
+        The `temp.global.index` operation indexes into a global variable.
+        This operation will be converted to wasm.constant x : i32 by the
+        wasm-finalize pass, where x is the index of the global variable.
+    }];
+    let arguments = (ins Global:$global);
+    let hasCustomAssemblyFormat = 1;
+}
+
 // local instructions
 
 def Wasm_LocalOp : Wasm_Op<"local", []> {
@@ -282,8 +292,8 @@ def Wasm_TableGetOp : Wasm_Op<"table.get", []> {
     let description = [{
         The `table.get` operation reads a table element.
     }];
-    let arguments = (ins IndexAttr:$idx);
-    let assemblyFormat = [{ $idx attr-dict }];
+    let arguments = (ins FlatSymbolRefAttr:$table_name);
+    let assemblyFormat = [{ $table_name attr-dict }];
 }
 
 def Wasm_TableSetOp : Wasm_Op<"table.set", []> {
@@ -291,8 +301,8 @@ def Wasm_TableSetOp : Wasm_Op<"table.set", []> {
     let description = [{
         The `table.set` operation writes a table element.
     }];
-    let arguments = (ins IndexAttr:$idx);
-    let assemblyFormat = [{ $idx attr-dict }];
+    let arguments = (ins FlatSymbolRefAttr:$table_name);
+    let assemblyFormat = [{ $table_name attr-dict }];
 }
 
 def Wasm_TableSizeOp : Wasm_Op<"table.size", []> {

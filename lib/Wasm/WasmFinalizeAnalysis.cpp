@@ -49,6 +49,16 @@ std::string WasmFinalizeAnalysis::getGlobalName(const Value &tempGlobal) {
   return name;
 }
 
+int WasmFinalizeAnalysis::getGlobalIndex(const Value &tempGlobal) {
+  int index = -1;
+  // TODO: Error handling
+  auto result = std::find(reg2Global.begin(), reg2Global.end(), tempGlobal);
+  if (result != reg2Global.end()) {
+    index = result - reg2Global.begin();
+  }
+  return index;
+}
+
 int WasmFinalizeAnalysis::getLocalIndex(Operation *funcOp, const Value &reg) {
   auto reg2Loc = reg2LocOf[funcOp];
   auto result = std::find(reg2Loc.begin(), reg2Loc.end(), reg);
