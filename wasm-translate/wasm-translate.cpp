@@ -344,20 +344,20 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
 
 LogicalResult translateGlobalGetOp(GlobalGetOp globalGetOp,
                                    raw_ostream &output) {
-  output << "(global.get " << globalGetOp.getName() << ")";
+  output << "(global.get $" << globalGetOp.getName() << ")";
   return success();
 }
 
 LogicalResult translateGlobalSetOp(GlobalSetOp globalSetOp,
                                    raw_ostream &output) {
-  output << "(global.set " << globalSetOp.getName() << ")";
+  output << "(global.set $" << globalSetOp.getName() << ")";
   return success();
 }
 
 LogicalResult translateResumeSwitchOp(ResumeSwitchOp resumeSwitchOp,
                                       raw_ostream &output) {
-  output << "(resume $" << resumeSwitchOp.getCt() << "(on $"
-         << resumeSwitchOp.getTag() << "switch)";
+  output << "(resume $" << resumeSwitchOp.getCt() << " (on $"
+         << resumeSwitchOp.getTag() << " switch))";
   return success();
 }
 
@@ -558,12 +558,12 @@ public:
       return "UNKNOWN";
     }
     if (search->second != "") {
-      return search->second;
+      return "$" + search->second;
     }
     return std::to_string(std::distance(funcSignatureList.begin(), search));
   }
 
-  std::string getFunctionTypeNameOrIndex(size_t index) {
+  std::string getFunctionTypeNameOrIndexForSignature(size_t index) {
     auto name = funcSignatureList[index].second;
     if (name != "") {
       return "$" + name;
@@ -706,7 +706,8 @@ FuncSignatureList initializeFuncSignatureList(ModuleOp &moduleOp,
 LogicalResult translateFunctionSignatures(FuncSignatureList &funcSignatureList,
                                           raw_ostream &output) {
   for (size_t i = 0; i < funcSignatureList.size(); i++) {
-    output << "(type " << funcSignatureList.getFunctionTypeNameOrIndex(i)
+    output << "(type "
+           << funcSignatureList.getFunctionTypeNameOrIndexForSignature(i)
            << " ";
     output << "(func ";
     if (!funcSignatureList.get(i).paramTypes.empty()) {
@@ -738,9 +739,9 @@ LogicalResult translateImportOps(ModuleOp &moduleOp, raw_ostream &output,
     FuncSignature signature(importFuncOp);
     output << "(import \"" << "env" << "\"" << " " << "\""
            << importFuncOp.getName() << "\"" << " "
-           << "(func $" << importFuncOp.getName() << ")" << " " << "(type "
+           << "(func $" << importFuncOp.getName() << " " << "(type "
            << funcSignatureList.getFunctionTypeNameOrIndex(signature) << ")"
-           << ")\n";
+           << "))\n";
   });
 
   if (addDebugFunctions) {
@@ -776,19 +777,6 @@ LogicalResult translateTableOps(ModuleOp &moduleOp, raw_ostream &output) {
   return success();
 }
 
-LogicalResult translateTableElemOps(ModuleOp &moduleOp, raw_ostream &output) {
-  moduleOp.walk([&](ContinuationElemSegmentOp continuationElemSegmentOp) {
-    output << "(elem $" << continuationElemSegmentOp.getTableName() << " "
-           << continuationElemSegmentOp.getOffset();
-    for (auto func : continuationElemSegmentOp.getFuncs()) {
-      output << " (cont.new (ref.func ";
-      output << "$" << func << "))";
-    }
-    output << ")\n";
-  });
-  return success();
-}
-
 LogicalResult translateGlobalOps(ModuleOp &moduleOp, raw_ostream &output) {
   moduleOp.walk([&](GlobalOp globalOp) {
     output << "(global $" << globalOp.getName() << " ";
@@ -800,19 +788,13 @@ LogicalResult translateGlobalOps(ModuleOp &moduleOp, raw_ostream &output) {
     if (failed(getWatType(globalOp.getType(), watType))) {
       globalOp.emitError("unsupported global type");
     }
-    output << watType << ")\n";
+    output << watType << "))\n";
   });
   return success();
 }
 
-LogicalResult addLibc(ModuleOp &moduleOp, raw_ostream &output) {
-  bool hasMemoryOp = false;
-
-  moduleOp.walk([&](Operation *op) {
-    if (isa<LoadOp>(op) || isa<StoreOp>(op)) {
-      hasMemoryOp = true;
-    }
-  });
+LogicalResult addLibc(ModuleOp &moduleOp, raw_ostream &output,
+                      bool hasMemoryOp) {
   if (hasMemoryOp) {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
         llvm::MemoryBuffer::getFile("wasm-translate/libc.wat");
@@ -832,9 +814,23 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
   FuncSignatureList funcSignatureList =
       initializeFuncSignatureList(module, addDebugFunctions);
 
+  bool hasMemoryOp = false;
+
+  module.walk([&](Operation *op) {
+    if (isa<LoadOp>(op) || isa<StoreOp>(op)) {
+      hasMemoryOp = true;
+    }
+  });
+
   output << "(module\n";
 
   if (failed(translateFunctionSignatures(funcSignatureList, output))) {
+    return failure();
+  }
+
+  if (failed(translateImportOps(module, output, funcSignatureList,
+                                addDebugFunctions))) {
+    module.emitError("failed to translate imports");
     return failure();
   }
 
@@ -853,25 +849,13 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
     return failure();
   }
 
-  if (failed(translateTableElemOps(module, output))) {
-    module.emitError("failed to translate table elements");
-    return failure();
-  }
-
   if (failed(translateGlobalOps(module, output))) {
     module.emitError("failed to translate globals");
     return failure();
   }
 
-  // Imports
-  if (failed(translateImportOps(module, output, funcSignatureList,
-                                addDebugFunctions))) {
-    module.emitError("failed to translate imports");
-    return failure();
-  }
-
   // define malloc and free
-  if (failed(addLibc(module, output))) {
+  if (failed(addLibc(module, output, hasMemoryOp))) {
     module.emitError("failed to add libc");
     return failure();
   }
@@ -900,9 +884,14 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
   output << R""""(
   (export "memory" (memory 0))
   (export "main" (func $main))
-  (export "malloc" (func $malloc))
-  (export "free" (func $free))
   )"""";
+
+  if (hasMemoryOp) {
+    output << R""""(
+    (export "malloc" (func $malloc))
+    (export "free" (func $free))
+    )"""";
+  }
 
   output << ")\n";
   return success();
