@@ -366,6 +366,26 @@ LogicalResult translateSwitchOp(SwitchOp switchOp, raw_ostream &output) {
   return success();
 }
 
+LogicalResult translateTableGetOp(TableGetOp tableGetOp, raw_ostream &output) {
+  output << "(table.get $" << tableGetOp.getTableName() << ")";
+  return success();
+}
+
+LogicalResult translateTableSetOp(TableSetOp tableSetOp, raw_ostream &output) {
+  output << "(table.set $" << tableSetOp.getTableName() << ")";
+  return success();
+}
+
+LogicalResult translateFuncRefOp(FuncRefOp funcRefOp, raw_ostream &output) {
+  output << "(ref.func $" << funcRefOp.getFunc() << ")";
+  return success();
+}
+
+LogicalResult translateContNewOp(ContNewOp contNewOp, raw_ostream &output) {
+  output << "(cont.new $" << contNewOp.getCt() << ")";
+  return success();
+}
+
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
   if (auto constantOp = dyn_cast<ConstantOp>(op)) {
     return translateConstantOp(constantOp, output);
@@ -403,6 +423,16 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateResumeSwitchOp(resumeSwitchOp, output);
   } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
     return translateSwitchOp(switchOp, output);
+  } else if (auto tableGetOp = dyn_cast<TableGetOp>(op)) {
+    return translateTableGetOp(tableGetOp, output);
+  } else if (auto tableSetOp = dyn_cast<TableSetOp>(op)) {
+    return translateTableSetOp(tableSetOp, output);
+  } else if (auto tableSetOp = dyn_cast<TableSetOp>(op)) {
+    return translateTableSetOp(tableSetOp, output);
+  } else if (auto funcRefOp = dyn_cast<FuncRefOp>(op)) {
+    return translateFuncRefOp(funcRefOp, output);
+  } else if (auto contNewOp = dyn_cast<ContNewOp>(op)) {
+    return translateContNewOp(contNewOp, output);
   } else {
     op->emitError("unsupported operation");
     return failure();
