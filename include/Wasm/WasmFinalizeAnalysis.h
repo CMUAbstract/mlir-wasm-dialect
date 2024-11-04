@@ -15,6 +15,7 @@ class WasmFinalizeAnalysis {
 public:
   WasmFinalizeAnalysis(ModuleOp &op);
   string getGlobalName(const Value &reg);
+  int getGlobalIndex(const Value &reg);
   int getLocalIndex(Operation *func, const Value &reg);
   vector<Attribute> getLocalTypesAttr(Operation *func);
   int numLocals(Operation *func);

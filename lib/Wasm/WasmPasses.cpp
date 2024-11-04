@@ -124,6 +124,7 @@ public:
     target.addIllegalOp<wasm::TempGlobalOp>();
     target.addIllegalOp<wasm::TempGlobalGetOp>();
     target.addIllegalOp<wasm::TempGlobalSetOp>();
+    target.addIllegalOp<wasm::TempGlobalIndexOp>();
     target.addIllegalOp<wasm::TempLocalOp>();
     target.addIllegalOp<wasm::TempLocalGetOp>();
     target.addIllegalOp<wasm::TempLocalSetOp>();
