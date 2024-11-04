@@ -347,6 +347,12 @@ def Wasm_ElemDropOp : Wasm_Op<"elem.drop", []> {
     }];
 }
 
+def Wasm_ElemDeclareFuncOp : Wasm_Op<"elem.declare.func", []> {
+    let summary = "Element declare func operation";
+    let arguments = (ins FlatSymbolRefAttr:$func_name);
+    let assemblyFormat = [{ $func_name attr-dict }];
+}
+
 // memory instructions
 
 // load
