@@ -90,7 +90,7 @@ optimizations, (3) (optionally) perform aot compilation, and (4) execution on a 
 For example, you can run as follows:
 
 ```sh
-./run-aot.sh test/lenet.mlir --compiler=llvm --binaryen-opt-flags="O3" --use-aot=true \
+./run-aot.sh test/lenet.mlir --compiler=llvm --binaryen-opt-flags="-O3" --use-aot=true \
 -- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
 ```
 
