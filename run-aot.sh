@@ -74,11 +74,7 @@ echo "Temporary directory created: $TEMP_DIR"
 echo $CMDARGS > $TEMP_DIR/cmdargs
 
 # Step 2: Compile input file to Wasm (depending on the type)
-if [ "$COMPILER" = "mlir" ]; then
-    COMPILE_CMD="./compile.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
-else
-    COMPILE_CMD="./compile-llvm.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --llvm-opt-flags=\"$LLVM_OPT_FLAGS\" --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
-fi
+COMPILE_CMD="./compile.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-flags=\"$LLVM_OPT_FLAGS\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
 
 echo "Compiling $COMPILER to Wasm with command: $COMPILE_CMD"
 eval "$COMPILE_CMD"
