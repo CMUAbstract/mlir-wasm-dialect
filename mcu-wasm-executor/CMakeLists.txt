@@ -4,7 +4,12 @@
 cmake_minimum_required(VERSION 3.8.2)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-set (WAMR_ROOT_DIR /Users/byeongje/wasm/wasm-micro-runtime)
+set(WAMR_ROOT_DIR $ENV{WAMR_ROOT_DIR})
+
+# Check if WAMR_ROOT_DIR was set
+if(NOT WAMR_ROOT_DIR)
+    message(FATAL_ERROR "Environment variable 'WAMR_ROOT_DIR' is not defined. Please set it before configuring.")
+endif()
 
 project(wamr)
 
