@@ -1,86 +1,146 @@
 # MLIR WebAssembly Dialect
 
-## Setup
+## Prerequisites
 
-Build LLVM and MLIR in `$BUILD_DIR` and install them to `$PREFIX`.
-For example, I use the following:
-```sh
-export BUILD_DIR=/Users/byeongje/wasm/llvm-project/build
-export PREFIX=/Users/byeongje/wasm/llvm-project/build
-```
+## Building the Project
 
-LLVM can be built by running the following command in LLVM root directory.
+### LLVM
+
+First, we need to build LLVM with the following options:
 ```sh
+git clone https://github.com/llvm/llvm-project.git
+cd llvm-project
 mkdir build && cd build
 cmake -G Ninja ../llvm \
 -DLLVM_ENABLE_PROJECTS=mlir \
--DLLVM_TARGETS_TO_BUILD="Native;NVPTX;AMDGPU" \
+-DLLVM_TARGETS_TO_BUILD="host" \
 -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly \
 -DCMAKE_BUILD_TYPE=Debug \
 -DLLVM_ENABLE_ASSERTIONS=ON
 cmake --build . --target check-mlir
 ```
 
-## Build
-
+Now, we can build this project:
 ```sh
 mkdir build && cd build
 cmake -G Ninja ..  -DMLIR_DIR=$PREFIX/lib/cmake/mlir  -DLLVM_EXTERNAL_LIT=$BUILD_DIR/bin/llvm-lit -DCMAKE_BUILD_TYPE=Debug 
 cmake --build . --target check-wasm
 ```
 
-## Compile
+## Testing
+We need a few additional tools for testing.
 
-### Using Script
+### WABT
+Install [WebAssembly Binary Toolkit (WABT)](https://github.com/WebAssembly/wabt)
+(either compile it or download a precompiled build)
+and add it to `PATH`.
+We use `wat2wasm` to convert  `wat` files produced by our lowering passes to
+`wasm` binaries.
 
-We have a script to produce wasm/wat files from mlir files. 
-For example, run the following:
+### WASI-SDK
+
+Install [WASI-SDK](https://github.com/WebAssembly/wasi-sdk) 
+to test LLVM-produced Wasm files.
+(either compile it or download a precompiled build)
+and add it to `PATH`.
+We currently use them to link the LLVM-produced Wasm files with the standard library.
+We assume that WASI-SDK is installed at `WASI_SDK_PATH`.
+For example, this is a part of my `.zshrc`:
 ```sh
-./compile.sh -i test/conv2d.mlir -o test/conv2d-out
-```
-It will produce four files:
-- WAT: `test/conv2d-out.wat`
-- Formatted WAT: `test/conv2d-out-formatted.wat`
-- Linked WASM: `test/conv2d-out-linked.wasm`
-- Linked Formatted WAT: `test/conv2d-out-linked-formatted.wat`
-
-
-### Manual Execution
-
-To convert an MLIR file (input.mlir) into the Wasm dialect, use the following
-command:
-```sh
-build/bin/wasm-opt --convert-to-wasm --reconcile-unrealized-casts --wasm-finalize input.mlir -o output.mlir
-```
-
-The resulting MLIR file (`output.mlir`) can be translated into a textual
-WebAssembly format (`.wat`) using:
-```sh
-build/bin/wasm-translate output.mlir --mlir-to-wat -o output.wat
+export WASI_SDK_PATH=/Users/byeongje/wasm/wasi-sdk-22.0
 ```
 
-Note: The generated `.wat` file may not be well-formatted. While there is no
-standard formatter for `.wat` files, you can improve its readability by converting
-the .wat file to a `.wasm` binary and then back to .wat using wasm2wat. Be aware
-that this process might strip off symbol names.
+FIXME: We should change the name of our tool from `wasm-opt` to something else
+to avoid conflicts.
+
+### Zephyr
+
+In order to run Wasm files on microcontrollers,
+we use [Zephyr](https://docs.zephyrproject.org/latest/index.html).
+Install Zephyr following the [guideline](https://docs.zephyrproject.org/latest/develop/getting_started/index.html).
+Set the environment variable `ZEPHYR_BASE` to your `zephyrproject/zephyr` directory.
+For example, this is a part of my `.zshrc`:
 ```sh
-wat2wasm --relocatable output.wat -o output.wasm
-wasm2wat output.wasm -o output-formatted.wat
+export ZEPHYR_BASE=/Users/byeongje/zephyrproject/zephyr
 ```
 
-To further optimize the WebAssembly output (e.g., to reduce the number of local
-variables), you can use the `wasm-opt` tool from Binaryen (note: this is different
-from the wasm-opt binary we compiled):
+### WAMR
+
+We use [Wasm Micro Runtime](https://github.com/bytecodealliance/wasm-micro-runtime)
+to run Wasm on microcontrollers.
+Clone the repository and set the environment variable `WAMR_ROOT_DIR` to point to the directory.
+For example, this is a part of my `.zshrc`:
 ```sh
-wasm-opt output.wat -O4 output-optimized.wasm
+export WAMR_ROOT_DIR=/Users/byeongje/wasm/wasm-micro-runtime
 ```
 
+## Usage
+
+This repository contains various tools to compile MLIR files and test them.
+We assume that an MLIR file with standard dialects (`arith`, `scf`, and `memref`)
+is given.
+We have scripts for end-to-end execution as well as each step of it.
+
+### End-to-End Execution
+
+We have a command: `run-aot`, which (1) compiles a given MLIR file to Wasm using
+either `--convert-to-wasm` pass or LLVM backend, (2) (optionally) perform
+optimizations, (3) (optionally) perform aot compilation, and (4) execution on a MCU.
+
+For example, you can run as follows:
+
+```sh
+./run-aot.sh test/lenet.mlir --compiler=llvm --binaryen-opt-flags="O3" --use-aot=true \
+-- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
+```
+
+Refer to [mcu-wasm-executor/README.md](mcu-wasm-executor/README.md) to get more
+information on testing on MCUs.
 
 
-## Target
-For the MVP, we aim to support lowering `test/conv2d.mlir` to the wasm dialect.
-The original MLIR file, `test/conv2d-tosa.mlir`, is a simplified version of an MLIR file produced by TFLite.
-We apply the following pipelines to generate `test/conv2d.mlir`:
+### Compile
+
+We can use a script `compile.sh` to compile MLIR files into wasm.
+This script supports binaryen optimization, inserting debugging functions, and
+etc.
+Use `./compile.sh --help` for more options.
+
+```sh
+./compile.sh -i test/conv2d.mlir -o conv2d-mlir --compiler=mlir
+```
+
+For comparison, compilation using LLVM is also supported:
+```sh
+./compile.sh -i test/conv2d.mlir -o conv2d-llvm --compiler=llvm
+```
+
+### AOT Compilation
+
+We have an AOT compiler for faster execution on WAMR.
+Refer to [mcu-wasm-executor/aot-compiler/README.md](mcu-wasm-executor/aot-compiler/README.md).
+
+### Execution on MCU
+
+Refer to [mcu-wasm-executor/README.md](mcu-wasm-executor/README.md).
+
+### Execution on wasmtime
+
+Refer to [wasmtime-executor/README.md](wasmtime-executor/README.md).
+
+
+## Generating Inputs
+
+To use the `--convert-to-wasm` pass, we require that an MLIR file only contains
+the standard dialects (arith, scf, and memref). Any higher-level
+dialects must be lowered to these standard dialects beforehand.
+
+Currently, we have two examples: `test/conv2d.mlir` and `test/lenet.mlir`.
+We outline the creation of `test/conv2d.mlir` here; `test/lenet.mlir` was generated
+similarly.
+
+We start from `test/conv2d-tosa.mlir`, which is generated from TFLite, and apply
+the following pipelines to produce `test/conv2d.mlir`.
+
 ```sh
 mlir-opt test/conv2d-tosa.mlir \
 --pass-pipeline="builtin.module(func.func(tosa-to-linalg-named, tosa-to-linalg, \
@@ -110,62 +170,7 @@ manually add shapes to the memref type of the input argument (as well as other
 dynamically shaped memref values inferred from the input argument). This can be
 done by replacing ? with concrete numbers.
 
-## Baseline
-
-### Using Script
-We have a script to produce wasm/wat files from mlir files. 
-For example, run the following:
-```sh
-./compile-baseline.sh -i test/conv2d.mlir -o test/conv2d-baseline
-```
-It will produce six files:
-- LLVM MLIR: `./test/conv2d-baseline-llvm.mlir`
-- LLVM IR: `./test/conv2d-baseline.ll`
-- Object file: `./test/conv2d-baseline.o`
-- WAT: `./test/conv2d-baseline-obj.wat`
-- Linked WASM: `./test/conv2d-baseline.wasm`
-- Linked Formatted WAT: `./test/conv2d-baseline.wat`
-
-The baseline wat file can be executed with the following command
-```sh
-cargo run -- -i ../test/conv2d-baseline-linked.wasm --indirect-tensor-pointer
-```
-Note that the input to the wasm file is hard-coded for now.
-
-### Manual Execution
-
-
-The baseline for comparison (`conv2d.wat`) is produced as follows:
-```sh
-mlir-opt ./test/conv2d.mlir --convert-scf-to-cf --lower-affine --convert-arith-to-llvm="index-bitwidth=32" --convert-func-to-llvm="index-bitwidth=32" --memref-expand --expand-strided-metadata --finalize-memref-to-llvm="index-bitwidth=32" --convert-to-llvm --reconcile-unrealized-casts -o ./test/conv2d-llvm.mlir
-mlir-translate ./test/conv2d-llvm.mlir --mlir-to-llvmir -o ./test/conv2d.ll
-llc -O0 -filetype=obj -mtriple=wasm32-wasi ./test/conv2d.ll -o ./test/conv2d.o
-wasm2wat ./test/conv2d.o -o ./test/conv2d.wat
-```
-
-We need to link the wasm file with stdlib
-```sh
-$WASI_SDK_PATH/bin/wasm-ld --no-entry \
---export-memory --export=_mlir_ciface_main --export=malloc --export=free \
--L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
--o ./test/conv2d-linked.wasm ./test/conv2d.o
-wasm2wat ./test/conv2d-linked.wasm -o ./test/conv2d-linked.wat
-```
-
-## Testing
-We have a testing script to automate aot testing.
-Example usage:
-```
-./run.sh test/lenet.mlir --compiler=llvm \
---binaryen-opt-flags="O3" --use-aot=true -- \
---opt-level=0 --target=thumbv7em \
---target-abi=eabihf --cpu=cortex-m4
-```
-
-For testing on interpreter, see `interpreter/README.md`.
-
-
-## Debugging
+## Debugging Tips
 
 For debugging wasm code, it is useful to use the `log_i32()` and `log_f32()`
 functions (defined in `run-wasm/src/main.rs`). 
