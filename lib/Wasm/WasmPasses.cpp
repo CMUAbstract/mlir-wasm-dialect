@@ -38,30 +38,27 @@ public:
     });
 
     addArgumentMaterialization([](OpBuilder &builder, Type type,
-                                  ValueRange inputs,
-                                  Location loc) -> std::optional<Value> {
-      if (inputs.size() != 1)
-        return std::nullopt;
+                                  ValueRange inputs, Location loc) -> Value {
+      // if (inputs.size() != 1)
+      //   return std::nullopt;
 
       return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
           .getResult(0);
     });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,
-                                ValueRange inputs,
-                                Location loc) -> std::optional<Value> {
-      if (inputs.size() != 1)
-        return std::nullopt;
+                                ValueRange inputs, Location loc) -> Value {
+      // if (inputs.size() != 1)
+      //   return std::nullopt;
 
       return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
           .getResult(0);
     });
 
     addTargetMaterialization([](OpBuilder &builder, Type type,
-                                ValueRange inputs,
-                                Location loc) -> std::optional<Value> {
-      if (inputs.size() != 1)
-        return std::nullopt;
+                                ValueRange inputs, Location loc) -> Value {
+      // if (inputs.size() != 1)
+      //   return std::nullopt;
 
       return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
           .getResult(0);
