@@ -12,11 +12,12 @@ git clone https://github.com/llvm/llvm-project.git
 cd llvm-project
 mkdir build && cd build
 cmake -G Ninja ../llvm \
--DLLVM_ENABLE_PROJECTS=mlir \
--DLLVM_TARGETS_TO_BUILD="host" \
--DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly \
--DCMAKE_BUILD_TYPE=Debug \
--DLLVM_ENABLE_ASSERTIONS=ON
+   -DLLVM_ENABLE_PROJECTS=mlir \
+   -DLLVM_BUILD_EXAMPLES=ON \
+   -DLLVM_TARGETS_TO_BUILD="Native;NVPTX;AMDGPU" \
+    -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly \
+   -DCMAKE_BUILD_TYPE=Debug \
+   -DLLVM_ENABLE_ASSERTIONS=ON
 cmake --build . --target check-mlir
 ```
 
