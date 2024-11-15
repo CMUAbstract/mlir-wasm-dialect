@@ -12,6 +12,7 @@
 #include "Intermittent/IntermittentDialect.h"
 #include "Intermittent/IntermittentOps.h"
 #include "Wasm/WasmDialect.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Pass/Pass.h"
 
 namespace mlir::intermittent {
