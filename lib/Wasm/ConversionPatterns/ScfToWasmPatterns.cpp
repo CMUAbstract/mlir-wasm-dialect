@@ -132,9 +132,29 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
   }
 };
 
+struct ForOpLoweringWithBlockParams : public OpConversionPattern<scf::ForOp> {
+  using OpConversionPattern<scf::ForOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(scf::ForOp forOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // TODO
+
+    return success();
+  }
+};
+
 void populateScfToWasmPatterns(TypeConverter &typeConverter,
-                               RewritePatternSet &patterns) {
-  patterns.add<ForOpLowering>(typeConverter, patterns.getContext());
+                               RewritePatternSet &patterns,
+                               bool enableBlockParams) {
+
+  if (enableBlockParams) {
+    patterns.add<ForOpLoweringWithBlockParams>(typeConverter,
+                                               patterns.getContext());
+  } else {
+
+    patterns.add<ForOpLowering>(typeConverter, patterns.getContext());
+  }
 }
 
 } // namespace mlir::wasm
