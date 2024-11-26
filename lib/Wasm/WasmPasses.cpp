@@ -99,7 +99,8 @@ public:
     // && "attempting to modify a replaced/erased op")"
     RewritePatternSet nextPatterns(context);
     target.addIllegalDialect<scf::SCFDialect>();
-    populateScfToWasmPatterns(typeConverter, nextPatterns);
+    populateScfToWasmPatterns(typeConverter, nextPatterns,
+                              enableBlockParams.getValue());
     if (failed(
             applyPartialConversion(module, target, std::move(nextPatterns)))) {
       signalPassFailure();

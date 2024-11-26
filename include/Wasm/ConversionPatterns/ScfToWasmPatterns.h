@@ -7,7 +7,8 @@
 
 namespace mlir::wasm {
 void populateScfToWasmPatterns(TypeConverter &typeConverter,
-                               RewritePatternSet &patterns);
+                               RewritePatternSet &patterns,
+                               bool enableBlockParams);
 
 } // namespace mlir::wasm
 

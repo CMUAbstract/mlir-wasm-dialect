@@ -23,6 +23,10 @@ def ConvertToWasm : Pass<"convert-to-wasm", "ModuleOp"> {
     "scf::SCFDialect",
     "memref::MemRefDialect",
   ];
+  let options = [
+    Option<"enableBlockParams", "enable-block-params", "bool", 
+    /*default=*/"false", "Use block parameters when compiling scf operations">,
+  ];
 }
 
 def WasmFinalize : Pass<"wasm-finalize", "ModuleOp"> {
