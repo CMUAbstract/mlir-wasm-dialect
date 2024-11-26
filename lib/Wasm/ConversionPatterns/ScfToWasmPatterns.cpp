@@ -1,5 +1,6 @@
 #include "Wasm/ConversionPatterns/ScfToWasmPatterns.h"
 #include "Wasm/WasmOps.h"
+#include "llvm/Support/Debug.h"
 
 namespace mlir::wasm {
 
@@ -44,8 +45,9 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
   LogicalResult
   matchAndRewrite(scf::ForOp forOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // we use i32 type for induction variable, lower bound, upper bound, and
-    // step
+    Location loc = forOp.getLoc();
+
+    // Use i32 type for induction variable, lower bound, upper bound, and step
     auto indexType = rewriter.getI32Type();
     auto localIndexType = typeConverter->convertType(rewriter.getI32Type());
 
@@ -57,7 +59,8 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
       return rewriter.notifyMatchFailure(forOp, "missing loop bounds");
     }
 
-    Location loc = forOp.getLoc();
+    // Get the iteration arguments (initial values of iteration variables)
+    ValueRange initArgs = adaptor.getInitArgs();
 
     auto loopOp = rewriter.create<LoopOp>(loc);
     auto *entryBlock = rewriter.createBlock(&loopOp.getRegion());
@@ -66,36 +69,76 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
         rewriter.createBlock(&loopOp.getRegion());
     auto *terminationBlock = rewriter.createBlock(&loopOp.getRegion());
 
-    // move for loop body blocks between conditionBlock and
+    // Get the body block and its arguments
+    // Move for loop body blocks between conditionBlock and
     // inductionVariableUpdateBlock
-    auto *bodyStartBlock = &forOp.getRegion().front();
-    auto *bodyEndBlock = &forOp.getRegion().back();
     rewriter.inlineRegionBefore(forOp.getRegion(),
                                 inductionVariableUpdateBlock);
 
-    // body end block
-    rewriter.setInsertionPointToEnd(bodyEndBlock);
-    Operation *terminator = bodyEndBlock->getTerminator();
-    rewriter.eraseOp(terminator);
-    rewriter.create<wasm::BranchOp>(loc, inductionVariableUpdateBlock);
+    // After inlining, get the updated body blocks and their arguments
+    auto it = loopOp.getRegion().begin();
+    it++; // Skip the entry block
+    it++; // skip condition block
+    auto *bodyStartBlock = &*it;
+    auto *bodyEndBlock = inductionVariableUpdateBlock->getPrevNode();
+    auto bodyArgs = bodyStartBlock->getArguments();
 
-    // entry block
+    // set variables for the iteration
+    rewriter.setInsertionPoint(loopOp);
+    SmallVector<Value, 4> iterationLocals;
+    for (Value initArg : initArgs) {
+      auto innerType = cast<LocalType>(initArg.getType()).getInner();
+      auto local = rewriter.create<TempLocalOp>(loc, innerType).getResult();
+      iterationLocals.push_back(local);
+      rewriter.create<TempLocalGetOp>(loc, initArg);
+      rewriter.create<TempLocalSetOp>(loc, local);
+    }
+
+    // Modify entry block
     rewriter.setInsertionPointToEnd(entryBlock);
+
     auto inductionLocal =
         rewriter.create<TempLocalOp>(loc, indexType).getResult();
-    auto castedInductionLocal = typeConverter->materializeSourceConversion(
-        rewriter, loc, indexType, inductionLocal);
-
-    // initialize induction variable with lower bound
     auto castedLowerBound = typeConverter->materializeSourceConversion(
         rewriter, loc, localIndexType, lowerBound);
     rewriter.create<TempLocalGetOp>(loc, castedLowerBound);
     rewriter.create<TempLocalSetOp>(loc, inductionLocal);
 
-    rewriter.replaceAllUsesWith(inductionVariable, castedInductionLocal);
+    // Replace uses of the block arguments with the locals
+    auto castedInductionLocal = typeConverter->materializeSourceConversion(
+        rewriter, loc, indexType, inductionLocal);
+    rewriter.replaceAllUsesWith(bodyArgs[0], castedInductionLocal);
+    for (unsigned i = 0; i < initArgs.size(); ++i) {
+      auto castedLocal = typeConverter->materializeSourceConversion(
+          rewriter, loc,
+          cast<LocalType>(iterationLocals[i].getType()).getInner(),
+          initArgs[i]);
+      rewriter.replaceAllUsesWith(bodyArgs[i + 1], castedLocal);
+    }
+
     rewriter.create<BranchOp>(loc, conditionBlock);
 
-    // condition block
+    // Body end block: update iteration variables and branch to
+    // inductionVariableUpdateBlock
+    rewriter.setInsertionPointToEnd(bodyEndBlock);
+    Operation *terminator = bodyEndBlock->getTerminator();
+
+    if (auto yieldOp = dyn_cast<scf::YieldOp>(terminator)) {
+      auto yieldedValues = yieldOp.getResults();
+
+      for (unsigned i = 0; i < iterationLocals.size(); ++i) {
+        Value yieldedValue = yieldedValues[i];
+        Value castedYieldedValue = typeConverter->materializeSourceConversion(
+            rewriter, loc, iterationLocals[i].getType(), yieldedValue);
+        rewriter.create<TempLocalGetOp>(loc, castedYieldedValue);
+        rewriter.create<TempLocalSetOp>(loc, iterationLocals[i]);
+      }
+      rewriter.eraseOp(yieldOp);
+    }
+
+    rewriter.create<wasm::BranchOp>(loc, inductionVariableUpdateBlock);
+
+    // Condition block
     rewriter.setInsertionPointToEnd(conditionBlock);
     auto castedUpperBound = typeConverter->materializeTargetConversion(
         rewriter, loc, localIndexType, upperBound);
@@ -107,7 +150,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.create<wasm::ILeUOp>(loc, indexType);
     rewriter.create<wasm::CondBranchOp>(loc, terminationBlock, bodyStartBlock);
 
-    // induction variable update block
+    // Induction variable update block
     rewriter.setInsertionPointToEnd(inductionVariableUpdateBlock);
     auto castedStep = typeConverter->materializeTargetConversion(
         rewriter, loc, localIndexType, step);
@@ -118,15 +161,17 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
 
     rewriter.create<wasm::BranchOp>(loc, conditionBlock);
 
-    // termination block
+    // Termination block: read final values of iteration variables
     rewriter.setInsertionPointToEnd(terminationBlock);
     rewriter.create<wasm::LoopEndOp>(loc);
 
-    // remove unused block argument from bodyStartBlock
-    TypeConverter::SignatureConversion empty(bodyStartBlock->getNumArguments());
-    rewriter.applySignatureConversion(bodyStartBlock, empty);
+    // Replace scf.for op with final iteration variable values
+    rewriter.replaceOp(forOp, iterationLocals);
 
-    rewriter.eraseOp(forOp);
+    // Remove block arguments from the body block
+    TypeConverter::SignatureConversion signatureConversion(
+        bodyStartBlock->getNumArguments());
+    rewriter.applySignatureConversion(bodyStartBlock, signatureConversion);
 
     return success();
   }
