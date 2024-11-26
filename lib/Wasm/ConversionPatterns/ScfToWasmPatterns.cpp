@@ -38,7 +38,7 @@ namespace mlir::wasm {
 //                 v
 //          (Back to conditionBlock)
 
-struct ForLowering : public OpConversionPattern<scf::ForOp> {
+struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
   using OpConversionPattern<scf::ForOp>::OpConversionPattern;
 
   LogicalResult
@@ -134,7 +134,7 @@ struct ForLowering : public OpConversionPattern<scf::ForOp> {
 
 void populateScfToWasmPatterns(TypeConverter &typeConverter,
                                RewritePatternSet &patterns) {
-  patterns.add<ForLowering>(typeConverter, patterns.getContext());
+  patterns.add<ForOpLowering>(typeConverter, patterns.getContext());
 }
 
 } // namespace mlir::wasm
