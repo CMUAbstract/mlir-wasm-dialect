@@ -31,8 +31,9 @@ public:
         [ctx](IntegerType type) -> Type { return LocalType::get(ctx, type); });
     addConversion(
         [ctx](FloatType type) -> Type { return LocalType::get(ctx, type); });
-    addConversion(
-        [ctx](IndexType type) -> Type { return LocalType::get(ctx, type); });
+    addConversion([ctx](IndexType type) -> Type {
+      return LocalType::get(ctx, IntegerType::get(ctx, 32));
+    });
     addConversion([ctx](MemRefType type) -> Type {
       return LocalType::get(ctx, IntegerType::get(ctx, 32));
     });
