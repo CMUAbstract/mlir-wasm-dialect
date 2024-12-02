@@ -609,12 +609,12 @@ llvm::LogicalResult translateFunction(FuncSignatureList &funcSignatureList,
     output << " (param ";
     bool isFirst = true;
     for (auto paramType : funcSignature.paramTypes) {
-      output << paramType;
       if (!isFirst) {
         output << " ";
       } else {
         isFirst = false;
       }
+      output << paramType;
     }
     output << ")";
   }
