@@ -83,20 +83,6 @@ llvm::LogicalResult getNumericAttrValue(Attribute attr, std::string &value) {
   return success();
 }
 
-llvm::LogicalResult translateOperand(Value operand, raw_ostream &output) {
-  if (isa<BlockArgument>(operand)) {
-    // It's a function argument
-    unsigned argIndex = cast<BlockArgument>(operand).getArgNumber();
-    output << "(get_local $p" << argIndex << ")";
-  } else {
-    // It's a result from another operation, assign local variables as needed
-    // For simplicity, we'll need to manage a symbol table for local variables
-    // This is a placeholder
-    output << "(local.get $var" << operand.getDefiningOp()->getResult(0) << ")";
-  }
-  return success();
-}
-
 llvm::LogicalResult translateConstantOp(ConstantOp constantOp,
                                         raw_ostream &output) {
   std::string watType;
