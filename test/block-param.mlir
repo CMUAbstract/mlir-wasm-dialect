@@ -1,5 +1,6 @@
 module {
-  func.func @reduce(%buffer: memref<1024xf32>, %lb: index,
+  // reduce function
+  func.func @main(%buffer: memref<1024xf32>, %lb: index,
                     %ub: index, %step: index) -> (f32) {
     // Initial sum set to 0.
     %sum_0 = arith.constant 0.0 : f32
