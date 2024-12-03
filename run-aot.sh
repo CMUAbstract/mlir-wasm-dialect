@@ -7,7 +7,7 @@ CMDARGS="$@"
 
 # Check if the minimum number of arguments is provided
 if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <mlir_file> --type=[mlir|llvm] [--optimize] [--use-aot=<true|false>] -- <aot_flags>"
+    echo "Usage: $0 <mlir_file> --type=[mlir|llvm] --testcase=[testname] [--optimize] [--use-aot=<true|false>] -- <aot_flags>"
     exit 1
 fi
 
@@ -18,13 +18,17 @@ LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
 USE_AOT=true  # Default is to use AOT
 AOT_FLAGS=""
-MODE=""
+TESTCASE=""
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --compiler=*)
             COMPILER="${1#*=}"
+            shift
+            ;;
+        --testcase=*)
+            TESTCASE="${1#*=}"
             shift
             ;;
         --llvm-opt-flags=*)
@@ -105,13 +109,6 @@ else
     EXEC_FILE="$TEMP_DIR/$BASENAME.wasm"
 fi
 
-# set execution mode
-if [ "$COMPILER" = "mlir" ]; then
-    MODE="MNIST_MLIR"
-elif [ "$COMPILER" = "llvm" ]; then
-    MODE="MNIST_LLVM"
-fi
-
 # Step 4: Function to run the compiled file on the device
 run_on_device() {
     local file=$1
@@ -124,7 +121,7 @@ run_on_device() {
     # Move to the MCU Wasm Executor directory and prepare to run the binary
     (cd mcu-wasm-executor && \
         xxd -i -n wasm_file "../$file" src/wasm.h && \
-        west build . -b apollo4p_blue_kxr_evb -p -- -D$MODE=1 && \
+        west build . -b apollo4p_blue_kxr_evb -p -- -D$TESTCASE=1 && \
         west flash)
 
     # Check if the build and flash were successful
