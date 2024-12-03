@@ -41,6 +41,8 @@ target_sources(app PRIVATE
 
 option(MNIST_MLIR "Use the MNIST MLIR implementation" OFF)
 option(MNIST_LLVM "Use the MNIST LLVM implementation" OFF)
+option(ATAX_MLIR "Use the ATAX MLIR implementation" OFF)
+option(ATAX_LLVM "Use the ATAX LLVM implementation" OFF)
 
 if(MNIST_MLIR)
     target_sources(app PRIVATE src/mnist_mlir.h)
@@ -48,6 +50,12 @@ if(MNIST_MLIR)
 elseif(MNIST_LLVM)
     target_sources(app PRIVATE src/mnist_llvm.h)
     target_compile_definitions(app PRIVATE MNIST_LLVM)
+elseif(ATAX_MLIR)
+    target_sources(app PRIVATE src/atax_mlir.h)
+    target_compile_definitions(app PRIVATE ATAX_MLIR)
+elseif(ATAX_LLVM)
+    target_sources(app PRIVATE src/atax_llvm.h)
+    target_compile_definitions(app PRIVATE ATAX_LLVM)
 endif()
 
 

@@ -16,6 +16,10 @@
 #include "mnist_mlir.h"
 #elif defined(MNIST_LLVM)
 #include "mnist_llvm.h"
+#elif defined(ATAX_MLIR)
+#include "atax_mlir.h"
+#elif defined(ATAX_LLVM)
+#include "atax_llvm.h"
 #endif
 
 #define CONFIG_APP_STACK_SIZE 256000
