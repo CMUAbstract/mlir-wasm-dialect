@@ -12,24 +12,22 @@ source $ZEPHYRPROJECT/.venv/bin/activate
 
 xxd -i -n wasm_file filename src/wasm.h
 
-west build . -b apollo4p_blue_kxr_evb -p -- -DEXECUTION_TYPE=N
+west build . -b apollo4p_blue_kxr_evb -p -- -D{MODE}=1
 west flash
 ```
 
 - `filename` can be a path to either an `wasm` or `aot` file.
 This does not support the `wat` file extenstion.
 
-- `EXECUTION_TYPE` can be either `0`, `1`, or `2`.
+- `MODE` sets the scaffolding code that should be used to run and initialize the
+wasm code.
 
-    - 0 : For wasm files produced by llvm backend. The input is a struct with
-    base_ptr, data, offset, sizes, strides, and the entry function is
-    `_mlir_ciface_main`
-    - 1 : For wasm files produced by `convert-to-wasm` pass. The input is a pointer
-    to the tensor data, assuming that it has the canonical layout, and the entry
-    function is `main`
-    - 2 : For wasm files produced by tflm compilation pipeline (see tflm-wasm
-    repo). The input data is hard-coded in the wasm file and the entry function
-    is `main_argc_argv`
+    - MNIST_LLVM : For wasm files produced by llvm backend from
+    `../test/conv2d.mlir` or `../test/lenet.mlir`. This uses the function
+    defined in `src/mnist_llvm.h`.
+    - MNIST_MLIR : For wasm files produced by `convert-to-wasm` pass from
+    `../test/conv2d.mlir` or `../test/lenet.mlir`.. This uses the function
+    defined in `src/mnist_llvm.h`. 
 
 
 ## Monitoring Output

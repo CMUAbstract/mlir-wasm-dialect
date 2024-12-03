@@ -18,7 +18,7 @@ LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
 USE_AOT=true  # Default is to use AOT
 AOT_FLAGS=""
-EXECUTION_TYPE=0
+MODE=""
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -105,9 +105,11 @@ else
     EXEC_FILE="$TEMP_DIR/$BASENAME.wasm"
 fi
 
-# Set the execution type for LLVM or MLIR
-if [ "$COMPILER" = "llvm" ]; then
-    EXECUTION_TYPE=1
+# set execution mode
+if [ "$COMPILER" = "mlir" ]; then
+    MODE="MNIST_MLIR"
+elif [ "$COMPILER" = "llvm" ]; then
+    MODE="MNIST_LLVM"
 fi
 
 # Step 4: Function to run the compiled file on the device
@@ -122,7 +124,7 @@ run_on_device() {
     # Move to the MCU Wasm Executor directory and prepare to run the binary
     (cd mcu-wasm-executor && \
         xxd -i -n wasm_file "../$file" src/wasm.h && \
-        west build . -b apollo4p_blue_kxr_evb -p -- -DEXECUTION_TYPE=$EXECUTION_TYPE && \
+        west build . -b apollo4p_blue_kxr_evb -p -- -D$MODE=1 && \
         west flash)
 
     # Check if the build and flash were successful
