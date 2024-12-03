@@ -30,8 +30,6 @@ set (WAMR_BUILD_GLOBAL_HEAP_SIZE 1638912)
 
 
 
-add_compile_definitions(WASM_EXECUTION_TYPE=${EXECUTION_TYPE})
-
 include (${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 include (${WAMR_ROOT_DIR}/core/shared/platform/common/math/platform_api_math.cmake)
 
@@ -40,5 +38,17 @@ zephyr_library_include_directories(${ZEPHYR_BASE}/../modules/hal/ambiq)
 target_sources(app PRIVATE
                ${WAMR_RUNTIME_LIB_SOURCE}
                src/main.c)
+
+option(MNIST_MLIR "Use the MNIST MLIR implementation" OFF)
+option(MNIST_LLVM "Use the MNIST LLVM implementation" OFF)
+
+if(MNIST_MLIR)
+    target_sources(app PRIVATE src/mnist_mlir.h)
+    target_compile_definitions(app PRIVATE MNIST_MLIR)
+elseif(MNIST_LLVM)
+    target_sources(app PRIVATE src/mnist_llvm.h)
+    target_compile_definitions(app PRIVATE MNIST_LLVM)
+endif()
+
 
 target_compile_options(app PRIVATE -static -mthumb -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O3)
