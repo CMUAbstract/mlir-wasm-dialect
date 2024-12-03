@@ -21,7 +21,7 @@ typedef struct {
 } Output;
 
 static void *app_instance_main(wasm_module_inst_t module_inst,
-                               exec_env_t exec_env) {
+                               wasm_exec_env_t exec_env) {
   const char *exception;
 
   Input *input_native_ptr = NULL;
