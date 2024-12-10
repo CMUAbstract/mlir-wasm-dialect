@@ -3,6 +3,8 @@
 #include "bh_log.h"
 #include "bh_platform.h"
 
+#define SIZE 256;
+
 static void *app_instance_main(wasm_module_inst_t module_inst,
                                wasm_exec_env_t exec_env) {
   const char *exception;
@@ -17,36 +19,36 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
   }
 
   // initialize input A
-  argv[0] = 32 * 32 * 4;
+  argv[0] = SIZE * SIZE * 4;
   wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
   uint32_t A_ptr = argv[0];
   float32 *A_native_ptr = wasm_runtime_addr_app_to_native(module_inst, A_ptr);
 
-  float32 A[32 * 32];
-  for (int i = 0; i < 32 * 32; i++) {
+  float32 A[SIZE * SIZE];
+  for (int i = 0; i < SIZE * SIZE; i++) {
     A[i] = 1.0;
   }
-  memcpy(A_native_ptr, A, 32 * 32 * 4);
+  memcpy(A_native_ptr, A, SIZE * SIZE * 4);
 
   // initialize input x
-  argv[0] = 32 * 4;
+  argv[0] = SIZE * 4;
   wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
   uint32_t x_ptr = argv[0];
   float32 *x_native_ptr = wasm_runtime_addr_app_to_native(module_inst, x_ptr);
 
-  float32 x[32 * 4];
-  for (int i = 0; i < 32 * 4; i++) {
+  float32 x[SIZE * 4];
+  for (int i = 0; i < SIZE * 4; i++) {
     x[i] = 1.0;
   }
-  memcpy(x_native_ptr, A, 32 * 4);
+  memcpy(x_native_ptr, A, SIZE * 4);
 
   // initialize input y
-  argv[0] = 32 * 4;
+  argv[0] = SIZE * 4;
   wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
   uint32_t y_ptr = argv[0];
 
   // initialize input tmp
-  argv[0] = 32 * 4;
+  argv[0] = SIZE * 4;
   wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
   uint32_t tmp_ptr = argv[0];
 
