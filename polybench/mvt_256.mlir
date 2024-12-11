@@ -1,31 +1,43 @@
-func.func @mvt_256(
-  %x1: memref<256xf32>, 
-  %x2: memref<256xf32>, 
-  %y1: memref<256xf32>, 
-  %y2: memref<256xf32>, 
-  %A: memref<256x256xf32>) {
-  affine.for %n = 0 to 1 {
-    affine.for %i = 0 to 256 {
-      affine.for %j = 0 to 256 {
-        %0 = affine.load %A[%i, %j] : memref<256x256xf32>
-        %1 = affine.load %y1[%j] : memref<256xf32>
-        %2 = affine.load %x1[%i] : memref<256xf32>
-        %3 = arith.mulf %0, %1 : f32
-        %4 = arith.addf %2, %3 : f32
-        affine.store %4, %x1[%i] : memref<256xf32>
+module {
+  func.func @mvt_256(%arg0: memref<256xf32>, %arg1: memref<256xf32>, %arg2: memref<256xf32>, %arg3: memref<256xf32>, %arg4: memref<256x256xf32>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c1_0 = arith.constant 1 : index
+    scf.for %arg5 = %c0 to %c1 step %c1_0 {
+      %c0_1 = arith.constant 0 : index
+      %c256 = arith.constant 256 : index
+      %c1_2 = arith.constant 1 : index
+      scf.for %arg6 = %c0_1 to %c256 step %c1_2 {
+        %c0_6 = arith.constant 0 : index
+        %c256_7 = arith.constant 256 : index
+        %c1_8 = arith.constant 1 : index
+        scf.for %arg7 = %c0_6 to %c256_7 step %c1_8 {
+          %0 = memref.load %arg4[%arg6, %arg7] : memref<256x256xf32>
+          %1 = memref.load %arg2[%arg7] : memref<256xf32>
+          %2 = memref.load %arg0[%arg6] : memref<256xf32>
+          %3 = arith.mulf %0, %1 : f32
+          %4 = arith.addf %2, %3 : f32
+          memref.store %4, %arg0[%arg6] : memref<256xf32>
+        }
+      }
+      %c0_3 = arith.constant 0 : index
+      %c256_4 = arith.constant 256 : index
+      %c1_5 = arith.constant 1 : index
+      scf.for %arg6 = %c0_3 to %c256_4 step %c1_5 {
+        %c0_6 = arith.constant 0 : index
+        %c256_7 = arith.constant 256 : index
+        %c1_8 = arith.constant 1 : index
+        scf.for %arg7 = %c0_6 to %c256_7 step %c1_8 {
+          %0 = memref.load %arg4[%arg7, %arg6] : memref<256x256xf32>
+          %1 = memref.load %arg3[%arg7] : memref<256xf32>
+          %2 = memref.load %arg1[%arg6] : memref<256xf32>
+          %3 = arith.mulf %0, %1 : f32
+          %4 = arith.addf %2, %3 : f32
+          memref.store %4, %arg1[%arg6] : memref<256xf32>
+        }
       }
     }
-
-    affine.for %i = 0 to 256 {
-      affine.for %j = 0 to 256 {
-        %0 = affine.load %A[%j, %i] : memref<256x256xf32>
-        %1 = affine.load %y2[%j] : memref<256xf32>
-        %2 = affine.load %x2[%i] : memref<256xf32>
-        %3 = arith.mulf %0, %1 : f32
-        %4 = arith.addf %2, %3 : f32
-        affine.store %4, %x2[%i] : memref<256xf32>
-      }
-    }
+    return
   }
-  return
 }
+
