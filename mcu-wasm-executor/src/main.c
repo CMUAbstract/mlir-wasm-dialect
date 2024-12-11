@@ -67,7 +67,7 @@
 #endif
 
 #define CONFIG_APP_STACK_SIZE 256000
-#define CONFIG_APP_HEAP_SIZE 256000
+#define CONFIG_APP_HEAP_SIZE 1024000
 #define CONFIG_GLOBAL_HEAP_BUF_SIZE WASM_GLOBAL_HEAP_SIZE
 
 void gpio_toggle(wasm_exec_env_t exec_env) {
