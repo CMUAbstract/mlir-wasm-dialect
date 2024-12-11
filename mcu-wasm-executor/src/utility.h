@@ -8,6 +8,14 @@ typedef struct {
   uint32_t base_ptr;
   uint32_t data;
   uint32_t offset;
+  uint32_t sizes[1];
+  uint32_t strides[1];
+} Input1D;
+
+typedef struct {
+  uint32_t base_ptr;
+  uint32_t data;
+  uint32_t offset;
   uint32_t sizes[2];
   uint32_t strides[2];
 } Input2D;
@@ -16,9 +24,9 @@ typedef struct {
   uint32_t base_ptr;
   uint32_t data;
   uint32_t offset;
-  uint32_t sizes[1];
-  uint32_t strides[1];
-} Input1D;
+  uint32_t sizes[3];
+  uint32_t strides[3];
+} Input3D;
 
 typedef struct {
   uint32_t tensor_ptr;
@@ -85,6 +93,19 @@ InputData initialize_input(wasm_module_inst_t module_inst,
         .strides = {strides[0], strides[1]},
     };
     memcpy((Input2D *)input_native_ptr, &input, sizeof(Input2D));
+  } else if (dim == 3) {
+    argv[0] = sizeof(Input3D);
+    wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
+    input_ptr = argv[0];
+    input_native_ptr = wasm_runtime_addr_app_to_native(module_inst, input_ptr);
+    Input2D input = {
+        .base_ptr = tensor_ptr,
+        .data = tensor_ptr,
+        .offset = 0,
+        .sizes = {sizes[0], sizes[1], sizes[2]},
+        .strides = {strides[0], strides[1], strides[2]},
+    };
+    memcpy((Input3D *)input_native_ptr, &input, sizeof(Input3D));
   }
 
   InputData result = {
