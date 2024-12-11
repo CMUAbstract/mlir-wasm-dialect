@@ -1,4 +1,4 @@
-func.func @simple_async_example() -> i32 {
+func.func @main() -> i32 {
   // Spawn an asynchronous task that produces a single integer value.
   %token, %value = async.execute() -> !async.value<i32> {
     %c42 = arith.constant 42 : i32
