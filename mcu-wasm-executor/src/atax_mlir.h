@@ -1,56 +1,32 @@
-#include "am_mcu_apollo.h"
-#include "bh_assert.h"
-#include "bh_log.h"
-#include "bh_platform.h"
+#include "utility.h"
 
-#define SIZE 256;
+#define SIZE 256
 
 static void *app_instance_main(wasm_module_inst_t module_inst,
                                wasm_exec_env_t exec_env) {
   const char *exception;
-
-  uint32 argv[4];
-
-  wasm_function_inst_t malloc_fn =
-      wasm_runtime_lookup_function(module_inst, "malloc");
-  if (!malloc_fn) {
-    printk("Fail to find function: malloc\n");
-    return NULL;
-  }
+  uint32_t argv[4];
 
   // initialize input A
-  argv[0] = SIZE * SIZE * 4;
-  wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
-  uint32_t A_ptr = argv[0];
-  float32 *A_native_ptr = wasm_runtime_addr_app_to_native(module_inst, A_ptr);
-
   float32 A[SIZE * SIZE];
   for (int i = 0; i < SIZE * SIZE; i++) {
     A[i] = 1.0;
   }
-  memcpy(A_native_ptr, A, SIZE * SIZE * 4);
+
+  TensorData A_data = initialize_tensor(module_inst, exec_env, SIZE * SIZE, A);
 
   // initialize input x
-  argv[0] = SIZE * 4;
-  wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
-  uint32_t x_ptr = argv[0];
-  float32 *x_native_ptr = wasm_runtime_addr_app_to_native(module_inst, x_ptr);
-
   float32 x[SIZE * 4];
   for (int i = 0; i < SIZE * 4; i++) {
     x[i] = 1.0;
   }
-  memcpy(x_native_ptr, A, SIZE * 4);
+  TensorData x_data = initialize_tensor(module_inst, exec_env, SIZE, x);
 
   // initialize input y
-  argv[0] = SIZE * 4;
-  wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
-  uint32_t y_ptr = argv[0];
+  TensorData y_data = initialize_tensor(module_inst, exec_env, SIZE, x);
 
   // initialize input tmp
-  argv[0] = SIZE * 4;
-  wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
-  uint32_t tmp_ptr = argv[0];
+  TensorData tmp_data = initialize_tensor(module_inst, exec_env, SIZE, x);
 
   // load main
   wasm_function_inst_t main_func =
@@ -60,10 +36,10 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
     return NULL;
   }
   // setup arguments
-  argv[0] = A_ptr;
-  argv[1] = x_ptr;
-  argv[2] = y_ptr;
-  argv[3] = tmp_ptr;
+  argv[0] = A_data.tensor_ptr;
+  argv[1] = x_data.tensor_ptr;
+  argv[2] = y_data.tensor_ptr;
+  argv[3] = tmp_data.tensor_ptr;
 
   // call main
   am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
@@ -76,7 +52,7 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
     printk("%s\n", exception);
 
   // read and print output
-  float32 *y_native_ptr = wasm_runtime_addr_app_to_native(module_inst, y_ptr);
+  float32 *y_native_ptr = y_data.tensor_native_ptr;
 
   for (int i = 0; i < 10; i++) {
     printk("%d: %f\n", i, (double)y_native_ptr[i]);

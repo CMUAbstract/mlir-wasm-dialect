@@ -12,26 +12,26 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
     A[i] = 1.0;
   }
 
-  InitializedData A_data = initialize_input(module_inst, exec_env,
-                                            /*tensor size*/ SIZE * SIZE,
-                                            /*dim*/ 2, (uint32_t[]){SIZE, SIZE},
-                                            (uint32_t[]){SIZE, 1}, A);
+  InputData A_data = initialize_input(module_inst, exec_env,
+                                      /*tensor size*/ SIZE * SIZE,
+                                      /*dim*/ 2, (uint32_t[]){SIZE, SIZE},
+                                      (uint32_t[]){SIZE, 1}, A);
 
   float32 x[SIZE * 4];
   for (int i = 0; i < SIZE * 4; i++) {
     x[i] = 1.0;
   }
   // initialize input x
-  InitializedData x_data = initialize_input(
-      module_inst, exec_env, SIZE, 1, (uint32_t[]){SIZE}, (uint32_t[]){1}, x);
+  InputData x_data = initialize_input(module_inst, exec_env, SIZE, 1,
+                                      (uint32_t[]){SIZE}, (uint32_t[]){1}, x);
 
   // initialize input y
-  InitializedData y_data = initialize_input(
-      module_inst, exec_env, SIZE, 1, (uint32_t[]){SIZE}, (uint32_t[]){1}, x);
+  InputData y_data = initialize_input(module_inst, exec_env, SIZE, 1,
+                                      (uint32_t[]){SIZE}, (uint32_t[]){1}, x);
 
   // initialize input tmp
-  InitializedData tmp_data = initialize_input(
-      module_inst, exec_env, SIZE, 1, (uint32_t[]){SIZE}, (uint32_t[]){1}, x);
+  InputData tmp_data = initialize_input(module_inst, exec_env, SIZE, 1,
+                                        (uint32_t[]){SIZE}, (uint32_t[]){1}, x);
 
   // load main
   wasm_function_inst_t main_func =
