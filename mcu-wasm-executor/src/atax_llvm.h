@@ -2,14 +2,6 @@
 
 #define SIZE 256
 
-typedef struct {
-  uint32_t base_ptr;
-  uint32_t data;
-  uint32_t offset;
-  uint32_t sizes[2];
-  uint32_t strides[2];
-} Output;
-
 static void *app_instance_main(wasm_module_inst_t module_inst,
                                wasm_exec_env_t exec_env) {
   const char *exception;
