@@ -1,25 +1,34 @@
-func.func @gesummv_256(%alpha: f32, %beta: f32, %A: memref<256x256xf32>, %B: memref<256x256xf32>, %tmp: memref<256xf32>, %x: memref<256xf32>, %y: memref<256xf32>) {
-  affine.for %i = 0 to 256 {
-    affine.for %j = 0 to 256 {
-      %0 = affine.load %A[%i, %j] : memref<256x256xf32>
-      %1 = affine.load %x[%j] : memref<256xf32>
-      %2 = affine.load %tmp[%i] : memref<256xf32>
-      %3 = arith.mulf %0, %1 : f32
+module {
+  func.func @gesummv_256(%arg0: f32, %arg1: f32, %arg2: memref<256x256xf32>, %arg3: memref<256x256xf32>, %arg4: memref<256xf32>, %arg5: memref<256xf32>, %arg6: memref<256xf32>) {
+    %c0 = arith.constant 0 : index
+    %c256 = arith.constant 256 : index
+    %c1 = arith.constant 1 : index
+    scf.for %arg7 = %c0 to %c256 step %c1 {
+      %c0_0 = arith.constant 0 : index
+      %c256_1 = arith.constant 256 : index
+      %c1_2 = arith.constant 1 : index
+      scf.for %arg8 = %c0_0 to %c256_1 step %c1_2 {
+        %5 = memref.load %arg2[%arg7, %arg8] : memref<256x256xf32>
+        %6 = memref.load %arg5[%arg8] : memref<256xf32>
+        %7 = memref.load %arg4[%arg7] : memref<256xf32>
+        %8 = arith.mulf %5, %6 : f32
+        %9 = arith.addf %7, %8 : f32
+        memref.store %9, %arg4[%arg7] : memref<256xf32>
+        %10 = memref.load %arg3[%arg7, %arg8] : memref<256x256xf32>
+        %11 = memref.load %arg5[%arg8] : memref<256xf32>
+        %12 = memref.load %arg6[%arg7] : memref<256xf32>
+        %13 = arith.mulf %10, %11 : f32
+        %14 = arith.addf %12, %13 : f32
+        memref.store %14, %arg6[%arg7] : memref<256xf32>
+      }
+      %0 = memref.load %arg4[%arg7] : memref<256xf32>
+      %1 = memref.load %arg6[%arg7] : memref<256xf32>
+      %2 = arith.mulf %arg0, %0 : f32
+      %3 = arith.mulf %arg1, %1 : f32
       %4 = arith.addf %2, %3 : f32
-      affine.store %4, %tmp[%i] : memref<256xf32>
-      %5 = affine.load %B[%i, %j] : memref<256x256xf32>
-      %6 = affine.load %x[%j] : memref<256xf32>
-      %7 = affine.load %y[%i] : memref<256xf32>
-      %8 = arith.mulf %5, %6 : f32
-      %9 = arith.addf %7, %8 : f32
-      affine.store %9, %y[%i] : memref<256xf32>
+      memref.store %4, %arg6[%arg7] : memref<256xf32>
     }
-    %10 = affine.load %tmp[%i] : memref<256xf32>
-    %11 = affine.load %y[%i] : memref<256xf32>
-    %12 = arith.mulf %alpha, %10 : f32
-    %13 = arith.mulf %beta, %11 : f32
-    %14 = arith.addf %12, %13 : f32
-    affine.store %14, %y[%i] : memref<256xf32>
+    return
   }
-  return
 }
+
