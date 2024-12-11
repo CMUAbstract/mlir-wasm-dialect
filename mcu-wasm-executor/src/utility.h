@@ -25,15 +25,20 @@ typedef struct {
   float32 *tensor_native_ptr;
   uint32_t input_ptr;
   void *input_native_ptr;
-} InitializedData;
+} InputData;
+
+typedef struct {
+  uint32_t tensor_ptr;
+  float32 *tensor_native_ptr;
+} TensorData;
 
 /*
 tensor_size: number of tensor entries (width * height * ...)
 */
-InitializedData initialize_input(wasm_module_inst_t module_inst,
-                                 wasm_exec_env_t exec_env, uint32_t tensor_size,
-                                 uint32_t dim, uint32_t sizes[],
-                                 uint32_t strides[], float32 data[]) {
+InputData initialize_input(wasm_module_inst_t module_inst,
+                           wasm_exec_env_t exec_env, uint32_t tensor_size,
+                           uint32_t dim, uint32_t sizes[], uint32_t strides[],
+                           float32 data[]) {
   uint32_t tensor_ptr, input_ptr;
   void *tensor_native_ptr, *input_native_ptr;
   uint32_t argv[1];
@@ -42,7 +47,7 @@ InitializedData initialize_input(wasm_module_inst_t module_inst,
       wasm_runtime_lookup_function(module_inst, "malloc");
   if (!malloc_fn) {
     printk("Fail to find function: malloc\n");
-    return (InitializedData){0};
+    return (InputData){0};
   }
 
   argv[0] = tensor_size * sizeof(float32);
@@ -82,12 +87,45 @@ InitializedData initialize_input(wasm_module_inst_t module_inst,
     memcpy((Input2D *)input_native_ptr, &input, sizeof(Input2D));
   }
 
-  InitializedData result = {
+  InputData result = {
       .tensor_ptr = tensor_ptr,
       .tensor_native_ptr = tensor_native_ptr,
       .input_ptr = input_ptr,
       .input_native_ptr = input_native_ptr,
   };
 
+  return result;
+}
+
+/*
+tensor_size: number of tensor entries (width * height * ...)
+*/
+TensorData initialize_tensor(wasm_module_inst_t module_inst,
+                             wasm_exec_env_t exec_env, uint32_t tensor_size,
+                             float32 data[]) {
+  uint32_t tensor_ptr;
+  void *tensor_native_ptr;
+  uint32_t argv[1];
+
+  wasm_function_inst_t malloc_fn =
+      wasm_runtime_lookup_function(module_inst, "malloc");
+  if (!malloc_fn) {
+    printk("Fail to find function: malloc\n");
+    return (TensorData){0};
+  }
+
+  argv[0] = tensor_size * sizeof(float32);
+  wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
+  tensor_ptr = argv[0];
+
+  tensor_native_ptr = wasm_runtime_addr_app_to_native(module_inst, tensor_ptr);
+
+  // initialize data
+  memcpy((float32 *)tensor_native_ptr, data, tensor_size * sizeof(float32));
+
+  TensorData result = {
+      .tensor_ptr = tensor_ptr,
+      .tensor_native_ptr = tensor_native_ptr,
+  };
   return result;
 }
