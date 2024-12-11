@@ -1,5 +1,5 @@
 module {
-  func.func @two_mm_256(%arg0: f32, %arg1: f32, %arg2: memref<256x256xf32>, %arg3: memref<256x256xf32>, %arg4: memref<256x256xf32>, %arg5: memref<256x256xf32>, %arg6: memref<256x256xf32>) {
+  func.func @main(%arg0: f32, %arg1: f32, %arg2: memref<256x256xf32>, %arg3: memref<256x256xf32>, %arg4: memref<256x256xf32>, %arg5: memref<256x256xf32>, %arg6: memref<256x256xf32>) attributes {llvm.emit_c_interface} {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c1_0 = arith.constant 1 : index
