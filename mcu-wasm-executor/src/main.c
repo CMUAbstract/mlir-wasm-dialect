@@ -24,10 +24,10 @@
 #include "bicg_mlir.h"
 #elif defined(BICG_LLVM)
 #include "bicg_llvm.h"
-#elif defined(DOITGEM_MLIR)
-#include "doitgem_mlir.h"
-#elif defined(DOITGEM_LLVM)
-#include "doitgem_llvm.h"
+#elif defined(DOITGEN_MLIR)
+#include "doitgen_mlir.h"
+#elif defined(DOITGEN_LLVM)
+#include "doitgen_llvm.h"
 #elif defined(GEMM_MLIR)
 #include "gemm_mlir.h"
 #elif defined(GEMM_LLVM)
