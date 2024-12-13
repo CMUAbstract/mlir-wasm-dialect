@@ -16,8 +16,8 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
   TensorData A_data = initialize_tensor(module_inst, exec_env, SIZE * SIZE, A);
 
   // initialize input s
-  float32 s[SIZE * 4];
-  for (int i = 0; i < SIZE * 4; i++) {
+  float32 s[SIZE];
+  for (int i = 0; i < SIZE; i++) {
     s[i] = 1.0;
   }
   TensorData s_data = initialize_tensor(module_inst, exec_env, SIZE, s);
