@@ -18,7 +18,7 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
                                       (uint32_t[]){SIZE, 1}, A);
 
   float32 s[SIZE * 4];
-  for (int i = 0; i < SIZE * 4; i++) {
+  for (int i = 0; i < SIZE; i++) {
     s[i] = 1.0;
   }
   InputData s_data = initialize_input(module_inst, exec_env, SIZE, 1,
@@ -38,10 +38,11 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
     return NULL;
   }
   // setup arguments
-  argv[0] = s_data.input_ptr;
-  argv[1] = q_data.input_ptr;
-  argv[2] = p_data.input_ptr;
-  argv[3] = r_data.input_ptr;
+  argv[0] = A_data.input_ptr;
+  argv[1] = s_data.input_ptr;
+  argv[2] = q_data.input_ptr;
+  argv[3] = p_data.input_ptr;
+  argv[4] = r_data.input_ptr;
 
   // call main
   am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
