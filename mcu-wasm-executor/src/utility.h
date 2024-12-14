@@ -63,7 +63,7 @@ InputData initialize_input(wasm_module_inst_t module_inst,
   if (!wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv)) {
     printk("malloc failed\n");
   } else {
-    printk("malloc succeeded\n");
+    printk("malloc call successfully returned\n");
   }
 
   if ((exception = wasm_runtime_get_exception(module_inst)))
@@ -117,8 +117,10 @@ InputData initialize_input(wasm_module_inst_t module_inst,
     memcpy((Input3D *)input_native_ptr, &input, sizeof(Input3D));
   }
 
-  if ((exception = wasm_runtime_get_exception(module_inst)))
+  if ((exception = wasm_runtime_get_exception(module_inst))) {
+    printk("[malloc] ");
     printk("%s\n", exception);
+  }
 
   InputData result = {
       .tensor_ptr = tensor_ptr,
@@ -150,13 +152,15 @@ TensorData initialize_tensor(wasm_module_inst_t module_inst,
 
   argv[0] = tensor_size * sizeof(float32);
   if (!wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv)) {
-    printk("malloc failed\n");
+    printk("malloc call failed\n");
   } else {
-    printk("malloc succeeded\n");
+    printk("malloc call successfully returned\n");
   }
 
-  if ((exception = wasm_runtime_get_exception(module_inst)))
+  if ((exception = wasm_runtime_get_exception(module_inst))) {
+    printk("[malloc] ");
     printk("%s\n", exception);
+  }
 
   tensor_ptr = argv[0];
 
