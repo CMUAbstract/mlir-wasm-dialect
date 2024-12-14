@@ -107,7 +107,7 @@ InputData initialize_input(wasm_module_inst_t module_inst,
     wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
     input_ptr = argv[0];
     input_native_ptr = wasm_runtime_addr_app_to_native(module_inst, input_ptr);
-    Input2D input = {
+    Input3D input = {
         .base_ptr = tensor_ptr,
         .data = tensor_ptr,
         .offset = 0,
