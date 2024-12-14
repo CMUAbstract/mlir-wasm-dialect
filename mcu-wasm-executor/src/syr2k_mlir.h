@@ -13,14 +13,14 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
   }
 
   TensorData arg2_tensor =
-      initialize_input(module_inst, exec_env,
-                       /*tensor_size=*/SIZE * SIZE, data2d);
+      initialize_tensor(module_inst, exec_env,
+                        /*tensor_size=*/SIZE * SIZE, data2d);
   TensorData arg3_tensor =
-      initialize_input(module_inst, exec_env,
-                       /*tensor_size=*/SIZE * SIZE, data2d);
+      initialize_tensor(module_inst, exec_env,
+                        /*tensor_size=*/SIZE * SIZE, data2d);
   TensorData arg4_tensor =
-      initialize_input(module_inst, exec_env,
-                       /*tensor_size=*/SIZE * SIZE, data2d);
+      initialize_tensor(module_inst, exec_env,
+                        /*tensor_size=*/SIZE * SIZE, data2d);
 
   // load main
   wasm_function_inst_t main_func =
