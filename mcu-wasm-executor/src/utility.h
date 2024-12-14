@@ -60,7 +60,11 @@ InputData initialize_input(wasm_module_inst_t module_inst,
   }
 
   argv[0] = tensor_size * sizeof(float32);
-  wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
+  if (!wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv)) {
+    printk("malloc failed\n");
+  } else {
+    printk("malloc succeeded\n");
+  }
 
   if ((exception = wasm_runtime_get_exception(module_inst)))
     printk("%s\n", exception);
@@ -145,7 +149,11 @@ TensorData initialize_tensor(wasm_module_inst_t module_inst,
   }
 
   argv[0] = tensor_size * sizeof(float32);
-  wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
+  if (!wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv)) {
+    printk("malloc failed\n");
+  } else {
+    printk("malloc succeeded\n");
+  }
 
   if ((exception = wasm_runtime_get_exception(module_inst)))
     printk("%s\n", exception);
