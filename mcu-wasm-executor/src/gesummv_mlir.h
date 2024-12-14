@@ -45,7 +45,7 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
   argv[3] = arg3_tensor.tensor_ptr;
   argv[4] = arg4_tensor.tensor_ptr;
   argv[5] = arg5_tensor.tensor_ptr;
-  argv[6] = arg3_data.tensor_ptr;
+  argv[6] = arg6_tensor.tensor_ptr;
 
   // call main
   am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
