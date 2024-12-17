@@ -7,8 +7,8 @@ mlir-opt --async-func-to-async-runtime --async-to-async-runtime \
 --convert-to-llvm example.mlir -o example-manualedit.mlir
 ```
 
-### manual modification: remove these three lines from example-manualedit.mlir
-```
+**manual modification**: remove these three lines from `example-manualedit.mlir`
+```mlir
 # line 2-4
   llvm.func @abort()
   llvm.func @puts(!llvm.ptr)
@@ -20,25 +20,19 @@ mlir-opt --async-func-to-async-runtime --async-to-async-runtime \
     llvm.call @abort() : () -> ()
 ```
 
-```
+After manual modification,
+
+```sh
 mlir-opt --convert-async-to-llvm \
+--async-func-to-async-runtime \
 --reconcile-unrealized-casts \
---async-func-to-async-runtime --canonicalize \
+--convert-to-llvm \
+--canonicalize \
 example-manualedit.mlir -o example-ll.mlir
 ```
 
-manual modification required
+**manual modification**: change all i64s in `example-ll.mlir` into i32s.
 
-after modification
-
-```
-mlir-opt --async-func-to-async-runtime --async-to-async-runtime \
---convert-async-to-llvm \
---convert-to-llvm \
---reconcile-unrealized-casts \
---async-func-to-async-runtime --canonicalize \
-example.mlir -o example-ll.mlir
-```
 
 ```
 mlir-translate example-ll.mlir --mlir-to-llvmir -o example.ll
@@ -49,7 +43,7 @@ opt --passes="coro-early,function(coro-elide),coro-split,coro-cleanup" example.l
 ```
 
 ```
-llc -O3 -filetype=obj -mtriple=wasm32-wasi example-lowered.bc -o example.o
+llc -O0 -filetype=obj -mtriple=wasm32-wasi example-lowered.bc -o example.o
 ```
 
 ## compiling async runtime to wasm
