@@ -1,6 +1,6 @@
 #include "utility.h"
 
-#define SIZE 128
+#define SIZE 32
 
 static void *app_instance_main(wasm_module_inst_t module_inst,
                                wasm_exec_env_t exec_env) {
