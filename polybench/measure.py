@@ -73,6 +73,6 @@ with open(exported_file, "r") as csvfile:
 # Calculate and print the time window
 if rising_edge_time is not None and falling_edge_time is not None:
     time_window = (falling_edge_time - rising_edge_time) * 1000.0
-    print(f"Time between rising and falling edges: {time_window:.9f} microseconds")
+    print(f"Execution time: {time_window:.9f} microseconds")
 else:
     print("Failed to detect the complete pulse sequence.")
