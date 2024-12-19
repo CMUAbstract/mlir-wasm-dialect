@@ -16,7 +16,7 @@ MLIR_FILE=""
 COMPILER="mlir"  # Default type is mlir
 LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
-USE_AOT=true  # Default is to use AOT
+USE_AOT=false  # Default is to use interpreter
 AOT_FLAGS=""
 TESTCASE=""
 
