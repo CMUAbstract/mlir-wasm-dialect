@@ -48,7 +48,7 @@ We currently use them to link the LLVM-produced Wasm files with the standard lib
 We assume that WASI-SDK is installed at `WASI_SDK_PATH`.
 For example, this is a part of my `.zshrc`:
 ```sh
-export WASI_SDK_PATH=/Users/byeongje/wasm/wasi-sdk-22.0
+export WASI_SDK_PATu=/Users/byeongje/wasm/wasi-sdk-22.0
 ```
 
 FIXME: We should change the name of our tool from `wasm-opt` to something else
@@ -91,7 +91,7 @@ optimizations, (3) (optionally) perform aot compilation, and (4) execution on a 
 For example, you can run as follows:
 
 ```sh
-./run-aot.sh test/lenet.mlir --compiler=llvm --testcase="MNIST_LLVM" --binaryen-opt-flags="-O3" --use-aot=true \
+./run-mcu.sh test/lenet.mlir --compiler=llvm --testcase="MNIST_LLVM" --binaryen-opt-flags="-O3" --use-aot=true \
 -- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
 ```
 
