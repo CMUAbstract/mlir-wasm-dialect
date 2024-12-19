@@ -1,9 +1,11 @@
-import subprocess
-import csv
+#!/usr/bin/env python3
+import subprocess, csv, sys
 from saleae import automation
 
 # Define your custom flash command
-flash_command = "cd .. && ./run-mcu.sh polybench/atax_256.mlir --compiler=mlir --testcase=ATAX_MLIR --use-aot=true -- --opt-level=3 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4"  # Replace with your actual command
+flash_command = sys.stdin.read().strip()
+print(f"Flash command: {flash_command}")
+
 
 export_filepath = "/Users/byeongje/wasm/mlir-wasm-dialect/polybench/result"
 
