@@ -8,6 +8,7 @@ saleae = "==0.12.0"
 logic2-automation = "*"
 
 [dev-packages]
+black = "*"
 
 [requires]
 python_version = "3.13"
