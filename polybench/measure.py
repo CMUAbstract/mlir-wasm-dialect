@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 
-import argparse
 import subprocess
 import csv
 import sys
-import json
 from saleae import automation
+
+
+def getGitRoot():
+    return (
+        subprocess.Popen(
+            ["git", "rev-parse", "--show-toplevel"], stdout=subprocess.PIPE, text=True
+        )
+        .communicate()[0]
+        .rstrip()
+    )
 
 
 def main():
     flash_command = sys.stdin.read().strip()
-    export_filepath = "/Users/byeongje/wasm/mlir-wasm-dialect/polybench/result"
+    git_root = getGitRoot()
+    export_filepath = f"{git_root}/polybench/result"
 
     # Connect to the running Logic 2 Application
     with automation.Manager.connect(port=10430) as manager:
@@ -77,8 +86,8 @@ def main():
     if rising_edge_time is not None and falling_edge_time is not None:
         time_window = (
             falling_edge_time - rising_edge_time
-        ) * 1_000_000.0  # Convert to microseconds
-        print(f"[execution time] {time_window:.3f} microseconds")
+        ) * 1_000.0  # Convert to miliseconds
+        print(f"[execution time] {time_window:.3f} miliseconds")
     else:
         print("Failed to detect the complete pulse sequence.")
 
