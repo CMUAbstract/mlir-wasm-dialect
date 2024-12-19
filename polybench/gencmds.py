@@ -39,7 +39,7 @@ def cmd(
     )
     file_name = FILENAME[tag]
     testcase = gen_testcase(tag, compiler)
-    cmd_template = f'echo "cd .. && ./run-mcu.sh polybench/{file_name} --compiler={compiler} --testcase={testcase} --llvm-opt-flags={llvm_opt_flags} --binaryen-opt-flags={binaryen_opt_flags} --use-aot={use_aot} {aot_str}" | pipenv run ./measure.py'
+    cmd_template = f'echo "cd .. && ./run-mcu.sh polybench/{file_name} --compiler={compiler} --testcase={testcase} --llvm-opt-flags={llvm_opt_flags} --binaryen-opt-flags={binaryen_opt_flags} --use-aot={use_aot} --silent {aot_str}" | pipenv run ./measure.py'
     return cmd_template
 
 
