@@ -7,7 +7,7 @@ CMDARGS="$@"
 
 # Check if the minimum number of arguments is provided
 if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <mlir_file> --type=[mlir|llvm] --testcase=[testname] [--optimize] [--use-aot=<true|false>] -- <aot_flags>"
+    echo "Usage: $0 <mlir_file> --type=[mlir|llvm] --testcase=[testname] [--optimize] [--use-aot=<true|false>] --silent -- <aot_flags>"
     exit 1
 fi
 
@@ -19,6 +19,7 @@ BINARYEN_OPT_FLAGS=""
 USE_AOT=false  # Default is to use interpreter
 AOT_FLAGS=""
 TESTCASE=""
+SILENT=false
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -41,6 +42,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --use-aot=*)
             USE_AOT="${1#*=}"
+            shift
+            ;;
+        --silent)
+            SILENT=true
             shift
             ;;
         --)
@@ -119,10 +124,20 @@ run_on_device() {
     source $ZEPHYRPROJECT/.venv/bin/activate
 
     # Move to the MCU Wasm Executor directory and prepare to run the binary
-    (cd mcu-wasm-executor && \
+    # Define your command group
+    COMMAND_GROUP='
+        cd mcu-wasm-executor && \
         xxd -i -n wasm_file "../$file" src/wasm.h && \
         west build . -b apollo4p_blue_kxr_evb -p -- -D$TESTCASE=1 && \
-        west flash)
+        west flash
+    '
+
+    # Execute with or without silencing
+    if [ "$SILENT" = true ]; then
+        (eval "$COMMAND_GROUP") > /dev/null 2>&1
+    else
+        (eval "$COMMAND_GROUP")
+    fi
 
     # Check if the build and flash were successful
     if [ $? -eq 0 ]; then
