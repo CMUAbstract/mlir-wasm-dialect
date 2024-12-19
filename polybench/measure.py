@@ -12,7 +12,7 @@ with automation.Manager.connect(port=10430) as manager:
     # Configure the device
     device_configuration = automation.LogicDeviceConfiguration(
         enabled_digital_channels=[0],  # Assuming signal is on digital channel 0
-        digital_sample_rate=10_000_000  # 10 MSa/s
+        digital_sample_rate=10_000_000,  # 10 MSa/s
     )
 
     # Configure the capture with a digital trigger on falling edge
@@ -20,14 +20,14 @@ with automation.Manager.connect(port=10430) as manager:
         capture_mode=automation.DigitalTriggerCaptureMode(
             trigger_type=automation.DigitalTriggerType.FALLING,  # Trigger on falling edge
             trigger_channel_index=0,  # Monitor channel 0 for the trigger
-            after_trigger_seconds=0.001  # Capture an additional 1ms after the trigger
+            after_trigger_seconds=0.001,  # Capture an additional 1ms after the trigger
         )
     )
 
     # Start the capture
     with manager.start_capture(
         device_configuration=device_configuration,
-        capture_configuration=capture_configuration
+        capture_configuration=capture_configuration,
     ) as capture:
         print("Capture started...")
 
@@ -52,7 +52,7 @@ falling_edge_time = None
 
 exported_file = export_filepath + "/digital.csv"
 
-with open(exported_file, 'r') as csvfile:
+with open(exported_file, "r") as csvfile:
     reader = csv.reader(csvfile)
     next(reader)  # Skip header
     for row in reader:
