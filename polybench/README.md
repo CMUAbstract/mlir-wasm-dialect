@@ -1,33 +1,37 @@
-# Example (atax)
+# PolyBench Benchmark Suite on Apollo4 Blue Plus
 
-# llvm
+This directory provides instructions for testing an MLIR-based port of the
+PolyBench benchmark suite on the Apollo4 Blue Plus device. It allows 
+configuration of compilers, optimization levels, and evaluation setups.
 
+## Key Features:
+- Supports LLVM or MLIR (WASM dialect-based) compilers
+- Configurable LLVM optimization levels (-O0, -O1, etc.)
+- Configurable Binaryen optimization levels (-O0, -O1, etc.)
+- Configurable AOT (Ahead-Of-Time) compilation optimization levels (1, 2, 3)
+
+## Prerequisites
+1.	Connect the Apollo4 Blue Plus board and Saleae Logic device to the host machine.
+2.	Install the Logic2 software: https://www.saleae.com/pages/downloads
+3.	In Logic2, open Settings and enable the Automation Server feature.
+
+## Running the Benchmarks
+1. Setup virtualenv
+	- It is recommended to install pipenv and then run `pipenv install; pipenv shell` in this directory.
+2.	Execute the command below to view the preferred configuration:
 ```sh
-# LLVM compiler (with -O3 opt), interpreter mode, no binaryen optimization
-./run-mcu.sh polybench/atax_256.mlir --compiler=llvm --testcase=ATAX_LLVM --use-aot=false --llvm-opt-flags="-O3"
-
-# LLVM compiler (with -O3 opt), interpreter mode, -O4 binaryen optimization
-./run-mcu.sh polybench/atax_256.mlir --compiler=llvm --testcase=ATAX_LLVM --use-aot=false --llvm-opt-flags="-O3" --binaryen-opt-flags="-O4"
-
-# LLVM compiler (with -O3 opt), aot mode (with -O3 opt), no binaryen optimization
-./run-mcu.sh polybench/atax_256.mlir --compiler=llvm --testcase=ATAX_LLVM --use-aot=true --llvm-opt-flags="-O3" -- --opt-level=3 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
-
-# LLVM compiler (with -O3 opt), aot mode (with -O3 opt), -O4 binaryen optimization
-./run-mcu.sh polybench/atax_256.mlir --compiler=llvm --testcase=ATAX_LLVM --use-aot=true --llvm-opt-flags="-O3" --binaryen-opt-flags="-O4" -- --opt-level=3 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
+./gencmds.py
+```
+3. To run specific benchmarks, pipe the output of gencmds.py through jq to filter by tag or compiler, then pipe that into runcmds.py. For example:
+```sh
+./gencmds.py | jq -c 'select(.tag == "atax" and .compiler == "mlir")' | ./runcmds.py
+```
+4. To run all tests at once:
+```sh
+./gencmds.py | ./runcmds.py
 ```
 
-# mlir
-
-```sh
-# MLIR-based compiler, interpreter mode, no binaryen optimization
-./run-mcu.sh polybench/atax_256.mlir --compiler=mlir --testcase=ATAX_MLIR --use-aot=false
-
-# MLIR-based compiler, interpreter mode, -O4 binaryen optimization
-./run-mcu.sh polybench/atax_256.mlir --compiler=mlir --testcase=ATAX_MLIR --use-aot=false --binaryen-opt-flags="-O4"
-
-# MLIR-based compiler, aot mode (with -O3 opt), no binaryen optimization
-./run-mcu.sh polybench/atax_256.mlir --compiler=mlir --testcase=ATAX_MLIR --use-aot=true -- --opt-level=3 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
-
-# MLIR-based compiler, aot mode (with -O3 opt), -O4 binaryen optimization
-./run-mcu.sh polybench/atax_256.mlir --compiler=mlir --testcase=ATAX_MLIR --use-aot=true --binaryen-opt-flags="-O4" -- --opt-level=3 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
-```
+## Caution
+Please manually verify that the Wasm files run successfully without errors (for
+example, by using minicom), and confirm that you are measuring the intended
+behavior.
