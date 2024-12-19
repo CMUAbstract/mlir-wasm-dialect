@@ -12,8 +12,9 @@ configuration of compilers, optimization levels, and evaluation setups.
 
 ## Prerequisites
 1.	Connect the Apollo4 Blue Plus board and Saleae Logic device to the host machine.
-2.	Install the Logic2 software: https://www.saleae.com/pages/downloads
-3.	In Logic2, open Settings and enable the Automation Server feature.
+2. Connect to pin GND and 22 (see the uses of `am_hal_gpi_state_write` in `./src/*.h`)
+3.  Install the Logic2 software: https://www.saleae.com/pages/downloads
+4.	In Logic2, open Settings and enable the Automation Server feature.
 
 ## Running the Benchmarks
 1. Setup virtualenv
@@ -24,7 +25,7 @@ configuration of compilers, optimization levels, and evaluation setups.
 ```
 3. To run specific benchmarks, pipe the output of gencmds.py through jq to filter by tag or compiler, then pipe that into runcmds.py. For example:
 ```sh
-./gencmds.py | jq -c 'select(.tag == "atax" and .compiler == "mlir")' | ./runcmds.py
+./gencmds.py | jq -c 'select(.tag == "atax" and .compiler == "mlir" and .llvm_opt_level == 3 and .binaryen_opt_level == 4)' | ./runcmds.py
 ```
 4. To run all tests at once:
 ```sh
