@@ -10,6 +10,7 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Async/IR/Async.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -23,6 +24,7 @@ namespace mlir::intermittent {
 #define GEN_PASS_DEF_POLYGEISTTOINTERMITTENT
 #define GEN_PASS_DEF_PREPAREFORINTERMITTENT
 #define GEN_PASS_DEF_CONVERTINTERMITTENTTASKTOWASM
+#define GEN_PASS_DEF_CREATEMAINFUNCTION
 #include "Intermittent/IntermittentPasses.h.inc"
 
 namespace {
@@ -736,6 +738,70 @@ public:
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();
+    }
+  }
+};
+} // namespace
+
+namespace {
+struct CreateMainFunction
+    : public impl::CreateMainFunctionBase<CreateMainFunction> {
+  void runOnOperation() final {
+    // The Operation we are running on is ModuleOp because
+    // in the .td file we wrote: Pass<"create-main-fn", "ModuleOp">
+    ModuleOp module = getOperation();
+    MLIRContext *context = &getContext();
+    OpBuilder builder(context);
+
+    // Collect all tasks (and see if there's an "entry" task).
+    SmallVector<StringRef, 4> taskNames;
+    StringRef entryTaskName;
+
+    module.walk([&](Operation *op) {
+      if (auto taskOp = dyn_cast<IdempotentTaskOp>(op)) {
+        // The symbol name is in the attribute "sym_name" for IdempotentTaskOp
+        if (auto symNameAttr = taskOp->getAttrOfType<StringAttr>("sym_name")) {
+          auto name = symNameAttr.getValue();
+          taskNames.push_back(name);
+          // TODO: Find a better way to identify the entry task
+          if (name == "entry") {
+            entryTaskName = name;
+          }
+        }
+      }
+    });
+
+    // Look up or create a @main function
+    func::FuncOp mainFunc = module.lookupSymbol<func::FuncOp>("main");
+    if (!mainFunc) {
+      // Create it if it doesn't exist
+      auto funcType = builder.getFunctionType({}, {});
+      mainFunc =
+          func::FuncOp::create(builder.getUnknownLoc(), "main", funcType);
+      module.push_back(mainFunc);
+    }
+
+    // If @main is empty, build the body
+    if (mainFunc.empty()) {
+      Block *entryBlock = mainFunc.addEntryBlock();
+      builder.setInsertionPointToStart(entryBlock);
+
+      // Insert async.runtime.create for each discovered task
+      for (auto &name : taskNames) {
+        // Typically, you'd specify return types or arguments to the create op.
+        // Adjust as necessary for your environment.
+        auto runtimeCreateOp = builder.create<async::RuntimeCreateOp>(
+            builder.getUnknownLoc(), async::TokenType::get(context));
+        runtimeCreateOp->setAttr("task_name", builder.getStringAttr(name));
+      }
+
+      // Finally, call the entry task, if present
+      if (!entryTaskName.empty()) {
+        builder.create<func::CallOp>(builder.getUnknownLoc(),
+                                     SymbolRefAttr::get(context, entryTaskName),
+                                     /*resultTypes=*/TypeRange{},
+                                     /*operands=*/ValueRange{});
+      }
     }
   }
 };
