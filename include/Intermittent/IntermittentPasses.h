@@ -14,6 +14,7 @@
 #include "Wasm/WasmDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassOptions.h"
 
 namespace mlir::intermittent {
 #define GEN_PASS_DECL
