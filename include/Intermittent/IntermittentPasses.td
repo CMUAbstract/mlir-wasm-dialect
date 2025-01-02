@@ -110,6 +110,12 @@ def CreateMainFunction
            /*default=*/ "\"entry\"",
            "Name of the task that is called at the end of @main.">,
   ];
+
+  let dependentDialects = [
+    "intermittent::IntermittentDialect",
+    "async::AsyncDialect",
+    "func::FuncDialect",
+  ];
 }
 
 
