@@ -92,5 +92,19 @@ def ConvertIntermittentTaskToWasm : Pass<"convert-intermittent-task-to-wasm", "M
   ];
 }
 
+// intermittent to async passes
+
+def CreateMainFunction
+    : Pass<"create-main-fn", "ModuleOp"> {
+  let summary = "Create a main function that calls async.runtime.create for each IdempotentTaskOp and then calls the entry task.";
+  let description = [{
+    This pass walks through the module, finds all IdempotentTaskOps,
+    and for each one, inserts an `async.runtime.create` call in a newly
+    created (or updated) `@main` function. If a task is named `entry`,
+    it is called last in the `@main`.
+  }];
+}
+
+
 
 #endif // INTERMITTENT_PASS
