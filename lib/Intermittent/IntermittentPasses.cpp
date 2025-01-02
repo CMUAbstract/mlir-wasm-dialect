@@ -751,7 +751,7 @@ struct CreateMainFunction
   void runOnOperation() final {
     // The Operation we are running on is ModuleOp because
     // in the .td file we wrote: Pass<"create-main-fn", "ModuleOp">
-    ModuleOp module = getOperation();
+    ModuleOp moduleOp = getOperation();
     MLIRContext *context = &getContext();
     OpBuilder builder(context);
     StringRef userEntryName(entryTaskName.getValue());
@@ -759,7 +759,7 @@ struct CreateMainFunction
     // Collect all tasks (and see if there's an "entry" task).
     SmallVector<StringRef, 4> taskNames;
 
-    module.walk([&](Operation *op) {
+    moduleOp.walk([&](Operation *op) {
       if (auto taskOp = dyn_cast<IdempotentTaskOp>(op)) {
         // The symbol name is in the attribute "sym_name" for IdempotentTaskOp
         if (auto symNameAttr = taskOp->getAttrOfType<StringAttr>("sym_name")) {
@@ -770,13 +770,12 @@ struct CreateMainFunction
     });
 
     // Look up or create a @main function
-    func::FuncOp mainFunc = module.lookupSymbol<func::FuncOp>("main");
+    func::FuncOp mainFunc = moduleOp.lookupSymbol<func::FuncOp>("main");
     if (!mainFunc) {
       // Create it if it doesn't exist
       auto funcType = builder.getFunctionType({}, {});
-      mainFunc =
-          func::FuncOp::create(builder.getUnknownLoc(), "main", funcType);
-      module.push_back(mainFunc);
+      mainFunc = func::FuncOp::create(moduleOp.getLoc(), "main", funcType);
+      moduleOp.push_back(mainFunc);
     }
 
     // If @main is empty, build the body
@@ -789,7 +788,7 @@ struct CreateMainFunction
         // Typically, you'd specify return types or arguments to the create op.
         // Adjust as necessary for your environment.
         auto runtimeCreateOp = builder.create<async::RuntimeCreateOp>(
-            builder.getUnknownLoc(), async::TokenType::get(context));
+            mainFunc.getLoc(), async::TokenType::get(context));
         runtimeCreateOp->setAttr("task_name", builder.getStringAttr(name));
       }
 
@@ -801,7 +800,7 @@ struct CreateMainFunction
                                      /*operands=*/ValueRange{});
       }
       // add a return
-      builder.create<func::ReturnOp>(builder.getUnknownLoc());
+      builder.create<func::ReturnOp>(mainFunc.getLoc());
     }
   }
 };
