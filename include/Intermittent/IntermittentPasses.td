@@ -111,6 +111,21 @@ def CreateMainFunction
   ];
 }
 
+def ConvertIntermittentTaskToAsync
+    : Pass<"convert-intermittent-task-to-async", "ModuleOp"> {
+  let summary = "Convert each intermittent.task to a func.func with async coro ops";
+  let description = [{
+    This pass converts each IdempotentTaskOp (intermittent.task) into
+    a func.func that includes async.coro.* ops and an async.runtime.await_and_resume
+    sequence. 
+  }];
 
+  let dependentDialects = [
+    "intermittent::IntermittentDialect",
+    "async::AsyncDialect",
+    "func::FuncDialect",
+    "cf::ControlFlowDialect",
+  ];
+}
 
 #endif // INTERMITTENT_PASS
