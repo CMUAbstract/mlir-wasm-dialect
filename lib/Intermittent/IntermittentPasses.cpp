@@ -754,7 +754,6 @@ struct CreateMainFunction
     ModuleOp moduleOp = getOperation();
     MLIRContext *context = &getContext();
     OpBuilder builder(context);
-    StringRef userEntryName(entryTaskName.getValue());
 
     // Collect all tasks (and see if there's an "entry" task).
     SmallVector<StringRef, 4> taskNames;
@@ -792,13 +791,6 @@ struct CreateMainFunction
         runtimeCreateOp->setAttr("task_name", builder.getStringAttr(name));
       }
 
-      // call the entry task, if present
-      if (!entryTaskName.empty()) {
-        builder.create<func::CallOp>(builder.getUnknownLoc(),
-                                     SymbolRefAttr::get(context, entryTaskName),
-                                     /*resultTypes=*/TypeRange{},
-                                     /*operands=*/ValueRange{});
-      }
       // add a return
       builder.create<func::ReturnOp>(mainFunc.getLoc());
     }
