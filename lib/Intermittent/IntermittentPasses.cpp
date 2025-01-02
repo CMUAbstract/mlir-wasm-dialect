@@ -746,16 +746,18 @@ public:
 namespace {
 struct CreateMainFunction
     : public impl::CreateMainFunctionBase<CreateMainFunction> {
+  using impl::CreateMainFunctionBase<
+      CreateMainFunction>::CreateMainFunctionBase;
   void runOnOperation() final {
     // The Operation we are running on is ModuleOp because
     // in the .td file we wrote: Pass<"create-main-fn", "ModuleOp">
     ModuleOp module = getOperation();
     MLIRContext *context = &getContext();
     OpBuilder builder(context);
+    StringRef userEntryName(entryTaskName.getValue());
 
     // Collect all tasks (and see if there's an "entry" task).
     SmallVector<StringRef, 4> taskNames;
-    StringRef entryTaskName;
 
     module.walk([&](Operation *op) {
       if (auto taskOp = dyn_cast<IdempotentTaskOp>(op)) {
@@ -763,10 +765,6 @@ struct CreateMainFunction
         if (auto symNameAttr = taskOp->getAttrOfType<StringAttr>("sym_name")) {
           auto name = symNameAttr.getValue();
           taskNames.push_back(name);
-          // TODO: Find a better way to identify the entry task
-          if (name == "entry") {
-            entryTaskName = name;
-          }
         }
       }
     });
