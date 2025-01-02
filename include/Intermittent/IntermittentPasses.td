@@ -104,13 +104,6 @@ def CreateMainFunction
     --entry-task-name is found, it is called last in the `@main`.
   }];
 
-  let options = [
-    // The 'entry-task-name' is a string option with a default of "entry".
-    Option<"entryTaskName", "entry-task-name", "std::string",
-           /*default=*/ "\"entry\"",
-           "Name of the task that is called at the end of @main.">,
-  ];
-
   let dependentDialects = [
     "intermittent::IntermittentDialect",
     "async::AsyncDialect",
