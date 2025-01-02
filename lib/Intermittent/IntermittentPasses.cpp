@@ -793,13 +793,15 @@ struct CreateMainFunction
         runtimeCreateOp->setAttr("task_name", builder.getStringAttr(name));
       }
 
-      // Finally, call the entry task, if present
+      // call the entry task, if present
       if (!entryTaskName.empty()) {
         builder.create<func::CallOp>(builder.getUnknownLoc(),
                                      SymbolRefAttr::get(context, entryTaskName),
                                      /*resultTypes=*/TypeRange{},
                                      /*operands=*/ValueRange{});
       }
+      // add a return
+      builder.create<func::ReturnOp>(builder.getUnknownLoc());
     }
   }
 };
