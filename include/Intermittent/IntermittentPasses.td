@@ -111,6 +111,15 @@ def CreateMainFunction
   ];
 }
 
+def ConvertNonVolatileToMemRef
+    : Pass<"convert-nonvolatile-to-memref", "ModuleOp"> {
+  let summary = "Converts nonvolatile variables to memref";
+  let dependentDialects = [
+    "intermittent::IntermittentDialect",
+    "memref::MemRefDialect",
+  ];
+}
+
 def ConvertIntermittentTaskToAsync
     : Pass<"convert-intermittent-task-to-async", "ModuleOp"> {
   let summary = "Convert each intermittent.task to a func.func with async coro ops";
