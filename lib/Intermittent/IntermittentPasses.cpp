@@ -809,7 +809,7 @@ struct CreateMainFunction
       Block *entryBlock = mainFunc.addEntryBlock();
       builder.setInsertionPointToStart(entryBlock);
 
-      auto nameToToken = DenseMap<StringRef, Value>();
+      SmallVector<Value, 4> entryTaskArgs;
 
       // Insert async.runtime.create for each discovered task
       for (auto &name : taskNames) {
@@ -818,13 +818,13 @@ struct CreateMainFunction
         auto runtimeCreateOp = builder.create<async::RuntimeCreateOp>(
             mainFunc.getLoc(), async::TokenType::get(context));
         runtimeCreateOp->setAttr("task_name", builder.getStringAttr(name));
-        nameToToken[name] = runtimeCreateOp.getResult();
+        entryTaskArgs.push_back(runtimeCreateOp.getResult());
       }
 
       // call entry task
       builder.create<func::CallOp>(mainFunc.getLoc(), entryTaskName,
-                                   TypeRange{} /*results*/,
-                                   nameToToken[entryTaskName] /*arguments*/);
+                                   TypeRange{} /*results*/, entryTaskArgs
+                                   /*arguments*/);
 
       // add a return
       builder.create<func::ReturnOp>(mainFunc.getLoc());
@@ -930,46 +930,37 @@ struct ConvertIntermittentTaskToAsync
     // We'll gather tasks, then transform them in one pass so
     // we don't invalidate iterators while walking.
     SmallVector<IdempotentTaskOp, 4> tasks;
-    moduleOp.walk([&](IdempotentTaskOp op) { tasks.push_back(op); });
-
-    auto getTaskIndex = [&](StringRef taskName) -> int {
-      for (size_t i = 0; i < tasks.size(); ++i) {
-        if (tasks[i].getSymName() == taskName)
-          return i;
-      }
-      return -1;
-    };
+    SmallVector<std::string, 4> taskNames;
+    moduleOp.walk([&](IdempotentTaskOp op) {
+      tasks.push_back(op);
+      taskNames.push_back(op.getSymName().str());
+    });
 
     for (auto taskOp : tasks) {
-      convertTaskOp(getTaskIndex, taskOp, moduleOp);
+      convertTaskOp(taskNames, taskOp, moduleOp);
     }
   }
 
 private:
   /// Replace every TransitionToOp in 'block' with a branch to 'saveBlock'.
   /// If there are multiple TransitionToOps, each is replaced with a BranchOp.
-  void
-  rewriteTransitionToOps(llvm::function_ref<int(mlir::StringRef)> getTaskIndex,
-                         Block &block, Block *saveBlock, Location loc) {
+  void rewriteTransitionToOps(
+      llvm::function_ref<Value(mlir::StringRef)> getTaskToken, Block &block,
+      Block *saveBlock, Location loc) {
     for (auto &op : llvm::make_early_inc_range(block)) {
       if (auto transOp = dyn_cast<TransitionToOp>(&op)) {
         OpBuilder builder(transOp);
         // FIXME: save the arguments of TransitionToOp here
 
         auto nextTaskName = transOp.getNextTask();
-        int nextTaskIndex = getTaskIndex(nextTaskName);
-        auto nextTaskIndexValue =
-            builder
-                .create<arith::ConstantOp>(
-                    loc, builder.getI32IntegerAttr(nextTaskIndex))
-                .getResult();
-        builder.create<cf::BranchOp>(loc, saveBlock, nextTaskIndexValue);
+        Value nextTaskToken = getTaskToken(nextTaskName);
+        builder.create<cf::BranchOp>(loc, saveBlock, nextTaskToken);
         transOp.erase();
       }
     }
   }
 
-  void convertTaskOp(llvm::function_ref<int(mlir::StringRef)> getTaskIndex,
+  void convertTaskOp(SmallVector<std::string, 4> &taskNames,
                      IdempotentTaskOp taskOp, ModuleOp module) {
     // 1) Get the symbol name
     auto symNameAttr = taskOp->getAttrOfType<StringAttr>("sym_name");
@@ -983,8 +974,12 @@ private:
     auto loc = taskOp.getLoc();
 
     auto asyncTokenType = mlir::async::TokenType::get(module.getContext());
-    // FIXME: This should take async tokens of all tasks as arguments
-    auto funcType = builder.getFunctionType({asyncTokenType}, {});
+    SmallVector<Type, 4> tokenTypes;
+    for (auto _ : taskNames) {
+      tokenTypes.push_back(asyncTokenType);
+    }
+
+    auto funcType = builder.getFunctionType(tokenTypes, {});
 
     // Create the function: func.func @taskName(!async.token) -> !async.token
     auto newFunc = func::FuncOp::create(loc, taskName, funcType);
@@ -1024,6 +1019,14 @@ private:
     llvm::dbgs() << "Filling ^mainbody\n";
     builder.setInsertionPointToStart(mainBodyBlock);
 
+    auto getTaskToken = [&](StringRef taskName) -> Value {
+      for (size_t i = 0; i < taskNames.size(); ++i) {
+        if (taskNames[i] == taskName)
+          return newFunc.getArgument(i);
+      }
+      return nullptr; // TODO: Error handling
+    };
+
     // FIXME: do not unify multiple blocks
     // Move or clone the original task body. For simplicity,
     // we assume a single block or unify multiple blocks.
@@ -1035,7 +1038,7 @@ private:
         mainBodyBlock->getOperations().splice(mainBodyBlock->end(), ops,
                                               ops.begin(), ops.end());
       }
-      rewriteTransitionToOps(getTaskIndex, *mainBodyBlock, saveBlock, loc);
+      rewriteTransitionToOps(getTaskToken, *mainBodyBlock, saveBlock, loc);
     }
     // 5) Fill ^saveblock (where we do async.coro.save, await, suspend, etc.)
     llvm::dbgs() << "Filling ^saveblock\n";
