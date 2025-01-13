@@ -639,43 +639,68 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     if (failed(loopOp.inlineRegionToMainBlock(taskOp.getBody(), rewriter))) {
       return failure();
     }
-
-    // Save the continuation of the previous task to the continuation table at
-    // the beginning of the loop
-    rewriter.setInsertionPointToStart(loopOp.getMainBlock());
-
-    // retrieve the current task index
-    auto moduleOp = taskOp->getParentOfType<ModuleOp>();
-    Value currTaskGlobal =
-        findTempGlobalOpWithSymName(moduleOp, "global_name", "curr_task")
-            .getResult();
-    rewriter.create<wasm::TempGlobalGetOp>(loc, currTaskGlobal);
-
-    // retrieve the continuation
-    rewriter.create<wasm::TempLocalGetOp>(loc, contLocal);
-
-    // store the continuation to the current task index
-    rewriter.create<wasm::TableSetOp>(loc, "task_table");
-
-    // Place the wasm.return after the loop
-    rewriter.setInsertionPointToEnd(&funcOp.getBody().back());
-    rewriter.create<wasm::WasmReturnOp>(loc);
-
-    // Replace the original op with the new function
-    rewriter.replaceOp(taskOp, funcOp);
-
-    // Declare the newly created function
-    rewriter.setInsertionPointAfter(funcOp);
-    rewriter.create<wasm::ElemDeclareFuncOp>(loc, taskOp.getSymName());
-
-    // handle transitionToOps
-    funcOp.walk([&](TransitionToOp transitionToOp) {
-      convertTransitionToOp(context, transitionToOp, loopOp, contLocal,
-                            rewriter);
-    });
-
-    return success();
+    if (auto intType = dyn_cast<IntegerType>(innerType)) {
+      if (intType.getWidth() == 32) {
+        rewriter.create<wasm::CallOp>(loc, "set_i32");
+      } else if (intType.getWidth() == 64) {
+        rewriter.create<wasm::CallOp>(loc, "set_i64");
+      }
+    } else if (auto floatType = dyn_cast<FloatType>(innerType)) {
+      if (floatType.getWidth() == 32) {
+        rewriter.create<wasm::CallOp>(loc, "set_f32");
+      } else if (floatType.getWidth() == 64) {
+        rewriter.create<wasm::CallOp>(loc, "set_f64");
+      }
+    }
   }
+  // store the next task index, if it exists
+  auto nextTask = transitionToOp.getNextTask();
+  // index
+  auto moduleOp = transitionToOp->getParentOfType<ModuleOp>();
+  Value currTaskGlobal =
+      findTempGlobalOpWithSymName(moduleOp, "global_name", "curr_task")
+          .getResult();
+  rewriter.create<wasm::TempGlobalIndexOp>(loc, currTaskGlobal);
+  // value
+  int taskIndex = getTaskIndexBySymbolName(moduleOp, nextTask);
+  rewriter.create<wasm::ConstantOp>(loc, rewriter.getI32IntegerAttr(taskIndex));
+  rewriter.create<wasm::CallOp>(loc, "set_i32");
+
+  // Save the continuation of the previous task to the continuation table at
+  // the beginning of the loop
+  rewriter.setInsertionPointToStart(loopOp.getMainBlock());
+
+  // retrieve the current task index
+  auto moduleOp = taskOp->getParentOfType<ModuleOp>();
+  Value currTaskGlobal =
+      findTempGlobalOpWithSymName(moduleOp, "global_name", "curr_task")
+          .getResult();
+  rewriter.create<wasm::TempGlobalGetOp>(loc, currTaskGlobal);
+
+  // retrieve the continuation
+  rewriter.create<wasm::TempLocalGetOp>(loc, contLocal);
+
+  // store the continuation to the current task index
+  rewriter.create<wasm::TableSetOp>(loc, "task_table");
+
+  // Place the wasm.return after the loop
+  rewriter.setInsertionPointToEnd(&funcOp.getBody().back());
+  rewriter.create<wasm::WasmReturnOp>(loc);
+
+  // Replace the original op with the new function
+  rewriter.replaceOp(taskOp, funcOp);
+
+  // Declare the newly created function
+  rewriter.setInsertionPointAfter(funcOp);
+  rewriter.create<wasm::ElemDeclareFuncOp>(loc, taskOp.getSymName());
+
+  // handle transitionToOps
+  funcOp.walk([&](TransitionToOp transitionToOp) {
+    convertTransitionToOp(context, transitionToOp, loopOp, contLocal, rewriter);
+  });
+
+  return success();
+}
 };
 
 class IntermittentToWasmTypeConverter : public TypeConverter {
