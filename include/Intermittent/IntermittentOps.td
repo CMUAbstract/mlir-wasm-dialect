@@ -37,10 +37,10 @@ def IdempotentTaskOp : Intermittent_Op<"task.idempotent", [
 def TransitionToOp : Intermittent_Op<"task.transition_to", [
     Pure, HasParent<"IdempotentTaskOp">, Terminator]> {
     let arguments 
-        = (ins OptionalAttr<FlatSymbolRefAttr>:$next_task, 
+        = (ins FlatSymbolRefAttr:$next_task, 
             Variadic<NonVolatile>:$vars_to_store);
     let assemblyFormat = [{
-       ( $next_task^ )?
+       $next_task
        ( `(` $vars_to_store^ `:` type($vars_to_store) `)` )?
        attr-dict
     }];
