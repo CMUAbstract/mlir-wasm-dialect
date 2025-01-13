@@ -913,6 +913,7 @@ struct ConvertNonVolatileToMemRef
 } // namespace
 
 namespace {
+
 struct ConvertIntermittentTaskToAsync
     : public impl::ConvertIntermittentTaskToAsyncBase<
           ConvertIntermittentTaskToAsync> {
@@ -931,28 +932,45 @@ struct ConvertIntermittentTaskToAsync
     SmallVector<IdempotentTaskOp, 4> tasks;
     moduleOp.walk([&](IdempotentTaskOp op) { tasks.push_back(op); });
 
+    auto getTaskIndex = [&](StringRef taskName) -> int {
+      for (size_t i = 0; i < tasks.size(); ++i) {
+        if (tasks[i].getSymName() == taskName)
+          return i;
+      }
+      return -1;
+    };
+
     for (auto taskOp : tasks) {
-      convertTaskOp(taskOp, moduleOp);
+      convertTaskOp(getTaskIndex, taskOp, moduleOp);
     }
   }
 
 private:
   /// Replace every TransitionToOp in 'block' with a branch to 'saveBlock'.
   /// If there are multiple TransitionToOps, each is replaced with a BranchOp.
-  void rewriteTransitionToOps(Block &block, Block *saveBlock, Location loc) {
+  void
+  rewriteTransitionToOps(llvm::function_ref<int(mlir::StringRef)> getTaskIndex,
+                         Block &block, Block *saveBlock, Location loc) {
     for (auto &op : llvm::make_early_inc_range(block)) {
       if (auto transOp = dyn_cast<TransitionToOp>(&op)) {
-        // You could extract next_task or variables here if needed:
-        //   auto nextTask = transOp.getNextTask(); // etc.
-        // For now, we just remove the transition and branch to ^saveblock.
-        OpBuilder rewriter(transOp);
-        rewriter.create<cf::BranchOp>(loc, saveBlock);
+        OpBuilder builder(transOp);
+        // FIXME: save the arguments of TransitionToOp here
+
+        auto nextTaskName = transOp.getNextTask();
+        int nextTaskIndex = getTaskIndex(nextTaskName);
+        auto nextTaskIndexValue =
+            builder
+                .create<arith::ConstantOp>(
+                    loc, builder.getI32IntegerAttr(nextTaskIndex))
+                .getResult();
+        builder.create<cf::BranchOp>(loc, saveBlock, nextTaskIndexValue);
         transOp.erase();
       }
     }
   }
 
-  void convertTaskOp(IdempotentTaskOp taskOp, ModuleOp module) {
+  void convertTaskOp(llvm::function_ref<int(mlir::StringRef)> getTaskIndex,
+                     IdempotentTaskOp taskOp, ModuleOp module) {
     // 1) Get the symbol name
     auto symNameAttr = taskOp->getAttrOfType<StringAttr>("sym_name");
     if (!symNameAttr) {
@@ -964,12 +982,8 @@ private:
     OpBuilder builder(module.getContext());
     auto loc = taskOp.getLoc();
 
-    // 2) We want this function to accept a token argument and return a token.
     auto asyncTokenType = mlir::async::TokenType::get(module.getContext());
-
-    // Here, the function has a single argument of type !async.token,
-    // and returns a single !async.token.
-    // You can add more arguments if you have multiple tokens.
+    // FIXME: This should take async tokens of all tasks as arguments
     auto funcType = builder.getFunctionType({asyncTokenType}, {});
 
     // Create the function: func.func @taskName(!async.token) -> !async.token
@@ -983,6 +997,7 @@ private:
     Block *headerBlock = newFunc.addEntryBlock();
     Block *mainBodyBlock = new Block();
     Block *saveBlock = new Block();
+    saveBlock->addArgument(asyncTokenType, newFunc.getLoc());
     Block *resumeBlock = new Block();
     Block *cleanupBlock = new Block();
     Block *suspendBlock = new Block();
@@ -1005,11 +1020,11 @@ private:
     // Branch to ^mainbody
     builder.create<cf::BranchOp>(loc, mainBodyBlock);
 
-    // 4) Fill ^mainbody with user ops; we omit the details of rewriting
-    // TransitionToOp.
+    // 4) Fill ^mainbody with user ops
     llvm::dbgs() << "Filling ^mainbody\n";
     builder.setInsertionPointToStart(mainBodyBlock);
 
+    // FIXME: do not unify multiple blocks
     // Move or clone the original task body. For simplicity,
     // we assume a single block or unify multiple blocks.
     Region &taskBody = taskOp.getBody();
@@ -1020,9 +1035,8 @@ private:
         mainBodyBlock->getOperations().splice(mainBodyBlock->end(), ops,
                                               ops.begin(), ops.end());
       }
-      rewriteTransitionToOps(*mainBodyBlock, saveBlock, loc);
+      rewriteTransitionToOps(getTaskIndex, *mainBodyBlock, saveBlock, loc);
     }
-
     // 5) Fill ^saveblock (where we do async.coro.save, await, suspend, etc.)
     llvm::dbgs() << "Filling ^saveblock\n";
     builder.setInsertionPointToStart(saveBlock);
@@ -1031,10 +1045,7 @@ private:
         loc, async::CoroStateType::get(builder.getContext()), handleValue);
     Value stateVal = stateOp.getResult();
 
-    auto placeholderToken =
-        builder.create<async::RuntimeCreateOp>(loc, asyncTokenType);
-    Value nextTaskToken = placeholderToken->getResult(0);
-
+    Value nextTaskToken = saveBlock->getArgument(0);
     builder.create<async::RuntimeAwaitAndResumeOp>(loc, nextTaskToken,
                                                    handleValue);
 
