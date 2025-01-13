@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 saleae = "==0.12.0"
 logic2-automation = "*"
+matplotlib = "*"
 
 [dev-packages]
 black = "*"
