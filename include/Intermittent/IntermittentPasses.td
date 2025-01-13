@@ -101,8 +101,12 @@ def CreateMainFunction
     This pass walks through the module, finds all IdempotentTaskOps,
     and for each one, inserts an `async.runtime.create` call in a newly
     created (or updated) `@main` function. If a task named by the option
-    --entry-task-name is found, it is called last in the `@main`.
+    --entry-task is found, it is called last in the `@main`.
   }];
+  let options = [
+    Option<"entryTask", "entry-task", "std::string", "\"entry\"",
+    "The name of the task to call last in the main function.">,
+  ];
 
   let dependentDialects = [
     "intermittent::IntermittentDialect",
