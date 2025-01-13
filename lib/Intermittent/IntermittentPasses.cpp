@@ -759,17 +759,15 @@ struct CreateMainFunction
     MLIRContext *context = &getContext();
     OpBuilder builder(context);
 
+    std::string entryTaskName = entryTask.getValue();
+
     // Collect all tasks (and see if there's an "entry" task).
     SmallVector<StringRef, 4> taskNames;
 
-    moduleOp.walk([&](Operation *op) {
-      if (auto taskOp = dyn_cast<IdempotentTaskOp>(op)) {
-        // The symbol name is in the attribute "sym_name" for IdempotentTaskOp
-        if (auto symNameAttr = taskOp->getAttrOfType<StringAttr>("sym_name")) {
-          auto name = symNameAttr.getValue();
-          taskNames.push_back(name);
-        }
-      }
+    // FIXME: Here we are assuming that all functions are tasks
+    moduleOp.walk([&](func::FuncOp funcOp) {
+      auto name = funcOp.getName();
+      taskNames.push_back(name);
     });
 
     // Look up or create a @main function
@@ -786,6 +784,8 @@ struct CreateMainFunction
       Block *entryBlock = mainFunc.addEntryBlock();
       builder.setInsertionPointToStart(entryBlock);
 
+      auto nameToToken = DenseMap<StringRef, Value>();
+
       // Insert async.runtime.create for each discovered task
       for (auto &name : taskNames) {
         // Typically, you'd specify return types or arguments to the create op.
@@ -793,7 +793,13 @@ struct CreateMainFunction
         auto runtimeCreateOp = builder.create<async::RuntimeCreateOp>(
             mainFunc.getLoc(), async::TokenType::get(context));
         runtimeCreateOp->setAttr("task_name", builder.getStringAttr(name));
+        nameToToken[name] = runtimeCreateOp.getResult();
       }
+
+      // call entry task
+      builder.create<func::CallOp>(mainFunc.getLoc(), entryTaskName,
+                                   TypeRange{} /*results*/,
+                                   nameToToken[entryTaskName] /*arguments*/);
 
       // add a return
       builder.create<func::ReturnOp>(mainFunc.getLoc());
