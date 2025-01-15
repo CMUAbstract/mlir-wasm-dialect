@@ -751,11 +751,12 @@ LogicalResult translateTagOps(ModuleOp &moduleOp, raw_ostream &output) {
   return success();
 }
 
-LogicalResult translateContinuationTypeOps(ModuleOp &moduleOp,
-                                           raw_ostream &output) {
-  moduleOp.walk([&](ContinuationTypeOp continuationTypeOp) {
-    output << "(type $" << continuationTypeOp.getName() << " (cont $"
-           << continuationTypeOp.getFunc() << "))\n";
+LogicalResult translateContinuationTypeDeclOps(ModuleOp &moduleOp,
+                                               raw_ostream &output) {
+  moduleOp.walk([&](ContinuationTypeDeclOp op) {
+    auto contType = cast<ContinuationType>(op.getCont());
+    output << "(type $" << contType.getName() << " (cont $"
+           << contType.getFuncId() << "))\n";
   });
   return success();
 }
@@ -830,7 +831,7 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
     return failure();
   }
 
-  if (failed(translateContinuationTypeOps(module, output))) {
+  if (failed(translateContinuationTypeDeclOps(module, output))) {
     module.emitError("failed to translate continuation types");
     return failure();
   }

@@ -543,13 +543,13 @@ def Wasm_FuncTypeOp : Wasm_Op<"type.func", [Pure]> {
     }];
 }
 
-def Wasm_ContinuationTypeOp : Wasm_Op<"type.ct", [Pure]> {
+def Wasm_ContinuationTypeDeclOp : Wasm_Op<"type.ct", [Pure]> {
   let summary = "Declares a continuation type";
   let description = [{
     Declares a control tag with specified parameter and result types.
   }];
-  let arguments = (ins SymbolNameAttr:$name, FlatSymbolRefAttr:$func);
-  let assemblyFormat = "$name `(` `cont` $func `)` attr-dict";
+  let arguments = (ins TypeAttr:$cont);
+  let assemblyFormat = "$cont attr-dict";
 }
 
 def Wasm_TagOp : Wasm_Op<"tag", [Pure]> {
