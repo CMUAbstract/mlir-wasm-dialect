@@ -530,7 +530,7 @@ def Wasm_WasmReturnOp : Wasm_Op<"return", [Pure, Terminator, HasParent<"WasmFunc
 }
 
 
-def Wasm_FuncTypeOp : Wasm_Op<"type.func", [Pure]> {
+def Wasm_FuncTypeDeclOp : Wasm_Op<"type.func", [Pure]> {
     let summary = "Declare a function type";
     let description = [{
         Declares a function type with specified parameter and result types.
