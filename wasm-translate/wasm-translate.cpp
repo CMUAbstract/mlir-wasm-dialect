@@ -464,7 +464,7 @@ struct FuncSignature {
   std::vector<std::string> resultTypes;
 
   FuncSignature() = default;
-  FuncSignature(FuncTypeOp &funcTypeOp) {
+  FuncSignature(FuncTypeDeclOp &funcTypeOp) {
     for (Type argType : funcTypeOp.getFunctionType().getInputs()) {
       // function arguments are always local variables
       std::string watType;
@@ -678,7 +678,7 @@ FuncSignatureList initializeFuncSignatureList(ModuleOp &moduleOp,
   }
 
   // add defined signatures
-  for (auto funcTypeOp : moduleOp.getOps<FuncTypeOp>()) {
+  for (auto funcTypeOp : moduleOp.getOps<FuncTypeDeclOp>()) {
     FuncSignature funcSignature(funcTypeOp);
     funcSignatureList.push_back(funcSignature, funcTypeOp.getName().str());
   }
