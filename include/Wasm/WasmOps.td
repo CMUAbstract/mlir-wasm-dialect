@@ -460,8 +460,19 @@ def Wasm_Unreachable : Wasm_Op<"unreachable", []> {
 
 // TODO: control flow instructions
 
-def Wasm_LoopOp: Wasm_Op<"loop"> {
-    // TODO: Handle loop-carried values
+def Wasm_BlockLoopOp: Wasm_Op<"blockloop"> {
+    let summary = "Wasm dialect-only operation to represent loop inside block";
+    let description = [{
+    Since Wasm block has control flow semantics that is not supported by MLIR yet,
+    we define a new temporary operation, which will be converetd to the following 
+    by the Wasm translator.
+
+    block {
+        loop {
+            ...
+        }
+    }
+    }];
     let regions = (region AnyRegion:$body);
 
     let builders = [
@@ -469,8 +480,8 @@ def Wasm_LoopOp: Wasm_Op<"loop"> {
     ];
 }
 
-def Wasm_LoopEndOp: Wasm_Op<"loop_end", [Terminator]> {
-    // TODO: HasParent<LoopOp>
+def Wasm_BlockLoopEndOp: Wasm_Op<"blockloop_end", [Terminator]> {
+    // TODO: HasParent<BlockLoopOp>
 }
 
 def Wasm_BranchOp: Wasm_Op<"br", [Terminator]> {

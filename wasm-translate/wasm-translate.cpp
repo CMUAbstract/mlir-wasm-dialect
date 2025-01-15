@@ -189,7 +189,11 @@ std::string getUniqueLoopName() { return "$loop" + std::to_string(counter++); }
 // TODO: move this to header file?
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output);
 
-llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
+llvm::LogicalResult translateBlockLoopOp(BlockLoopOp loopOp,
+                                         raw_ostream &output) {
+  // FIXME: This translation logic should be all handled by lowering passes
+  // and this function should perform only trivial translation
+
   auto blockIt = loopOp.getRegion().begin();
   Block *preheader = &*blockIt;
   blockIt++;
@@ -318,9 +322,10 @@ llvm::LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
     return failure();
   }
   auto &terminationOp = *terminationBlock->getOperations().begin();
-  if (!isa<LoopEndOp>(
-          terminationOp)) { // Assuming LoopEndOp represents loop termination
-    loopOp.emitError("Termination block's operation should be a LoopEndOp");
+  if (!isa<BlockLoopEndOp>(terminationOp)) { // Assuming BlockLoopEndOp
+                                             // represents loop termination
+    loopOp.emitError(
+        "Termination block's operation should be a BlockLoopEndOp");
     return failure();
   }
   output << "))\n";
@@ -405,8 +410,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFMaxOp(fMaxOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
     return translateReturnOp(returnOp, output);
-  } else if (auto loopOp = dyn_cast<LoopOp>(op)) {
-    return translateLoopOp(loopOp, output);
+  } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
+    return translateBlockLoopOp(blockLoopOp, output);
   } else if (auto globalGetOp = dyn_cast<GlobalGetOp>(op)) {
     return translateGlobalGetOp(globalGetOp, output);
   } else if (auto globalSetOp = dyn_cast<GlobalSetOp>(op)) {
