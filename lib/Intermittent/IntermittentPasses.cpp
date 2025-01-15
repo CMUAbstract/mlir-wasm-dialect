@@ -345,7 +345,8 @@ void importHostFunctions(OpBuilder &builder, Location loc) {
 
 void addTypes(OpBuilder &builder, Location loc) {
   builder.create<wasm::FuncTypeOp>(loc, "ft", builder.getFunctionType({}, {}));
-  builder.create<wasm::ContinuationTypeOp>(loc, "ct", "ft");
+  builder.create<wasm::ContinuationTypeDeclOp>(
+      loc, wasm::ContinuationType::get(builder.getContext(), "ct", "ft"));
 }
 
 void addTag(OpBuilder &builder, Location loc) {
