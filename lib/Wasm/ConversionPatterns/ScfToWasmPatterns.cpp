@@ -62,7 +62,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     // Get the iteration arguments (initial values of iteration variables)
     ValueRange initArgs = adaptor.getInitArgs();
 
-    auto loopOp = rewriter.create<LoopOp>(loc);
+    auto loopOp = rewriter.create<BlockLoopOp>(loc);
     auto *entryBlock = rewriter.createBlock(&loopOp.getRegion());
     auto *conditionBlock = rewriter.createBlock(&loopOp.getRegion());
     auto *inductionVariableUpdateBlock =
@@ -163,7 +163,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
 
     // Termination block: read final values of iteration variables
     rewriter.setInsertionPointToEnd(terminationBlock);
-    rewriter.create<wasm::LoopEndOp>(loc);
+    rewriter.create<wasm::BlockLoopEndOp>(loc);
 
     // Replace scf.for op with final iteration variable values
     rewriter.replaceOp(forOp, iterationLocals);
