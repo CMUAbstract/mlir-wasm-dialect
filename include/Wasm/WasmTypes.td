@@ -33,7 +33,23 @@ def Global : Wasm_Type<"Global", "global"> {
    let assemblyFormat = "`<` $inner `>`";
 }
 
-// TODO
 def RefType : Type<CPred<"true">, "reference type">;
+
+def Continuation : Wasm_Type<"Continuation", "continuation"> {
+  let parameters = (ins "StringAttr":$name,
+                           "StringAttr":$funcId);
+  let assemblyFormat = [{
+   $name `(` `cont` $funcId `)`
+  }];
+
+  let builders = [
+   TypeBuilder<(ins "StringRef":$name, "StringRef":$funcId), [{
+   return $_get($_ctxt, 
+      StringAttr::get($_ctxt, name), 
+      StringAttr::get($_ctxt, funcId));
+   }]>
+  ];
+}
+
 
 #endif // WASM_TYPES
