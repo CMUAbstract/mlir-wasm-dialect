@@ -494,24 +494,44 @@ struct NonVolatileStoreOpLowering
 
 struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
   using OpConversionPattern<IdempotentTaskOp>::OpConversionPattern;
+
   LogicalResult
   matchAndRewrite(IdempotentTaskOp taskOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-
+    // Create the WasmFuncOp
     auto funcOp = rewriter.create<wasm::WasmFuncOp>(
-        taskOp.getLoc(), taskOp.getSymName(), rewriter.getFunctionType({}, {}));
-    rewriter.inlineRegionBefore(taskOp.getBody(), funcOp.getBody(),
-                                funcOp.end());
+        taskOp.getLoc(), taskOp.getSymName(),
+        rewriter.getFunctionType(/*inputs=*/{}, /*results=*/{}));
 
+    // Insert a block in the function for its body
+    auto *entryBlock = new Block();
+    funcOp.getBody().push_back(entryBlock);
+    rewriter.setInsertionPointToStart(entryBlock);
+
+    // Create an enclosing loop
+    auto loopName = taskOp.getSymName().str() + "_loop";
+    auto loopOp = rewriter.create<wasm::LoopOp>(taskOp.getLoc(), loopName);
+
+    // Inline the original task body into the loop's region
+    rewriter.inlineRegionBefore(taskOp.getBody(), loopOp.getBody(),
+                                loopOp.getBody().end());
+
+    // Place wasm.loop_end at the end of the loop
+    rewriter.setInsertionPointToEnd(&loopOp.getBody().back());
+    rewriter.create<wasm::LoopEndOp>(taskOp.getLoc());
+
+    // Place the wasm.return after the loop
     rewriter.setInsertionPointToEnd(&funcOp.getBody().back());
     rewriter.create<wasm::WasmReturnOp>(taskOp.getLoc());
 
+    // Replace the original op with the new function
     rewriter.replaceOp(taskOp, funcOp);
 
-    // after the end of the function, add a declaration for the function
-    rewriter.setInsertionPointAfter(taskOp);
+    // Declare the newly created function
+    rewriter.setInsertionPointAfter(funcOp);
     rewriter.create<wasm::ElemDeclareFuncOp>(taskOp.getLoc(),
                                              taskOp.getSymName());
+
     return success();
   }
 };
