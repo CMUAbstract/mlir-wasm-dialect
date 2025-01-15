@@ -484,6 +484,14 @@ def Wasm_BlockLoopEndOp: Wasm_Op<"blockloop_end", [Terminator]> {
     // TODO: HasParent<BlockLoopOp>
 }
 
+def Wasm_LoopOp: Wasm_Op<"loop"> {
+    let arguments = (ins SymbolNameAttr:$name);
+    let regions = (region AnyRegion:$body);
+}
+
+def Wasm_LoopEndOp: Wasm_Op<"loop_end", [Terminator, HasParent<"LoopOp">]> {
+}
+
 def Wasm_BranchOp: Wasm_Op<"br", [Terminator]> {
     let successors = (successor AnySuccessor:$dest);
 }
