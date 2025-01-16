@@ -452,21 +452,15 @@ struct NonVolatileLoadOpLowering
     MLIRContext *context = loadOp.getContext();
     auto elementType = loadOp.getVar().getType().getElementType();
 
-    auto globalCastOp = rewriter.create<UnrealizedConversionCastOp>(
-        loc, wasm::GlobalType::get(context, elementType), adaptor.getVar());
-
     auto localOp = rewriter.create<wasm::TempLocalOp>(loc, elementType);
 
     // get the global variable and set it to the local variable
     // because we currently use local variables to pass information
     // across patterns
-    rewriter.create<wasm::TempGlobalGetOp>(loc, globalCastOp.getResult(0));
+    rewriter.create<wasm::TempGlobalGetOp>(loc, adaptor.getVar());
     rewriter.create<wasm::TempLocalSetOp>(loc, localOp.getResult());
 
-    auto localCastOp = rewriter.create<UnrealizedConversionCastOp>(
-        loc, elementType, localOp.getResult());
-
-    rewriter.replaceOp(loadOp, localCastOp.getResult(0));
+    rewriter.replaceOp(loadOp, localOp.getResult());
 
     return success();
   }
@@ -481,57 +475,10 @@ struct NonVolatileStoreOpLowering
     Location loc = storeOp.getLoc();
     MLIRContext *context = storeOp.getContext();
 
-    auto castOp = rewriter.create<UnrealizedConversionCastOp>(
-        loc, wasm::LocalType::get(context, adaptor.getValue().getType()),
-        adaptor.getValue());
-    rewriter.create<wasm::TempLocalGetOp>(loc, castOp.getResult(0));
+    rewriter.create<wasm::TempLocalGetOp>(loc, adaptor.getValue());
 
     rewriter.replaceOpWithNewOp<wasm::TempGlobalSetOp>(storeOp,
                                                        adaptor.getVar());
-    return success();
-  }
-};
-
-struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
-  using OpConversionPattern<IdempotentTaskOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(IdempotentTaskOp taskOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    // Create the WasmFuncOp
-    auto funcOp = rewriter.create<wasm::WasmFuncOp>(
-        taskOp.getLoc(), taskOp.getSymName(),
-        rewriter.getFunctionType(/*inputs=*/{}, /*results=*/{}));
-
-    // Insert a block in the function for its body
-    auto *entryBlock = new Block();
-    funcOp.getBody().push_back(entryBlock);
-    rewriter.setInsertionPointToStart(entryBlock);
-
-    // Create an enclosing loop
-    auto loopName = taskOp.getSymName().str() + "_loop";
-    auto loopOp = rewriter.create<wasm::LoopOp>(taskOp.getLoc(), loopName);
-
-    // Inline the original task body into the loop's region
-    rewriter.inlineRegionBefore(taskOp.getBody(), loopOp.getBody(),
-                                loopOp.getBody().end());
-
-    // Place wasm.loop_end at the end of the loop
-    rewriter.setInsertionPointToEnd(&loopOp.getBody().back());
-    rewriter.create<wasm::LoopEndOp>(taskOp.getLoc());
-
-    // Place the wasm.return after the loop
-    rewriter.setInsertionPointToEnd(&funcOp.getBody().back());
-    rewriter.create<wasm::WasmReturnOp>(taskOp.getLoc());
-
-    // Replace the original op with the new function
-    rewriter.replaceOp(taskOp, funcOp);
-
-    // Declare the newly created function
-    rewriter.setInsertionPointAfter(funcOp);
-    rewriter.create<wasm::ElemDeclareFuncOp>(taskOp.getLoc(),
-                                             taskOp.getSymName());
-
     return success();
   }
 };
@@ -580,60 +527,188 @@ int getTaskIndexBySymbolName(ModuleOp module, StringRef symName) {
   return -1;
 }
 
-struct TransitionToOpLowering : public OpConversionPattern<TransitionToOp> {
-  using OpConversionPattern<TransitionToOp>::OpConversionPattern;
+void convertTransitionToOp(MLIRContext *context, TransitionToOp transitionToOp,
+                           wasm::LoopOp loopOp, Value contLocal,
+                           ConversionPatternRewriter &rewriter) {
+  rewriter.setInsertionPoint(transitionToOp);
+  Location loc = transitionToOp.getLoc();
+  rewriter.create<wasm::CallOp>(loc, "begin_commit");
+  for (auto var : transitionToOp.getVarsToStore()) {
+
+    // var can be either of type GlobalType or a NonVolatileType
+    Type innerType;
+    if (auto globalType = dyn_cast<wasm::GlobalType>(var.getType())) {
+      innerType = globalType.getInner();
+    } else if (auto nonVolatileType =
+                   dyn_cast<NonVolatileType>(var.getType())) {
+      innerType = nonVolatileType.getElementType();
+    }
+    auto castedVar =
+        rewriter
+            .create<UnrealizedConversionCastOp>(
+                loc, wasm::GlobalType::get(context, innerType), var)
+            .getResult(0);
+    rewriter.create<wasm::TempGlobalIndexOp>(loc, castedVar);
+    rewriter.create<wasm::TempGlobalGetOp>(loc, castedVar);
+
+    if (auto intType = dyn_cast<IntegerType>(innerType)) {
+      if (intType.getWidth() == 32) {
+        rewriter.create<wasm::CallOp>(loc, "set_i32");
+      } else if (intType.getWidth() == 64) {
+        rewriter.create<wasm::CallOp>(loc, "set_i64");
+      }
+    } else if (auto floatType = dyn_cast<FloatType>(innerType)) {
+      if (floatType.getWidth() == 32) {
+        rewriter.create<wasm::CallOp>(loc, "set_f32");
+      } else if (floatType.getWidth() == 64) {
+        rewriter.create<wasm::CallOp>(loc, "set_f64");
+      }
+    }
+  }
+  // store the next task index, if it exists
+  auto nextTask = transitionToOp.getNextTask();
+  if (nextTask.has_value()) {
+    // index
+    auto moduleOp = transitionToOp->getParentOfType<ModuleOp>();
+    Value currTaskGlobal =
+        findTempGlobalOpWithSymName(moduleOp, "global_name", "curr_task")
+            .getResult();
+    rewriter.create<wasm::TempGlobalIndexOp>(loc, currTaskGlobal);
+    // value
+    int taskIndex = getTaskIndexBySymbolName(moduleOp, nextTask.value());
+    rewriter.create<wasm::ConstantOp>(loc,
+                                      rewriter.getI32IntegerAttr(taskIndex));
+    rewriter.create<wasm::CallOp>(loc, "set_i32");
+  }
+  rewriter.create<wasm::CallOp>(loc, "end_commit");
+
+  rewriter.replaceOpWithNewOp<wasm::SwitchOp>(transitionToOp, "ct", "yield");
+  // when returning to this point, the previous task continuation is on the
+  // stack. save it
+  rewriter.create<wasm::TempLocalSetOp>(loc, contLocal);
+  // jump to the beginning of the loop
+  rewriter.create<wasm::BranchOp>(loc, loopOp.getMainBlock());
+}
+
+struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
+  using OpConversionPattern<IdempotentTaskOp>::OpConversionPattern;
+
   LogicalResult
-  matchAndRewrite(TransitionToOp transitionToOp, OpAdaptor adaptor,
+  matchAndRewrite(IdempotentTaskOp taskOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Location loc = transitionToOp.getLoc();
-    rewriter.create<wasm::CallOp>(loc, "begin_commit");
-    for (auto var : adaptor.getVarsToStore()) {
-      rewriter.create<wasm::TempGlobalIndexOp>(loc, var);
-      rewriter.create<wasm::TempGlobalGetOp>(loc, var);
+    auto taskLoc = taskOp.getLoc();
+    MLIRContext *context = taskOp.getContext();
+    // Create the WasmFuncOp
+    auto contType = wasm::ContinuationType::get(context, "ct", "ft");
+    auto contLocalType = wasm::LocalType::get(context, contType);
 
-      // var can be either of type GlobalType or a NonVolatileType
-      Type innerType;
-      if (auto globalType = dyn_cast<wasm::GlobalType>(var.getType())) {
-        innerType = globalType.getInner();
-      } else if (auto nonVolatileType =
-                     dyn_cast<NonVolatileType>(var.getType())) {
-        innerType = nonVolatileType.getElementType();
-      }
+    auto funcOp = rewriter.create<wasm::WasmFuncOp>(
+        taskLoc, taskOp.getSymName(),
+        rewriter.getFunctionType(
+            /*inputs=*/{contLocalType}, /*results=*/{}));
+    auto loc = funcOp.getLoc();
 
-      if (auto intType = dyn_cast<IntegerType>(innerType)) {
-        if (intType.getWidth() == 32) {
-          rewriter.create<wasm::CallOp>(loc, "set_i32");
-        } else if (intType.getWidth() == 64) {
-          rewriter.create<wasm::CallOp>(loc, "set_i64");
-        }
-      } else if (auto floatType = dyn_cast<FloatType>(innerType)) {
-        if (floatType.getWidth() == 32) {
-          rewriter.create<wasm::CallOp>(loc, "set_f32");
-        } else if (floatType.getWidth() == 64) {
-          rewriter.create<wasm::CallOp>(loc, "set_f64");
-        }
-      }
+    // Insert a block in the function for its body
+    auto *entryBlock = new Block();
+    auto funcArg = entryBlock->addArgument(contLocalType, loc);
+    funcOp.getBody().push_back(entryBlock);
+    rewriter.setInsertionPointToStart(entryBlock);
+
+    // declare a local variable to store the last task continuation
+    auto contLocal = rewriter.create<wasm::TempLocalOp>(loc, contType);
+    // save the function argument (initial task) in this local variable
+    rewriter.create<wasm::TempLocalGetOp>(loc, funcArg);
+    rewriter.create<wasm::TempLocalSetOp>(loc, contLocal);
+
+    // Create an enclosing loop
+    auto loopName = taskOp.getSymName().str() + "_loop";
+    auto loopOp = rewriter.create<wasm::LoopOp>(loc, loopName);
+    loopOp.initialize(rewriter);
+    funcOp.dump();
+    loopOp.dump();
+
+    // Inline the original task body into the loop's region
+    if (failed(loopOp.inlineRegionToMainBlock(taskOp.getBody(), rewriter))) {
+      return failure();
     }
-    // store the next task index, if it exists
-    auto nextTask = transitionToOp.getNextTask();
-    if (nextTask.has_value()) {
-      // index
-      auto moduleOp = transitionToOp->getParentOfType<ModuleOp>();
-      Value currTaskGlobal =
-          findTempGlobalOpWithSymName(moduleOp, "global_name", "curr_task")
-              .getResult();
-      rewriter.create<wasm::TempGlobalIndexOp>(loc, currTaskGlobal);
-      // value
-      int taskIndex = getTaskIndexBySymbolName(moduleOp, nextTask.value());
-      rewriter.create<wasm::ConstantOp>(loc,
-                                        rewriter.getI32IntegerAttr(taskIndex));
-      rewriter.create<wasm::CallOp>(loc, "set_i32");
-    }
+    llvm::dbgs() << "hello\n";
+    loopOp.dump();
 
-    rewriter.create<wasm::CallOp>(loc, "end_commit");
+    // Save the continuation of the previous task to the continuation table at
+    // the beginning of the loop
+    rewriter.setInsertionPointToStart(loopOp.getMainBlock());
 
-    rewriter.replaceOpWithNewOp<wasm::SwitchOp>(transitionToOp, "ct", "yield");
+    // retrieve the continuation
+    rewriter.create<wasm::TempLocalGetOp>(loc, contLocal);
+
+    // retrieve the current task index
+    auto moduleOp = taskOp->getParentOfType<ModuleOp>();
+    Value currTaskGlobal =
+        findTempGlobalOpWithSymName(moduleOp, "global_name", "curr_task")
+            .getResult();
+    rewriter.create<wasm::TempGlobalGetOp>(loc, currTaskGlobal);
+
+    // store the continuation to the current task index
+    rewriter.create<wasm::TableSetOp>(loc, "task_table");
+
+    // Place the wasm.return after the loop
+    rewriter.setInsertionPointToEnd(&funcOp.getBody().back());
+    rewriter.create<wasm::WasmReturnOp>(loc);
+
+    // Replace the original op with the new function
+    rewriter.replaceOp(taskOp, funcOp);
+
+    // Declare the newly created function
+    rewriter.setInsertionPointAfter(funcOp);
+    rewriter.create<wasm::ElemDeclareFuncOp>(loc, taskOp.getSymName());
+
+    // handle transitionToOps
+    llvm::dbgs() << "converting transition to\n";
+    funcOp.walk([&](TransitionToOp transitionToOp) {
+      convertTransitionToOp(context, transitionToOp, loopOp, contLocal,
+                            rewriter);
+    });
+    llvm::dbgs() << "done\n";
+    loopOp.dump();
+
     return success();
+  }
+};
+
+class IntermittentToWasmTypeConverter : public TypeConverter {
+public:
+  IntermittentToWasmTypeConverter(MLIRContext *ctx) {
+    addConversion([](Type type) { return type; });
+    addConversion([ctx](NonVolatileType type) -> Type {
+      auto elementType = type.getElementType();
+      return wasm::GlobalType::get(ctx, elementType);
+    });
+    addConversion([ctx](IntegerType type) -> Type {
+      return wasm::LocalType::get(ctx, type);
+    });
+    addConversion([ctx](FloatType type) -> Type {
+      return wasm::LocalType::get(ctx, type);
+    });
+    addConversion([ctx](IndexType type) -> Type {
+      return wasm::LocalType::get(ctx, IntegerType::get(ctx, 32));
+    });
+    addSourceMaterialization([](OpBuilder &builder, Type type,
+                                ValueRange inputs, Location loc) -> Value {
+      // if (inputs.size() != 1)
+      //   return std::nullopt;
+
+      return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+          .getResult(0);
+    });
+
+    addTargetMaterialization([](OpBuilder &builder, Type type,
+                                ValueRange inputs, Location loc) -> Value {
+      // if (inputs.size() != 1)
+      //   return std::nullopt;
+
+      return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+          .getResult(0);
+    });
   }
 };
 
@@ -646,6 +721,7 @@ public:
   void runOnOperation() final {
     auto moduleOp = getOperation();
     MLIRContext *context = moduleOp.getContext();
+    IntermittentToWasmTypeConverter typeConverter(context);
 
     ConversionTarget target(*context);
     target.addLegalDialect<wasm::WasmDialect>();
@@ -658,8 +734,8 @@ public:
 
     RewritePatternSet patterns(context);
     patterns.add<NonVolatileNewOpLowering, NonVolatileLoadOpLowering,
-                 NonVolatileStoreOpLowering, IdempotentTaskOpLowering,
-                 TransitionToOpLowering>(context);
+                 NonVolatileStoreOpLowering, IdempotentTaskOpLowering>(
+        typeConverter, context);
 
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
       signalPassFailure();
