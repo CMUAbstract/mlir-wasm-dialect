@@ -485,8 +485,24 @@ def Wasm_BlockLoopEndOp: Wasm_Op<"blockloop_end", [Terminator]> {
 }
 
 def Wasm_LoopOp: Wasm_Op<"loop"> {
+    let description = [{
+        The `loop` operation is used to represent a loop.
+        Since MLIR does not allow region entry blocks to have predecessors,
+        we maintain an invariant that a loop operation has a entry block
+        and main block.
+        The entry block contains a single instruction that branches to the main block,
+        and all operations should be in the main block.
+    }];
     let arguments = (ins SymbolNameAttr:$name);
     let regions = (region AnyRegion:$body);
+
+    // FIXME: Initializing loop blocks inside the build method doesn't seem to work.
+    // For now, we should call `initializeLoop` to make loop 
+    let extraClassDeclaration = [{
+        void initialize(OpBuilder &builder);
+        Block *getMainBlock();
+        LogicalResult inlineRegionToMainBlock(Region &sourceRegion, PatternRewriter &rewriter);
+    }];
 }
 
 def Wasm_LoopEndOp: Wasm_Op<"loop_end", [Terminator, HasParent<"LoopOp">]> {

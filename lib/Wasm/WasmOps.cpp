@@ -163,4 +163,81 @@ void TempGlobalIndexOp::print(OpAsmPrinter &p) {
   p << " : " << getGlobal().getType().getInner();
 }
 
+void LoopOp::initialize(OpBuilder &builder) {
+  Region &body = getBody();
+  auto *entryBlock = builder.createBlock(&body);
+  auto *mainBlock = builder.createBlock(&body);
+
+  auto ip = builder.saveInsertionPoint();
+  builder.setInsertionPointToStart(entryBlock);
+  builder.create<BranchOp>(getLoc(), mainBlock);
+  builder.restoreInsertionPoint(ip);
+}
+
+Block *LoopOp::getMainBlock() {
+  Region &region = getRegion();
+  auto it = region.begin();
+  ++it; // Skip the entry block.
+  return &*it;
+}
+
+llvm::LogicalResult LoopOp::inlineRegionToMainBlock(Region &sourceRegion,
+                                                    PatternRewriter &rewriter) {
+  llvm::dbgs() << "inlineRegionToMainBlock start\n";
+  // Ensure the source region has exactly one block for simplicity.
+  if (sourceRegion.getBlocks().size() != 1) {
+    return emitOpError(
+        "inlineRegionToLoopHeader: source region must have exactly one block");
+  }
+
+  Block &sourceBlock = sourceRegion.front();
+
+  // Get the loop header block where we will inline the operations.
+  Block *mainBlock = getMainBlock();
+  if (!mainBlock) {
+    return emitOpError("inlineRegionToLoopHeader: loop header block not found");
+  }
+
+  // Prepare a mapping from source values to target values.
+  IRMapping mapping;
+
+  // If the source block has arguments, map them to the loop header's block
+  // arguments.
+  if (!sourceBlock.getArguments().empty()) {
+    // For simplicity, assume the number of arguments matches.
+    if (sourceBlock.getArguments().size() != mainBlock->getArguments().size()) {
+      return emitOpError(
+          "inlineRegionToLoopHeader: block argument count mismatch");
+    }
+
+    for (auto it :
+         llvm::zip(sourceBlock.getArguments(), mainBlock->getArguments())) {
+      Value sourceArg = std::get<0>(it);
+      Value targetArg = std::get<1>(it);
+      mapping.map(sourceArg, targetArg);
+    }
+  }
+
+  // Clone each operation from the source block into the loop header block.
+  for (Operation &op : sourceBlock) {
+    // Clone the operation with the current mapping.
+    Operation *clonedOp = rewriter.clone(op, mapping);
+    if (!clonedOp) {
+      return emitOpError("inlineRegionToLoopHeader: failed to clone operation");
+    }
+
+    // If the cloned operation has results, map them.
+    if (!clonedOp->getResults().empty()) {
+      for (auto it : llvm::zip(op.getResults(), clonedOp->getResults())) {
+        Value sourceResult = std::get<0>(it);
+        Value targetResult = std::get<1>(it);
+        mapping.map(sourceResult, targetResult);
+      }
+    }
+  }
+
+  llvm::dbgs() << "inlineRegionToLoopHeader end\n";
+  return success();
+}
+
 } // namespace mlir::wasm
