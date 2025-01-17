@@ -183,7 +183,6 @@ Block *LoopOp::getMainBlock() {
 
 llvm::LogicalResult LoopOp::inlineRegionToMainBlock(Region &sourceRegion,
                                                     PatternRewriter &rewriter) {
-  llvm::dbgs() << "inlineRegionToMainBlock start\n";
   // Ensure the source region has exactly one block for simplicity.
   if (sourceRegion.getBlocks().size() != 1) {
     return emitOpError(
@@ -236,7 +235,6 @@ llvm::LogicalResult LoopOp::inlineRegionToMainBlock(Region &sourceRegion,
     }
   }
 
-  llvm::dbgs() << "inlineRegionToLoopHeader end\n";
   return success();
 }
 
