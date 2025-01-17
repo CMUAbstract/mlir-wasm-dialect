@@ -624,15 +624,11 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     auto loopName = taskOp.getSymName().str() + "_loop";
     auto loopOp = rewriter.create<wasm::LoopOp>(loc, loopName);
     loopOp.initialize(rewriter);
-    funcOp.dump();
-    loopOp.dump();
 
     // Inline the original task body into the loop's region
     if (failed(loopOp.inlineRegionToMainBlock(taskOp.getBody(), rewriter))) {
       return failure();
     }
-    llvm::dbgs() << "hello\n";
-    loopOp.dump();
 
     // Save the continuation of the previous task to the continuation table at
     // the beginning of the loop
@@ -663,13 +659,10 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     rewriter.create<wasm::ElemDeclareFuncOp>(loc, taskOp.getSymName());
 
     // handle transitionToOps
-    llvm::dbgs() << "converting transition to\n";
     funcOp.walk([&](TransitionToOp transitionToOp) {
       convertTransitionToOp(context, transitionToOp, loopOp, contLocal,
                             rewriter);
     });
-    llvm::dbgs() << "done\n";
-    loopOp.dump();
 
     return success();
   }
