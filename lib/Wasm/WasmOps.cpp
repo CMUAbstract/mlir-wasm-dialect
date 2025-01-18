@@ -173,6 +173,7 @@ void LoopOp::initialize(OpBuilder &builder) {
   builder.create<BranchOp>(getLoc(), mainBlock);
   builder.restoreInsertionPoint(ip);
 }
+Block *LoopOp::getEntryBlock() { return &getRegion().front(); }
 
 Block *LoopOp::getMainBlock() {
   Region &region = getRegion();

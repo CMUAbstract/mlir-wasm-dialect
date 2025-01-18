@@ -333,6 +333,36 @@ llvm::LogicalResult translateBlockLoopOp(BlockLoopOp loopOp,
   return success();
 }
 
+LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
+  output << "(loop " << loopOp.getName() << "\n";
+  for (auto &block : loopOp.getBody()) {
+    if (&block == loopOp.getEntryBlock()) {
+      continue;
+    }
+    for (Operation &op : block) {
+      if (isa<LoopEndOp>(op)) {
+        continue;
+      }
+      if (failed(translateOperation(&op, output))) {
+        return failure();
+      }
+      output << "\n";
+    }
+  }
+  output << ")";
+  return success();
+}
+
+LogicalResult translateBranchOp(BranchOp branchOp, raw_ostream &output) {
+  // For now, we assume that the branch destination is a LoopOp
+  // TODO: Handle other types of destinations
+  auto loopOp = cast<LoopOp>(branchOp->getSuccessor(0)->getParentOp());
+
+  // loop name
+  output << "(br $" << loopOp.getName() << ")";
+  return success();
+}
+
 LogicalResult translateGlobalGetOp(GlobalGetOp globalGetOp,
                                    raw_ostream &output) {
   output << "(global.get $" << globalGetOp.getName() << ")";
@@ -410,6 +440,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFMaxOp(fMaxOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
     return translateReturnOp(returnOp, output);
+  } else if (auto loopOp = dyn_cast<LoopOp>(op)) {
+    return translateLoopOp(loopOp, output);
+  } else if (auto branchOp = dyn_cast<BranchOp>(op)) {
+    return translateBranchOp(branchOp, output);
   } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
     return translateBlockLoopOp(blockLoopOp, output);
   } else if (auto globalGetOp = dyn_cast<GlobalGetOp>(op)) {
