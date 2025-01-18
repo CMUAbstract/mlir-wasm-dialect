@@ -798,8 +798,8 @@ LogicalResult translateContinuationTypeDeclOps(ModuleOp &moduleOp,
                                                raw_ostream &output) {
   moduleOp.walk([&](ContinuationTypeDeclOp op) {
     auto contType = cast<ContinuationType>(op.getCont());
-    output << "(type $" << contType.getName() << " (cont $"
-           << contType.getFuncId() << "))\n";
+    output << "(type $" << contType.getName().getValue() << " (cont $"
+           << contType.getFuncId().getValue() << "))\n";
   });
   return success();
 }
