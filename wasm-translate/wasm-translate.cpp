@@ -43,7 +43,7 @@ llvm::LogicalResult getWatType(Type mlirType, std::string &watType) {
     watType = "f64";
   } else if (isa<ContinuationType>(mlirType)) {
     auto continuationType = cast<ContinuationType>(mlirType);
-    watType = continuationType.getName().str();
+    watType = "$" + continuationType.getName().str();
     return success();
   } else {
     // Unsupported type
@@ -54,26 +54,13 @@ llvm::LogicalResult getWatType(Type mlirType, std::string &watType) {
 
 llvm::LogicalResult getWatType(Attribute attr, std::string &watType) {
   if (auto intAttr = dyn_cast<IntegerAttr>(attr)) {
-    if (intAttr.getType().isInteger(32)) {
-
-      watType = "i32";
-    } else if (intAttr.getType().isInteger(64)) {
-      watType = "i64";
-    } else {
-      return failure();
-    }
+    return getWatType(intAttr.getType(), watType);
   } else if (auto floatAttr = dyn_cast<FloatAttr>(attr)) {
-    if (floatAttr.getType().isF32()) {
-      watType = "f32";
-    } else if (floatAttr.getType().isF64()) {
-      watType = "f64";
-    } else {
-      return failure();
-    }
+    return getWatType(floatAttr.getType(), watType);
   } else {
+    // Unsupported attribute type
     return failure();
   }
-  return success();
 }
 
 llvm::LogicalResult getNumericAttrValue(Attribute attr, std::string &value) {
