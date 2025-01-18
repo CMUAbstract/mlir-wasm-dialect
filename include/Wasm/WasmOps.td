@@ -489,7 +489,7 @@ def Wasm_LoopOp: Wasm_Op<"loop"> {
         The `loop` operation is used to represent a loop.
         Since MLIR does not allow region entry blocks to have predecessors,
         we maintain an invariant that a loop operation has a entry block
-        and main block.
+        and main block, which is the entry block of the actual loop body.
         The entry block contains a single instruction that branches to the main block,
         and all operations should be in the main block.
     }];
@@ -500,12 +500,19 @@ def Wasm_LoopOp: Wasm_Op<"loop"> {
     // For now, we should call `initializeLoop` to make loop 
     let extraClassDeclaration = [{
         void initialize(OpBuilder &builder);
+        Block *getEntryBlock();
         Block *getMainBlock();
         LogicalResult inlineRegionToMainBlock(Region &sourceRegion, PatternRewriter &rewriter);
     }];
 }
 
 def Wasm_LoopEndOp: Wasm_Op<"loop_end", [Terminator, HasParent<"LoopOp">]> {
+    let summary = "Loop end operation";
+    let description = [{
+        The `loop_end` operation is used to indicate the end of a loop.
+        This is translated to a no-op in the final wasm output.
+        We need this operation because MLIR requires all blocks to have a terminator.
+    }];
 }
 
 def Wasm_BranchOp: Wasm_Op<"br", [Terminator]> {
