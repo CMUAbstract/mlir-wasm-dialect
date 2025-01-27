@@ -76,7 +76,7 @@ def PolygeistToIntermittent : Pass<"polygeist-to-intermittent", "ModuleOp"> {
   ];
 }
 
-def PrepareForIntermittent : Pass<"prepare-for-intermittent", "ModuleOp"> {
+def PreprocessIntermittentToWasm : Pass<"preprocess-intermittent-to-wasm", "ModuleOp"> {
   let summary = "Add preludes";
   let dependentDialects = [
     "intermittent::IntermittentDialect",

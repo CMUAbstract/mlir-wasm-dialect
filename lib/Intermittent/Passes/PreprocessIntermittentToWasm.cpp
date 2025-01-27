@@ -1,4 +1,5 @@
-//===- PrepareForIntermittent.cpp - Prepare for Intermittent Execution
+//===- PreProcessForIntermittentToWasm.cpp - Preprocess for Intermittent to Wasm
+// pass
 //-----------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -12,7 +13,7 @@
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir::intermittent {
-#define GEN_PASS_DEF_PREPAREFORINTERMITTENT
+#define GEN_PASS_DEF_PREPROCESSINTERMITTENTTOWASM
 #include "Intermittent/IntermittentPasses.h.inc"
 
 void importHostFunctions(OpBuilder &builder, Location loc) {
@@ -119,11 +120,12 @@ void addMainFunction(ModuleOp &moduleOp, MLIRContext *context,
   builder.create<wasm::WasmReturnOp>(loc);
 }
 
-class PrepareForIntermittent
-    : public impl::PrepareForIntermittentBase<PrepareForIntermittent> {
+class PreprocessIntermittentToWasm
+    : public impl::PreprocessIntermittentToWasmBase<
+          PreprocessIntermittentToWasm> {
 public:
-  using impl::PrepareForIntermittentBase<
-      PrepareForIntermittent>::PrepareForIntermittentBase;
+  using impl::PreprocessIntermittentToWasmBase<
+      PreprocessIntermittentToWasm>::PreprocessIntermittentToWasmBase;
 
   void runOnOperation() final {
     auto moduleOp = getOperation();
