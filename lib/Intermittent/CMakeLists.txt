@@ -2,10 +2,16 @@ add_mlir_dialect_library(MLIRIntermittent
         IntermittentTypes.cpp
         IntermittentDialect.cpp
         IntermittentOps.cpp
-        IntermittentPasses.cpp
+        Passes/PolygeistToIntermittent.cpp
+        Passes/PrepareForIntermittent.cpp
+        Passes/ConvertIntermittentTaskToWasm.cpp
+        Passes/CreateMainFunction.cpp
+        Passes/ConvertNonVolatileToMemRef.cpp
+        Passes/ConvertIntermittentTaskToAsync.cpp
 
         ADDITIONAL_HEADER_DIRS
         ${PROJECT_SOURCE_DIR}/include/Wasm
+        ${PROJECT_SOURCE_DIR}/include/Intermittent
 
 
         DEPENDS
@@ -16,4 +22,7 @@ add_mlir_dialect_library(MLIRIntermittent
         MLIRIR
         MLIRInferTypeOpInterface
         MLIRFuncDialect
+        MLIRPass
+        MLIRSupport
+        MLIRTransforms
         )
