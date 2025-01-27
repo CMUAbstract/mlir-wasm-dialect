@@ -5,7 +5,7 @@ add_mlir_dialect_library(MLIRIntermittent
         Passes/PolygeistToIntermittent.cpp
         Passes/PreprocessIntermittentToWasm.cpp
         Passes/ConvertIntermittentTaskToWasm.cpp
-        Passes/CreateMainFunction.cpp
+        Passes/PreprocessIntermittentToStd.cpp
         Passes/ConvertNonVolatileToMemRef.cpp
         Passes/ConvertIntermittentTaskToAsync.cpp
 

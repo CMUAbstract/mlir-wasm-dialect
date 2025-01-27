@@ -94,8 +94,8 @@ def ConvertIntermittentTaskToWasm : Pass<"convert-intermittent-task-to-wasm", "M
 
 // intermittent to async passes
 
-def CreateMainFunction
-    : Pass<"create-main-fn", "ModuleOp"> {
+def PreprocessIntermittentToStd
+    : Pass<"preprocess-intermittent-to-std", "ModuleOp"> {
   let summary = "Create a main function that calls async.runtime.create for each IdempotentTaskOp and then calls the entry task.";
   let description = [{
     This pass walks through the module, finds all IdempotentTaskOps,

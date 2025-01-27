@@ -1,24 +1,19 @@
-//===- CreateMainFunction.cpp - Create Main Function -----------------*- C++
-//-*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
+//===- PreprocessIntermittentToStd.cpp - Preprocess Intermittent to Std
+//-----------------*- C++ -*-===//
 
 #include "Intermittent/IntermittentPasses.h"
 #include "mlir/Dialect/Async/IR/Async.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 
 namespace mlir::intermittent {
-#define GEN_PASS_DEF_CREATEMAINFUNCTION
+#define GEN_PASS_DEF_PREPROCESSINTERMITTENTTOSTD
 #include "Intermittent/IntermittentPasses.h.inc"
 
-struct CreateMainFunction
-    : public impl::CreateMainFunctionBase<CreateMainFunction> {
-  using impl::CreateMainFunctionBase<
-      CreateMainFunction>::CreateMainFunctionBase;
+struct PreprocessIntermittentToStd
+    : public impl::PreprocessIntermittentToStdBase<
+          PreprocessIntermittentToStd> {
+  using impl::PreprocessIntermittentToStdBase<
+      PreprocessIntermittentToStd>::PreprocessIntermittentToStdBase;
   void runOnOperation() final {
     // The Operation we are running on is ModuleOp because
     // in the .td file we wrote: Pass<"create-main-fn", "ModuleOp">
