@@ -84,7 +84,7 @@ def PreprocessIntermittentToWasm : Pass<"preprocess-intermittent-to-wasm", "Modu
   ];
 }
 
-def ConvertIntermittentTaskToWasm : Pass<"convert-intermittent-task-to-wasm", "ModuleOp"> {
+def ConvertIntermittentToWasm : Pass<"convert-intermittent-to-wasm", "ModuleOp"> {
   let summary = "Converts Intermittent dialect to Wasm dialect";
   let dependentDialects = [
     "intermittent::IntermittentDialect",
