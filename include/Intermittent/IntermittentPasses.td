@@ -116,7 +116,7 @@ def PreprocessIntermittentToStd
 }
 
 def ConvertNonVolatileToMemRefForIntermittentToStd
-    : Pass<"convert-nonvolatile-to-memref", "ModuleOp"> {
+    : Pass<"convert-nonvolatile-to-memref-for-intermittent-to-std", "ModuleOp"> {
   let summary = "Converts nonvolatile variables to memref";
   let dependentDialects = [
     "intermittent::IntermittentDialect",
@@ -125,7 +125,7 @@ def ConvertNonVolatileToMemRefForIntermittentToStd
 }
 
 def ConvertIntermittentToLLVM
-    : Pass<"convert-intermittent-task-to-async", "ModuleOp"> {
+    : Pass<"convert-intermittent-to-llvm", "ModuleOp"> {
   let summary = "Convert Intermittent dialect to LLVM dialect";
   let description = [{
     This pass converts the Intermittent dialect operations to LLVM dialect.
