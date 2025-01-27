@@ -11,10 +11,272 @@
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMTypes.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir::intermittent {
 #define GEN_PASS_DEF_CONVERTINTERMITTENTTOLLVM
 #include "Intermittent/IntermittentPasses.h.inc"
+
+static LLVM::LLVMFuncOp getOrInsertFunction(StringRef funcName,
+                                            FunctionType functionType,
+                                            PatternRewriter &rewriter,
+                                            ModuleOp module) {
+  // Check if function already exists
+  if (auto funcOp = module.lookupSymbol<LLVM::LLVMFuncOp>(funcName)) {
+    return funcOp;
+  }
+
+  // If not, create it
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointToStart(module.getBody());
+  auto llvmFuncOp = rewriter.create<LLVM::LLVMFuncOp>(
+      module.getLoc(), funcName, functionType, LLVM::Linkage::External,
+      /*dsoLocal=*/false);
+  return llvmFuncOp;
+}
+
+// ------------------------------------------------------------------
+// Helper: Insert coroutine intrinsics and memory allocation
+// Returns (id, hdl) where:
+//   id  : token from llvm.coro.id
+//   hdl : pointer from llvm.coro.begin
+// ------------------------------------------------------------------
+static std::pair<Value, Value> createCoroutineSetup(Location loc,
+                                                    ModuleOp module,
+                                                    PatternRewriter &rewriter,
+                                                    ValueRange extraArgs = {}) {
+  auto llvmPtrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
+  auto tokenTy = LLVM::LLVMTokenType::get(rewriter.getContext());
+  auto i32Ty = IntegerType::get(rewriter.getContext(), 32);
+
+  // CoroId: %id = call token @llvm.coro.id(i32 0, ptr null, ptr null, ptr null)
+  auto coroIdFuncType = rewriter.getFunctionType(
+      {i32Ty, llvmPtrTy, llvmPtrTy, llvmPtrTy}, tokenTy);
+  auto coroIdFunc =
+      getOrInsertFunction("llvm.coro.id", coroIdFuncType, rewriter, module);
+
+  Value zeroConst = rewriter.create<LLVM::ConstantOp>(
+      loc, i32Ty, rewriter.getI32IntegerAttr(0));
+  Value nullPtr = rewriter.create<LLVM::ZeroOp>(loc, llvmPtrTy);
+  SmallVector<Value, 4> coroIdArgs = {zeroConst, nullPtr, nullPtr, nullPtr};
+  Value id = rewriter
+                 .create<LLVM::CallOp>(
+                     loc, tokenTy, SymbolRefAttr::get(coroIdFunc), coroIdArgs)
+                 .getResult();
+
+  // CoroSize: %size = call i32 @llvm.coro.size.i32()
+  auto coroSizeFuncType = rewriter.getFunctionType({}, i32Ty);
+  auto coroSizeFunc = getOrInsertFunction("llvm.coro.size.i32",
+                                          coroSizeFuncType, rewriter, module);
+  Value size =
+      rewriter
+          .create<LLVM::CallOp>(loc, i32Ty, SymbolRefAttr::get(coroSizeFunc),
+                                ValueRange{})
+          .getResult();
+
+  // malloc: %alloc = call ptr @malloc(i32 %size)
+  auto mallocFuncType = rewriter.getFunctionType({i32Ty}, llvmPtrTy);
+  auto mallocFunc =
+      getOrInsertFunction("malloc", mallocFuncType, rewriter, module);
+  Value alloc = rewriter
+                    .create<LLVM::CallOp>(loc, llvmPtrTy,
+                                          SymbolRefAttr::get(mallocFunc), size)
+                    .getResult();
+
+  // CoroBegin: %hdl = call ptr @llvm.coro.begin(token %id, ptr %alloc)
+  auto coroBeginFuncType =
+      rewriter.getFunctionType({tokenTy, llvmPtrTy}, llvmPtrTy);
+  auto coroBeginFunc = getOrInsertFunction("llvm.coro.begin", coroBeginFuncType,
+                                           rewriter, module);
+  Value hdl = rewriter
+                  .create<LLVM::CallOp>(loc, llvmPtrTy,
+                                        SymbolRefAttr::get(coroBeginFunc),
+                                        ValueRange{id, alloc})
+                  .getResult();
+
+  return std::make_pair(id, hdl);
+}
+
+// ------------------------------------------------------------------
+// Helper: Insert the body (or a placeholder) into the loop block
+// (Replace or extend this function to clone/copy the ops of IdempotentTaskOp)
+// ------------------------------------------------------------------
+static void insertTaskBody(Location loc, IdempotentTaskOp op,
+                           PatternRewriter &rewriter, Block *loopBlock,
+                           ModuleOp module) {
+  // Example: call getTaskIndex("task2") and store to a global
+  // Here you could transform or clone the actual ops within op's body.
+
+  // For demonstration, assume we skip the details and just insert a comment
+  rewriter.setInsertionPointToStart(loopBlock);
+  // ... your transformation/cloning code goes here ...
+}
+
+// ------------------------------------------------------------------
+// Helper: Insert coro.suspend and branching logic
+//    loop -> switch -> (loop or cleanup), then -> suspend
+// Returns a pair of (suspendBlock, cleanupBlock) for clarity.
+// ------------------------------------------------------------------
+static std::pair<Block *, Block *>
+insertCoroutineSuspend(Location loc, ModuleOp module, PatternRewriter &rewriter,
+                       Value id, Value hdl, Block *currentBlock) {
+  auto tokenTy = LLVM::LLVMTokenType::get(rewriter.getContext());
+  auto i1Ty = rewriter.getI1Type();
+  auto i8Ty = rewriter.getI8Type();
+
+  rewriter.setInsertionPointToEnd(currentBlock);
+
+  // %0 = call i8 @llvm.coro.suspend(token none, i1 false)
+  auto coroSuspendType = rewriter.getFunctionType({tokenTy, i1Ty}, i8Ty);
+  auto coroSuspendFunc = getOrInsertFunction("llvm.coro.suspend",
+                                             coroSuspendType, rewriter, module);
+
+  Value noneToken = rewriter.create<LLVM::UndefOp>(loc, tokenTy);
+  Value falseConst =
+      rewriter.create<LLVM::ConstantOp>(loc, i1Ty, rewriter.getBoolAttr(false));
+  Value suspendVal =
+      rewriter
+          .create<LLVM::CallOp>(loc, i8Ty, SymbolRefAttr::get(coroSuspendFunc),
+                                ValueRange{noneToken, falseConst})
+          .getResult();
+
+  // Create the suspend and cleanup blocks
+  auto *funcBody = currentBlock->getParent();
+  auto *suspendBlock = rewriter.createBlock(funcBody);
+  auto *cleanupBlock = rewriter.createBlock(funcBody);
+
+  SmallVector<APInt, 2> caseValues;
+  caseValues.push_back(APInt(32, 0));
+  caseValues.push_back(APInt(32, 1));
+
+  auto caseValuesAttr = DenseIntElementsAttr::get(
+      VectorType::get(2, rewriter.getI32Type()), caseValues);
+
+  rewriter.create<LLVM::SwitchOp>(
+      loc, suspendVal, suspendBlock,
+      /*defaultOperands=*/ValueRange{},
+      /*caseValues=*/caseValuesAttr,
+      /*caseDestinations=*/ArrayRef<Block *>{currentBlock, cleanupBlock},
+      /*caseOperands=*/ArrayRef<ValueRange>{{}, {}});
+
+  return std::make_pair(suspendBlock, cleanupBlock);
+}
+
+// ------------------------------------------------------------------
+// Helper: Insert cleanup logic (coro.free, free) then branch to suspend
+// ------------------------------------------------------------------
+static void insertCoroutineCleanup(Location loc, ModuleOp module,
+                                   PatternRewriter &rewriter,
+                                   Block *cleanupBlock, Block *suspendBlock,
+                                   Value id, Value hdl) {
+  auto llvmPtrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
+  auto tokenTy = LLVM::LLVMTokenType::get(rewriter.getContext());
+
+  rewriter.setInsertionPointToStart(cleanupBlock);
+
+  // %mem = call ptr @llvm.coro.free(token %id, ptr %hdl)
+  auto coroFreeFuncType =
+      rewriter.getFunctionType({tokenTy, llvmPtrTy}, llvmPtrTy);
+  auto coroFreeFunc =
+      getOrInsertFunction("llvm.coro.free", coroFreeFuncType, rewriter, module);
+  Value mem = rewriter
+                  .create<LLVM::CallOp>(loc, llvmPtrTy,
+                                        SymbolRefAttr::get(coroFreeFunc),
+                                        ValueRange{id, hdl})
+                  .getResult();
+
+  // call void @free(ptr %mem)
+  auto freeFuncType = rewriter.getFunctionType(
+      {llvmPtrTy}, LLVM::LLVMVoidType::get(rewriter.getContext()));
+  auto freeFunc = getOrInsertFunction("free", freeFuncType, rewriter, module);
+  rewriter.create<LLVM::CallOp>(loc, TypeRange{}, SymbolRefAttr::get(freeFunc),
+                                mem);
+
+  // branch to suspend
+  rewriter.create<LLVM::BrOp>(loc, ValueRange{}, suspendBlock);
+}
+
+// ------------------------------------------------------------------
+// Helper: finalize the suspend block (llvm.coro.end) and return
+// ------------------------------------------------------------------
+static void insertCoroutineEnd(Location loc, ModuleOp module,
+                               PatternRewriter &rewriter, Block *suspendBlock,
+                               Value hdl, Value id) {
+  rewriter.setInsertionPointToStart(suspendBlock);
+
+  auto i1Ty = rewriter.getI1Type();
+  auto tokenTy = LLVM::LLVMTokenType::get(rewriter.getContext());
+  auto falseVal =
+      rewriter.create<LLVM::ConstantOp>(loc, i1Ty, rewriter.getBoolAttr(false));
+  auto noneToken = rewriter.create<LLVM::UndefOp>(loc, tokenTy);
+
+  // %unused = call i1 @llvm.coro.end(ptr %hdl, i1 false, token none)
+  auto coroEndFuncType =
+      rewriter.getFunctionType({hdl.getType(), i1Ty, tokenTy}, i1Ty);
+  auto coroEndFunc =
+      getOrInsertFunction("llvm.coro.end", coroEndFuncType, rewriter, module);
+  rewriter.create<LLVM::CallOp>(loc, i1Ty, SymbolRefAttr::get(coroEndFunc),
+                                ValueRange{hdl, falseVal, noneToken});
+
+  // ret ptr %hdl
+  rewriter.create<LLVM::ReturnOp>(loc, ValueRange{hdl});
+}
+
+// ------------------------------------------------------------------
+// Pattern: Lower TaskOp to an LLVM Function using coroutines
+// ------------------------------------------------------------------
+struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
+  using OpConversionPattern<IdempotentTaskOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(IdempotentTaskOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = op.getLoc();
+    auto module = op->getParentOfType<ModuleOp>();
+
+    // 1. Create LLVM function with ptr return type
+    auto llvmPtrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
+    auto funcType = rewriter.getFunctionType({}, llvmPtrTy);
+
+    StringRef taskName = op.getSymName();
+    auto newFuncOp = getOrInsertFunction(taskName, funcType, rewriter, module);
+
+    // Optionally add 'presplitcoroutine' attribute
+    // newFuncOp->setAttr("passthrough",
+    // rewriter.getArrayAttr({rewriter.getStringAttr("presplitcoroutine")}));
+
+    // 2. Create entry block
+    auto &entryBlock = *newFuncOp.addEntryBlock(rewriter);
+    rewriter.setInsertionPointToStart(&entryBlock);
+
+    // 3. Insert coroutine setup: id, hdl
+    auto [id, hdl] = createCoroutineSetup(loc, module, rewriter);
+
+    // 4. Create loop block and branch there
+    auto loopBlock = rewriter.createBlock(&newFuncOp.getBody());
+    rewriter.create<LLVM::BrOp>(loc, ValueRange{}, loopBlock);
+
+    // 5. Insert body in loop block
+    insertTaskBody(loc, op, rewriter, loopBlock, module);
+
+    // 6. Insert coro.suspend logic
+    auto [suspendBlock, cleanupBlock] =
+        insertCoroutineSuspend(loc, module, rewriter, id, hdl, loopBlock);
+
+    // 7. Insert cleanup logic
+    insertCoroutineCleanup(loc, module, rewriter, cleanupBlock, suspendBlock,
+                           id, hdl);
+
+    // 8. Insert final coro.end and return
+    insertCoroutineEnd(loc, module, rewriter, suspendBlock, hdl, id);
+
+    // Remove original op
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
 
 struct ConvertIntermittentToLLVM
     : public impl::ConvertIntermittentToLLVMBase<ConvertIntermittentToLLVM> {
@@ -23,163 +285,21 @@ struct ConvertIntermittentToLLVM
 
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
-    MLIRContext *ctx = moduleOp.getContext();
+    auto context = &getContext();
 
-    // A builder for top-level insertion (moduleOp scope).
-    OpBuilder topBuilder(ctx);
+    // Create type converter and populate conversion target + patterns
 
-    // We'll gather tasks, then transform them in one pass so
-    // we don't invalidate iterators while walking.
-    SmallVector<IdempotentTaskOp, 4> tasks;
-    SmallVector<std::string, 4> taskNames;
-    moduleOp.walk([&](IdempotentTaskOp op) {
-      tasks.push_back(op);
-      taskNames.push_back(op.getSymName().str());
-    });
+    ConversionTarget target(*context);
+    target.addLegalDialect<LLVM::LLVMDialect>();
+    target.addIllegalOp<IdempotentTaskOp>();
 
-    for (auto taskOp : tasks) {
-      convertTaskOp(taskNames, taskOp, moduleOp);
+    RewritePatternSet patterns(context);
+    patterns.add<IdempotentTaskOpLowering>(context);
+
+    // Apply the conversion
+    if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
+      signalPassFailure();
     }
-  }
-
-private:
-  /// Replace every TransitionToOp in 'block' with a branch to 'saveBlock'.
-  /// If there are multiple TransitionToOps, each is replaced with a BranchOp.
-  void rewriteTransitionToOps(
-      llvm::function_ref<Value(mlir::StringRef)> getTaskToken, Block &block,
-      Block *saveBlock, Location loc) {
-    for (auto &op : llvm::make_early_inc_range(block)) {
-      if (auto transOp = dyn_cast<TransitionToOp>(&op)) {
-        OpBuilder builder(transOp);
-        // FIXME: save the arguments of TransitionToOp here
-
-        auto nextTaskName = transOp.getNextTask();
-        Value nextTaskToken = getTaskToken(nextTaskName);
-        builder.create<cf::BranchOp>(loc, saveBlock, nextTaskToken);
-        transOp.erase();
-      }
-    }
-  }
-
-  void convertTaskOp(SmallVector<std::string, 4> &taskNames,
-                     IdempotentTaskOp taskOp, ModuleOp module) {
-    // 1) Get the symbol name
-    auto symNameAttr = taskOp->getAttrOfType<StringAttr>("sym_name");
-    if (!symNameAttr) {
-      taskOp.emitError("IdempotentTaskOp has no sym_name attribute");
-      return;
-    }
-    StringRef taskName = symNameAttr.getValue();
-
-    OpBuilder builder(module.getContext());
-    auto loc = taskOp.getLoc();
-
-    auto asyncTokenType = mlir::async::TokenType::get(module.getContext());
-    SmallVector<Type, 4> tokenTypes;
-    for (auto _ : taskNames) {
-      tokenTypes.push_back(asyncTokenType);
-    }
-
-    auto funcType = builder.getFunctionType(tokenTypes, {});
-
-    // Create the function: func.func @taskName(!async.token) -> !async.token
-    auto newFunc = func::FuncOp::create(loc, taskName, funcType);
-    module.push_back(newFunc);
-
-    llvm::dbgs() << "Creating blocks\n";
-
-    // Create blocks: ^header, ^mainbody, ^saveblock, ^resume, ^cleanup,
-    // ^suspend
-    Block *headerBlock = newFunc.addEntryBlock();
-    Block *mainBodyBlock = new Block();
-    Block *saveBlock = new Block();
-    saveBlock->addArgument(asyncTokenType, newFunc.getLoc());
-    Block *resumeBlock = new Block();
-    Block *cleanupBlock = new Block();
-    Block *suspendBlock = new Block();
-
-    newFunc.getBody().push_back(mainBodyBlock);
-    newFunc.getBody().push_back(saveBlock);
-    newFunc.getBody().push_back(resumeBlock);
-    newFunc.getBody().push_back(cleanupBlock);
-    newFunc.getBody().push_back(suspendBlock);
-
-    // 3) Fill ^header:
-    llvm::dbgs() << "Filling ^header\n";
-    builder.setInsertionPointToStart(headerBlock);
-
-    auto idOp = builder.create<async::CoroIdOp>(loc);
-    Value idValue = idOp.getResult();
-    auto handleOp = builder.create<async::CoroBeginOp>(loc, idValue);
-    Value handleValue = handleOp.getResult();
-
-    // Branch to ^mainbody
-    builder.create<cf::BranchOp>(loc, mainBodyBlock);
-
-    // 4) Fill ^mainbody with user ops
-    llvm::dbgs() << "Filling ^mainbody\n";
-    builder.setInsertionPointToStart(mainBodyBlock);
-
-    auto getTaskToken = [&](StringRef taskName) -> Value {
-      for (size_t i = 0; i < taskNames.size(); ++i) {
-        if (taskNames[i] == taskName)
-          return newFunc.getArgument(i);
-      }
-      return nullptr; // TODO: Error handling
-    };
-
-    // FIXME: do not unify multiple blocks
-    // Move or clone the original task body. For simplicity,
-    // we assume a single block or unify multiple blocks.
-    Region &taskBody = taskOp.getBody();
-    if (!taskBody.empty()) {
-      // splice or clone all ops into mainBodyBlock
-      for (Block &oldBlock : llvm::make_early_inc_range(taskBody)) {
-        auto &ops = oldBlock.getOperations();
-        mainBodyBlock->getOperations().splice(mainBodyBlock->end(), ops,
-                                              ops.begin(), ops.end());
-      }
-      rewriteTransitionToOps(getTaskToken, *mainBodyBlock, saveBlock, loc);
-    }
-    // 5) Fill ^saveblock (where we do async.coro.save, await, suspend, etc.)
-    llvm::dbgs() << "Filling ^saveblock\n";
-    builder.setInsertionPointToStart(saveBlock);
-
-    auto stateOp = builder.create<async::CoroSaveOp>(
-        loc, async::CoroStateType::get(builder.getContext()), handleValue);
-    Value stateVal = stateOp.getResult();
-
-    Value nextTaskToken = saveBlock->getArgument(0);
-    builder.create<async::RuntimeAwaitAndResumeOp>(loc, nextTaskToken,
-                                                   handleValue);
-
-    builder.create<async::CoroSuspendOp>(loc, stateVal, suspendBlock,
-                                         resumeBlock, cleanupBlock);
-
-    // 6) Fill ^resume:
-    llvm::dbgs() << "Filling ^resume\n";
-    builder.setInsertionPointToStart(resumeBlock);
-
-    // FIXME
-    builder.create<async::RuntimeSetAvailableOp>(loc, newFunc.getArgument(0));
-
-    builder.create<cf::BranchOp>(loc, mainBodyBlock);
-
-    // 7) Fill ^cleanup
-    llvm::dbgs() << "Filling ^cleanup\n";
-    builder.setInsertionPointToStart(cleanupBlock);
-    builder.create<async::CoroFreeOp>(loc, idValue, handleValue);
-    builder.create<cf::BranchOp>(loc, suspendBlock);
-
-    // 8) Fill ^suspend
-    llvm::dbgs() << "Filling ^suspend\n";
-    builder.setInsertionPointToStart(suspendBlock);
-    builder.create<async::CoroEndOp>(loc, handleValue);
-    builder.create<func::ReturnOp>(loc);
-
-    // 9) Erase old TaskOp
-    llvm::dbgs() << "Removing the old IdempotentTaskOp \n";
-    taskOp.erase();
   }
 };
 
