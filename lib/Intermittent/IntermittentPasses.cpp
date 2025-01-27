@@ -405,6 +405,8 @@ void addMainFunction(ModuleOp &moduleOp, MLIRContext *context,
   builder.create<wasm::TempGlobalGetOp>(loc, currTaskGlobalOp.getResult());
   builder.create<wasm::TableGetOp>(loc, "task_table");
 
+  // FIXME: We should also add one more argument of type (ref null $ct)
+
   // Run the current task
   builder.create<wasm::ResumeSwitchOp>(loc, "ct", "yield");
 
@@ -582,6 +584,8 @@ void convertTransitionToOp(MLIRContext *context, TransitionToOp transitionToOp,
   }
   rewriter.create<wasm::CallOp>(loc, "end_commit");
 
+  // TODO: get the next task continuation from the table
+
   rewriter.replaceOpWithNewOp<wasm::SwitchOp>(transitionToOp, "ct", "yield");
   // when returning to this point, the previous task continuation is on the
   // stack. save it
@@ -634,15 +638,15 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     // the beginning of the loop
     rewriter.setInsertionPointToStart(loopOp.getMainBlock());
 
-    // retrieve the continuation
-    rewriter.create<wasm::TempLocalGetOp>(loc, contLocal);
-
     // retrieve the current task index
     auto moduleOp = taskOp->getParentOfType<ModuleOp>();
     Value currTaskGlobal =
         findTempGlobalOpWithSymName(moduleOp, "global_name", "curr_task")
             .getResult();
     rewriter.create<wasm::TempGlobalGetOp>(loc, currTaskGlobal);
+
+    // retrieve the continuation
+    rewriter.create<wasm::TempLocalGetOp>(loc, contLocal);
 
     // store the continuation to the current task index
     rewriter.create<wasm::TableSetOp>(loc, "task_table");
