@@ -1,4 +1,4 @@
-//===- ConvertIntermittentTaskToAsync.cpp - Convert Tasks to Async
+//===- ConvertIntermittentToLLVM.cpp - Convert Intermittent to LLVM
 //-----------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -8,19 +8,18 @@
 //===----------------------------------------------------------------------===//
 
 #include "Intermittent/IntermittentPasses.h"
-#include "mlir/Dialect/Async/IR/Async.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
 namespace mlir::intermittent {
-#define GEN_PASS_DEF_CONVERTINTERMITTENTTASKTOASYNC
+#define GEN_PASS_DEF_CONVERTINTERMITTENTTOLLVM
 #include "Intermittent/IntermittentPasses.h.inc"
 
-struct ConvertIntermittentTaskToAsync
-    : public impl::ConvertIntermittentTaskToAsyncBase<
-          ConvertIntermittentTaskToAsync> {
-  using ConvertIntermittentTaskToAsyncBase<
-      ConvertIntermittentTaskToAsync>::ConvertIntermittentTaskToAsyncBase;
+struct ConvertIntermittentToLLVM
+    : public impl::ConvertIntermittentToLLVMBase<ConvertIntermittentToLLVM> {
+  using ConvertIntermittentToLLVMBase<
+      ConvertIntermittentToLLVM>::ConvertIntermittentToLLVMBase;
 
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();

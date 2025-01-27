@@ -124,18 +124,16 @@ def ConvertNonVolatileToMemRefForIntermittentToStd
   ];
 }
 
-def ConvertIntermittentTaskToAsync
+def ConvertIntermittentToLLVM
     : Pass<"convert-intermittent-task-to-async", "ModuleOp"> {
-  let summary = "Convert each intermittent.task to a func.func with async coro ops";
+  let summary = "Convert Intermittent dialect to LLVM dialect";
   let description = [{
-    This pass converts each IdempotentTaskOp (intermittent.task) into
-    a func.func that includes async.coro.* ops and an async.runtime.await_and_resume
-    sequence. 
+    This pass converts the Intermittent dialect operations to LLVM dialect.
   }];
 
   let dependentDialects = [
     "intermittent::IntermittentDialect",
-    "async::AsyncDialect",
+    "LLVM::LLVMDialect",
     "func::FuncDialect",
     "cf::ControlFlowDialect",
   ];

@@ -7,7 +7,7 @@ add_mlir_dialect_library(MLIRIntermittent
         Passes/ConvertIntermittentToWasm.cpp
         Passes/PreprocessIntermittentToStd.cpp
         Passes/ConvertNonVolatileToMemRefForIntermittentToStd.cpp
-        Passes/ConvertIntermittentTaskToAsync.cpp
+        Passes/ConvertIntermittentToLLVM.cpp
 
         ADDITIONAL_HEADER_DIRS
         ${PROJECT_SOURCE_DIR}/include/Wasm
