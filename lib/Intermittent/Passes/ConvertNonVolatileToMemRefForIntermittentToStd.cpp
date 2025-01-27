@@ -1,5 +1,5 @@
-//===- ConvertNonVolatileToMemRef.cpp - Convert NonVolatile to MemRef
-//-----------------*- C++ -*-===//
+//===- ConvertNonVolatileToMemRefForIntermittentToStd.cpp - Convert NonVolatile
+// to MemRef -----------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -11,13 +11,15 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 
 namespace mlir::intermittent {
-#define GEN_PASS_DEF_CONVERTNONVOLATILETOMEMREF
+#define GEN_PASS_DEF_CONVERTNONVOLATILETOMEMREFFORINTERMITTENTTOSTD
 #include "Intermittent/IntermittentPasses.h.inc"
 
-struct ConvertNonVolatileToMemRef
-    : public impl::ConvertNonVolatileToMemRefBase<ConvertNonVolatileToMemRef> {
-  using impl::ConvertNonVolatileToMemRefBase<
-      ConvertNonVolatileToMemRef>::ConvertNonVolatileToMemRefBase;
+struct ConvertNonVolatileToMemRefForIntermittentToStd
+    : public impl::ConvertNonVolatileToMemRefForIntermittentToStdBase<
+          ConvertNonVolatileToMemRefForIntermittentToStd> {
+  using impl::ConvertNonVolatileToMemRefForIntermittentToStdBase<
+      ConvertNonVolatileToMemRefForIntermittentToStd>::
+      ConvertNonVolatileToMemRefForIntermittentToStdBase;
   void runOnOperation() final {
     static int globalCounter = 0;
 
