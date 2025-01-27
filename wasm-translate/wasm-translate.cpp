@@ -325,7 +325,7 @@ llvm::LogicalResult translateBlockLoopOp(BlockLoopOp loopOp,
 }
 
 LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
-  output << "(loop " << loopOp.getName() << "\n";
+  output << "(loop $" << loopOp.getName() << "\n";
   for (auto &block : loopOp.getBody()) {
     if (&block == loopOp.getEntryBlock()) {
       continue;
