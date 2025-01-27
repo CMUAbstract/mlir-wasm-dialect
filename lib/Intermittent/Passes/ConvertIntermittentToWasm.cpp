@@ -1,18 +1,12 @@
-//===- ConvertIntermittentTaskToWasm.cpp - Convert Tasks to Wasm
+//===- ConvertIntermittentToWasm.cpp - Convert Intermittent to Wasm
 //-----------------*- C++ -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-//===----------------------------------------------------------------------===//
 
 #include "Intermittent/IntermittentPasses.h"
 #include "Wasm/WasmOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir::intermittent {
-#define GEN_PASS_DEF_CONVERTINTERMITTENTTASKTOWASM
+#define GEN_PASS_DEF_CONVERTINTERMITTENTTOWASM
 #include "Intermittent/IntermittentPasses.h.inc"
 
 struct NonVolatileNewOpLowering : public OpConversionPattern<NonVolatileNewOp> {
@@ -284,12 +278,11 @@ public:
   }
 };
 
-class ConvertIntermittentTaskToWasm
-    : public impl::ConvertIntermittentTaskToWasmBase<
-          ConvertIntermittentTaskToWasm> {
+class ConvertIntermittentToWasm
+    : public impl::ConvertIntermittentToWasmBase<ConvertIntermittentToWasm> {
 public:
-  using impl::ConvertIntermittentTaskToWasmBase<
-      ConvertIntermittentTaskToWasm>::ConvertIntermittentTaskToWasmBase;
+  using impl::ConvertIntermittentToWasmBase<
+      ConvertIntermittentToWasm>::ConvertIntermittentToWasmBase;
   void runOnOperation() final {
     auto moduleOp = getOperation();
     MLIRContext *context = moduleOp.getContext();
