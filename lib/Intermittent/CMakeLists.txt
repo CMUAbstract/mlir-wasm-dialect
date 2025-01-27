@@ -6,7 +6,7 @@ add_mlir_dialect_library(MLIRIntermittent
         Passes/PreprocessIntermittentToWasm.cpp
         Passes/ConvertIntermittentTaskToWasm.cpp
         Passes/PreprocessIntermittentToStd.cpp
-        Passes/ConvertNonVolatileToMemRef.cpp
+        Passes/ConvertNonVolatileToMemRefForIntermittentToStd.cpp
         Passes/ConvertIntermittentTaskToAsync.cpp
 
         ADDITIONAL_HEADER_DIRS
