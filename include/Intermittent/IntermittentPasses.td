@@ -115,7 +115,7 @@ def PreprocessIntermittentToStd
   ];
 }
 
-def ConvertNonVolatileToMemRef
+def ConvertNonVolatileToMemRefForIntermittentToStd
     : Pass<"convert-nonvolatile-to-memref", "ModuleOp"> {
   let summary = "Converts nonvolatile variables to memref";
   let dependentDialects = [
