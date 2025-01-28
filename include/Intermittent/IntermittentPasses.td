@@ -134,8 +134,6 @@ def ConvertIntermittentToLLVM
   let dependentDialects = [
     "intermittent::IntermittentDialect",
     "LLVM::LLVMDialect",
-    "func::FuncDialect",
-    "cf::ControlFlowDialect",
   ];
 }
 
