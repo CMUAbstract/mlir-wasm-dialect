@@ -261,8 +261,9 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
         LLVM::LLVMFunctionType::get(llvmPtrTy, {}, /*isVarArg=*/false);
 
     StringRef taskName = op.getSymName();
+    std::string taskFnName = (taskName + "_fn").str();
     auto newFuncOp =
-        getOrInsertFunction(taskName, llvmFuncType, rewriter, module);
+        getOrInsertFunction(taskFnName, llvmFuncType, rewriter, module);
 
     // Add 'presplitcoroutine' attribute
     newFuncOp->setAttr(
