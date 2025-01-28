@@ -106,14 +106,26 @@ static std::pair<Value, Value> createCoroutineSetup(Location loc,
 // (Replace or extend this function to clone/copy the ops of IdempotentTaskOp)
 // ------------------------------------------------------------------
 static void insertTaskBody(Location loc, IdempotentTaskOp op,
-                           PatternRewriter &rewriter, Block *loopBlock,
-                           ModuleOp module) {
-  // Example: call getTaskIndex("task2") and store to a global
-  // Here you could transform or clone the actual ops within op's body.
+                           PatternRewriter &rewriter, Block *bodyStartBlock,
+                           Block *bodyEndBlock, ModuleOp module) {
+  Region &taskRegion = op.getBody();
+  Block *taskRegionEntry = &taskRegion.front();
 
-  // For demonstration, assume we skip the details and just insert a comment
-  rewriter.setInsertionPointToStart(loopBlock);
-  // ... your transformation/cloning code goes here ...
+  // transform TransitionToOps to BranchOps
+  taskRegion.walk([&](TransitionToOp transitionToOp) {
+    // TODO: save nonvolatile variables here
+    // TODO: save next task index here
+    rewriter.setInsertionPoint(transitionToOp);
+    rewriter.create<LLVM::BrOp>(loc, bodyEndBlock);
+    rewriter.eraseOp(transitionToOp);
+  });
+
+  // TODO: inline the region op.getBody() after bodyStartBlock
+  rewriter.inlineRegionBefore(taskRegion, *bodyStartBlock->getParent(),
+                              bodyEndBlock->getIterator());
+
+  rewriter.setInsertionPointToEnd(bodyStartBlock);
+  rewriter.create<LLVM::BrOp>(loc, taskRegionEntry);
 }
 
 // ------------------------------------------------------------------
@@ -239,6 +251,7 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
   LogicalResult
   matchAndRewrite(IdempotentTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    IRRewriter::InsertPoint ip;
     auto loc = op.getLoc();
     auto module = op->getParentOfType<ModuleOp>();
 
@@ -263,19 +276,23 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     // Insert coroutine setup: id, hdl
     auto [id, hdl] = createCoroutineSetup(loc, module, rewriter);
 
-    // Create loop block and branch there
-    auto ip = rewriter.saveInsertionPoint();
-    auto loopBlock = rewriter.createBlock(&newFuncOp.getBody());
+    // Create body block and branch there
+    ip = rewriter.saveInsertionPoint();
+    Block *bodyStartBlock = rewriter.createBlock(&newFuncOp.getBody());
+    Block *bodyEndBlock = rewriter.createBlock(&newFuncOp.getBody());
     rewriter.restoreInsertionPoint(ip);
-    rewriter.create<LLVM::BrOp>(loc, ValueRange{}, loopBlock);
+    rewriter.create<LLVM::BrOp>(loc, ValueRange{}, bodyStartBlock);
 
     // Insert body in loop block
-    rewriter.setInsertionPointToStart(loopBlock);
-    insertTaskBody(loc, op, rewriter, loopBlock, module);
+    rewriter.setInsertionPointToStart(bodyStartBlock);
+    insertTaskBody(loc, op, rewriter, bodyStartBlock, bodyEndBlock, module);
+
+    ip = rewriter.saveInsertionPoint();
+    rewriter.restoreInsertionPoint(ip);
 
     // Insert coro.suspend logic
     auto [suspendBlock, cleanupBlock] =
-        insertCoroutineSuspend(loc, module, rewriter, id, hdl, loopBlock);
+        insertCoroutineSuspend(loc, module, rewriter, id, hdl, bodyEndBlock);
 
     // Insert cleanup logic
     insertCoroutineCleanup(loc, module, rewriter, cleanupBlock, suspendBlock,
