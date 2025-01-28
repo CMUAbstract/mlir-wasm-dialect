@@ -147,15 +147,17 @@ insertCoroutineSuspend(Location loc, ModuleOp module, PatternRewriter &rewriter,
 
   // Create the suspend and cleanup blocks
   auto *funcBody = currentBlock->getParent();
+  auto ip = rewriter.saveInsertionPoint();
   auto *suspendBlock = rewriter.createBlock(funcBody);
   auto *cleanupBlock = rewriter.createBlock(funcBody);
+  rewriter.restoreInsertionPoint(ip);
 
   SmallVector<APInt, 2> caseValues;
-  caseValues.push_back(APInt(32, 0));
-  caseValues.push_back(APInt(32, 1));
+  caseValues.push_back(APInt(8, 0));
+  caseValues.push_back(APInt(8, 1));
 
   auto caseValuesAttr = DenseIntElementsAttr::get(
-      VectorType::get(2, rewriter.getI32Type()), caseValues);
+      VectorType::get(2, rewriter.getI8Type()), caseValues);
 
   rewriter.create<LLVM::SwitchOp>(
       loc, suspendVal, suspendBlock,
@@ -240,9 +242,8 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     auto loc = op.getLoc();
     auto module = op->getParentOfType<ModuleOp>();
 
-    // 1. Create LLVM function with ptr return type
+    // Create LLVM function with ptr return type
     auto llvmPtrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
-    // Convert the function type to LLVM function type
     auto llvmFuncType =
         LLVM::LLVMFunctionType::get(llvmPtrTy, {}, /*isVarArg=*/false);
 
@@ -250,34 +251,37 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     auto newFuncOp =
         getOrInsertFunction(taskName, llvmFuncType, rewriter, module);
 
-    // Optionally add 'presplitcoroutine' attribute
+    // Add 'presplitcoroutine' attribute
     newFuncOp->setAttr(
         "passthrough",
         rewriter.getArrayAttr({rewriter.getStringAttr("presplitcoroutine")}));
 
-    // 2. Create entry block
+    // Create entry block
     Block *entryBlock = newFuncOp.addEntryBlock(rewriter);
     rewriter.setInsertionPointToStart(entryBlock);
 
-    // 3. Insert coroutine setup: id, hdl
+    // Insert coroutine setup: id, hdl
     auto [id, hdl] = createCoroutineSetup(loc, module, rewriter);
 
-    // 4. Create loop block and branch there
+    // Create loop block and branch there
+    auto ip = rewriter.saveInsertionPoint();
     auto loopBlock = rewriter.createBlock(&newFuncOp.getBody());
+    rewriter.restoreInsertionPoint(ip);
     rewriter.create<LLVM::BrOp>(loc, ValueRange{}, loopBlock);
 
-    // 5. Insert body in loop block
+    // Insert body in loop block
+    rewriter.setInsertionPointToStart(loopBlock);
     insertTaskBody(loc, op, rewriter, loopBlock, module);
 
-    // 6. Insert coro.suspend logic
+    // Insert coro.suspend logic
     auto [suspendBlock, cleanupBlock] =
         insertCoroutineSuspend(loc, module, rewriter, id, hdl, loopBlock);
 
-    // 7. Insert cleanup logic
+    // Insert cleanup logic
     insertCoroutineCleanup(loc, module, rewriter, cleanupBlock, suspendBlock,
                            id, hdl);
 
-    // 8. Insert final coro.end and return
+    // Insert final coro.end and return
     insertCoroutineEnd(loc, module, rewriter, suspendBlock, hdl, id);
 
     // Remove original op
