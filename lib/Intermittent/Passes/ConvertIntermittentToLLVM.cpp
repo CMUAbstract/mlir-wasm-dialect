@@ -287,8 +287,6 @@ struct ConvertIntermittentToLLVM
     ModuleOp moduleOp = getOperation();
     auto context = &getContext();
 
-    // Create type converter and populate conversion target + patterns
-
     ConversionTarget target(*context);
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addIllegalOp<IdempotentTaskOp>();
