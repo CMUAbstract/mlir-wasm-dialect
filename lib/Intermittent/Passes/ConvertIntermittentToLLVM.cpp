@@ -120,7 +120,6 @@ static void insertTaskBody(Location loc, IdempotentTaskOp op,
     rewriter.eraseOp(transitionToOp);
   });
 
-  // TODO: inline the region op.getBody() after bodyStartBlock
   rewriter.inlineRegionBefore(taskRegion, *bodyStartBlock->getParent(),
                               bodyEndBlock->getIterator());
 
