@@ -132,7 +132,9 @@ static void buildMainFunctionBody(ModuleOp module, LLVM::LLVMFuncOp mainFunc,
   }
 
   // 3) Create a loop block
+  auto ip = builder.saveInsertionPoint();
   auto *loopBlock = builder.createBlock(&mainFunc.getBody());
+  builder.restoreInsertionPoint(ip);
   builder.create<LLVM::BrOp>(mainFunc.getLoc(), ValueRange{}, loopBlock);
   builder.setInsertionPointToStart(loopBlock);
 
