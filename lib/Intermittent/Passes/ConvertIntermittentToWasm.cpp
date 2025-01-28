@@ -8,6 +8,7 @@
 namespace mlir::intermittent {
 #define GEN_PASS_DEF_CONVERTINTERMITTENTTOWASM
 #include "Intermittent/IntermittentPasses.h.inc"
+namespace {
 
 struct NonVolatileNewOpLowering : public OpConversionPattern<NonVolatileNewOp> {
   using OpConversionPattern<NonVolatileNewOp>::OpConversionPattern;
@@ -277,6 +278,7 @@ public:
     });
   }
 };
+} // namespace
 
 class ConvertIntermittentToWasm
     : public impl::ConvertIntermittentToWasmBase<ConvertIntermittentToWasm> {

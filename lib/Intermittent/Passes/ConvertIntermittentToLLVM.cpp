@@ -17,6 +17,7 @@
 namespace mlir::intermittent {
 #define GEN_PASS_DEF_CONVERTINTERMITTENTTOLLVM
 #include "Intermittent/IntermittentPasses.h.inc"
+namespace {
 
 static LLVM::LLVMFuncOp getOrInsertFunction(StringRef funcName,
                                             FunctionType functionType,
@@ -279,6 +280,7 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
   }
 };
 
+} // namespace
 struct ConvertIntermittentToLLVM
     : public impl::ConvertIntermittentToLLVMBase<ConvertIntermittentToLLVM> {
   using ConvertIntermittentToLLVMBase<
