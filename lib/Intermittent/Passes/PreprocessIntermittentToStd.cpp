@@ -4,6 +4,7 @@
 #define DEBUG_TYPE "preprocessintermittenttostd"
 
 #include "Intermittent/IntermittentPasses.h"
+#include "Intermittent/utility.h"
 #include "mlir/Dialect/Async/IR/Async.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -17,13 +18,6 @@ namespace mlir::intermittent {
 
 namespace {
 /// Gathers symbol names from all IdempotentTaskOp in the module.
-static SmallVector<StringRef> collectTaskSymbols(ModuleOp module) {
-  SmallVector<StringRef> taskNames;
-  for (auto taskOp : module.getOps</*intermittent::*/ IdempotentTaskOp>()) {
-    taskNames.push_back(taskOp.getSymName());
-  }
-  return taskNames;
-}
 
 /// Utility to get or insert an LLVM function with the given name and type.
 static LLVM::LLVMFuncOp
@@ -45,31 +39,6 @@ getOrInsertFunction(ModuleOp module, StringRef funcName,
 
 /// Looks up or creates an i32 global named `globalName`. Returns a pointer to
 /// it.
-static Value lookupOrCreateGlobalI32(ModuleOp module, OpBuilder &builder,
-                                     StringRef globalName) {
-  MLIRContext *ctx = builder.getContext();
-  // Check if it already exists.
-  if (auto globalOp = module.lookupSymbol<LLVM::GlobalOp>(globalName)) {
-    // Use AddressOfOp to get a pointer to it.
-    return builder.create<LLVM::AddressOfOp>(module.getLoc(),
-                                             LLVM::LLVMPointerType::get(ctx),
-                                             globalOp.getSymName());
-  }
-
-  // Otherwise, create a new global with an initial value of 0.
-  auto i32Ty = IntegerType::get(ctx, 32);
-  auto newGlobal =
-      OpBuilder::atBlockBegin(module.getBody())
-          .create<LLVM::GlobalOp>(module.getLoc(), i32Ty,
-                                  /*isConstant=*/false, LLVM::Linkage::External,
-                                  globalName, builder.getI32IntegerAttr(0),
-                                  /*alignment=*/0,
-                                  /*addr_space=*/0);
-
-  // And return a pointer to it.
-  return builder.create<LLVM::AddressOfOp>(
-      module.getLoc(), LLVM::LLVMPointerType::get(ctx), newGlobal.getSymName());
-}
 
 /// Builds the body of the `main` function:
 ///  - Allocates an array of pointers for each task handle.

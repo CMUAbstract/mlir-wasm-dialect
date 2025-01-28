@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Intermittent/IntermittentPasses.h"
+#include "Intermittent/utility.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -107,14 +108,31 @@ static std::pair<Value, Value> createCoroutineSetup(Location loc,
 // ------------------------------------------------------------------
 static void insertTaskBody(Location loc, IdempotentTaskOp op,
                            PatternRewriter &rewriter, Block *bodyStartBlock,
-                           Block *bodyEndBlock, ModuleOp module) {
+                           Block *bodyEndBlock, ModuleOp module,
+                           SmallVector<StringRef> taskNames) {
   Region &taskRegion = op.getBody();
   Block *taskRegionEntry = &taskRegion.front();
+
+  auto getTaskIdx = [&](StringRef taskName) -> int32_t {
+    auto it = std::find(taskNames.begin(), taskNames.end(), taskName);
+    if (it == taskNames.end()) {
+      emitError(loc) << "Task name not found in taskNames: " << taskName;
+      return -1;
+    }
+    return std::distance(taskNames.begin(), it);
+  };
 
   // transform TransitionToOps to BranchOps
   taskRegion.walk([&](TransitionToOp transitionToOp) {
     // TODO: save nonvolatile variables here
-    // TODO: save next task index here
+
+    // Store next task index in a global variable
+    auto nextTaskIdx = getTaskIdx(transitionToOp.getNextTask());
+    auto nextTaskConst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(nextTaskIdx));
+    auto globalPtr = lookupOrCreateGlobalI32(module, rewriter, "nextTaskIdx");
+    rewriter.create<LLVM::StoreOp>(loc, nextTaskConst, globalPtr);
+
     rewriter.setInsertionPoint(transitionToOp);
     rewriter.create<LLVM::BrOp>(loc, bodyEndBlock);
     rewriter.eraseOp(transitionToOp);
@@ -245,7 +263,11 @@ static void insertCoroutineEnd(Location loc, ModuleOp module,
 // Pattern: Lower TaskOp to an LLVM Function using coroutines
 // ------------------------------------------------------------------
 struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
-  using OpConversionPattern<IdempotentTaskOp>::OpConversionPattern;
+  IdempotentTaskOpLowering(MLIRContext *context,
+                           SmallVector<StringRef> &taskNames)
+      : OpConversionPattern<IdempotentTaskOp>(context), taskNames(taskNames) {}
+
+  SmallVector<StringRef> taskNames;
 
   LogicalResult
   matchAndRewrite(IdempotentTaskOp op, OpAdaptor adaptor,
@@ -285,7 +307,8 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
 
     // Insert body in loop block
     rewriter.setInsertionPointToStart(bodyStartBlock);
-    insertTaskBody(loc, op, rewriter, bodyStartBlock, bodyEndBlock, module);
+    insertTaskBody(loc, op, rewriter, bodyStartBlock, bodyEndBlock, module,
+                   taskNames);
 
     ip = rewriter.saveInsertionPoint();
     rewriter.restoreInsertionPoint(ip);
@@ -318,12 +341,15 @@ struct ConvertIntermittentToLLVM
     ModuleOp moduleOp = getOperation();
     auto context = &getContext();
 
+    // Collect all task names
+    SmallVector<StringRef> taskNames = collectTaskSymbols(moduleOp);
+
     ConversionTarget target(*context);
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addIllegalOp<IdempotentTaskOp>();
 
     RewritePatternSet patterns(context);
-    patterns.add<IdempotentTaskOpLowering>(context);
+    patterns.add<IdempotentTaskOpLowering>(context, taskNames);
 
     // Apply the conversion
     if (failed(applyPartialConversion(moduleOp, target, std::move(patterns)))) {
