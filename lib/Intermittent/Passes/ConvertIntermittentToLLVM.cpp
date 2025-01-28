@@ -20,7 +20,7 @@ namespace mlir::intermittent {
 namespace {
 
 static LLVM::LLVMFuncOp getOrInsertFunction(StringRef funcName,
-                                            FunctionType functionType,
+                                            LLVM::LLVMFunctionType functionType,
                                             PatternRewriter &rewriter,
                                             ModuleOp module) {
   // Check if function already exists
@@ -52,8 +52,8 @@ static std::pair<Value, Value> createCoroutineSetup(Location loc,
   auto i32Ty = IntegerType::get(rewriter.getContext(), 32);
 
   // CoroId: %id = call token @llvm.coro.id(i32 0, ptr null, ptr null, ptr null)
-  auto coroIdFuncType = rewriter.getFunctionType(
-      {i32Ty, llvmPtrTy, llvmPtrTy, llvmPtrTy}, tokenTy);
+  auto coroIdFuncType = LLVM::LLVMFunctionType::get(
+      tokenTy, {i32Ty, llvmPtrTy, llvmPtrTy, llvmPtrTy}, /*isVarArg=*/false);
   auto coroIdFunc =
       getOrInsertFunction("llvm.coro.id", coroIdFuncType, rewriter, module);
 
@@ -67,7 +67,8 @@ static std::pair<Value, Value> createCoroutineSetup(Location loc,
                  .getResult();
 
   // CoroSize: %size = call i32 @llvm.coro.size.i32()
-  auto coroSizeFuncType = rewriter.getFunctionType({}, i32Ty);
+  auto coroSizeFuncType =
+      LLVM::LLVMFunctionType::get(i32Ty, {}, /*isVarArg=*/false);
   auto coroSizeFunc = getOrInsertFunction("llvm.coro.size.i32",
                                           coroSizeFuncType, rewriter, module);
   Value size =
@@ -77,7 +78,8 @@ static std::pair<Value, Value> createCoroutineSetup(Location loc,
           .getResult();
 
   // malloc: %alloc = call ptr @malloc(i32 %size)
-  auto mallocFuncType = rewriter.getFunctionType({i32Ty}, llvmPtrTy);
+  auto mallocFuncType =
+      LLVM::LLVMFunctionType::get(llvmPtrTy, {i32Ty}, /*isVarArg=*/false);
   auto mallocFunc =
       getOrInsertFunction("malloc", mallocFuncType, rewriter, module);
   Value alloc = rewriter
@@ -86,8 +88,8 @@ static std::pair<Value, Value> createCoroutineSetup(Location loc,
                     .getResult();
 
   // CoroBegin: %hdl = call ptr @llvm.coro.begin(token %id, ptr %alloc)
-  auto coroBeginFuncType =
-      rewriter.getFunctionType({tokenTy, llvmPtrTy}, llvmPtrTy);
+  auto coroBeginFuncType = LLVM::LLVMFunctionType::get(
+      llvmPtrTy, {tokenTy, llvmPtrTy}, /*isVarArg=*/false);
   auto coroBeginFunc = getOrInsertFunction("llvm.coro.begin", coroBeginFuncType,
                                            rewriter, module);
   Value hdl = rewriter
@@ -129,7 +131,8 @@ insertCoroutineSuspend(Location loc, ModuleOp module, PatternRewriter &rewriter,
   rewriter.setInsertionPointToEnd(currentBlock);
 
   // %0 = call i8 @llvm.coro.suspend(token none, i1 false)
-  auto coroSuspendType = rewriter.getFunctionType({tokenTy, i1Ty}, i8Ty);
+  auto coroSuspendType =
+      LLVM::LLVMFunctionType::get(i8Ty, {tokenTy, i1Ty}, /*isVarArg=*/false);
   auto coroSuspendFunc = getOrInsertFunction("llvm.coro.suspend",
                                              coroSuspendType, rewriter, module);
 
@@ -177,8 +180,8 @@ static void insertCoroutineCleanup(Location loc, ModuleOp module,
   rewriter.setInsertionPointToStart(cleanupBlock);
 
   // %mem = call ptr @llvm.coro.free(token %id, ptr %hdl)
-  auto coroFreeFuncType =
-      rewriter.getFunctionType({tokenTy, llvmPtrTy}, llvmPtrTy);
+  auto coroFreeFuncType = LLVM::LLVMFunctionType::get(
+      llvmPtrTy, {tokenTy, llvmPtrTy}, /*isVarArg=*/false);
   auto coroFreeFunc =
       getOrInsertFunction("llvm.coro.free", coroFreeFuncType, rewriter, module);
   Value mem = rewriter
@@ -188,8 +191,9 @@ static void insertCoroutineCleanup(Location loc, ModuleOp module,
                   .getResult();
 
   // call void @free(ptr %mem)
-  auto freeFuncType = rewriter.getFunctionType(
-      {llvmPtrTy}, LLVM::LLVMVoidType::get(rewriter.getContext()));
+  auto freeFuncType = LLVM::LLVMFunctionType::get(
+      LLVM::LLVMVoidType::get(rewriter.getContext()), {llvmPtrTy},
+      /*isVarArg=*/false);
   auto freeFunc = getOrInsertFunction("free", freeFuncType, rewriter, module);
   rewriter.create<LLVM::CallOp>(loc, TypeRange{}, SymbolRefAttr::get(freeFunc),
                                 mem);
@@ -213,8 +217,8 @@ static void insertCoroutineEnd(Location loc, ModuleOp module,
   auto noneToken = rewriter.create<LLVM::UndefOp>(loc, tokenTy);
 
   // %unused = call i1 @llvm.coro.end(ptr %hdl, i1 false, token none)
-  auto coroEndFuncType =
-      rewriter.getFunctionType({hdl.getType(), i1Ty, tokenTy}, i1Ty);
+  auto coroEndFuncType = LLVM::LLVMFunctionType::get(
+      i1Ty, {hdl.getType(), i1Ty, tokenTy}, /*isVarArg=*/false);
   auto coroEndFunc =
       getOrInsertFunction("llvm.coro.end", coroEndFuncType, rewriter, module);
   rewriter.create<LLVM::CallOp>(loc, i1Ty, SymbolRefAttr::get(coroEndFunc),
@@ -238,10 +242,13 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
 
     // 1. Create LLVM function with ptr return type
     auto llvmPtrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
-    auto funcType = rewriter.getFunctionType({}, llvmPtrTy);
+    // Convert the function type to LLVM function type
+    auto llvmFuncType =
+        LLVM::LLVMFunctionType::get(llvmPtrTy, {}, /*isVarArg=*/false);
 
     StringRef taskName = op.getSymName();
-    auto newFuncOp = getOrInsertFunction(taskName, funcType, rewriter, module);
+    auto newFuncOp =
+        getOrInsertFunction(taskName, llvmFuncType, rewriter, module);
 
     // Optionally add 'presplitcoroutine' attribute
     newFuncOp->setAttr(
@@ -249,8 +256,8 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
         rewriter.getArrayAttr({rewriter.getStringAttr("presplitcoroutine")}));
 
     // 2. Create entry block
-    auto &entryBlock = *newFuncOp.addEntryBlock(rewriter);
-    rewriter.setInsertionPointToStart(&entryBlock);
+    Block *entryBlock = newFuncOp.addEntryBlock(rewriter);
+    rewriter.setInsertionPointToStart(entryBlock);
 
     // 3. Insert coroutine setup: id, hdl
     auto [id, hdl] = createCoroutineSetup(loc, module, rewriter);
