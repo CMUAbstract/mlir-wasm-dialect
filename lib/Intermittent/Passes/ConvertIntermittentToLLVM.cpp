@@ -216,7 +216,7 @@ static void insertCoroutineEnd(Location loc, ModuleOp module,
   auto tokenTy = LLVM::LLVMTokenType::get(rewriter.getContext());
   auto falseVal =
       rewriter.create<LLVM::ConstantOp>(loc, i1Ty, rewriter.getBoolAttr(false));
-  auto noneToken = rewriter.create<LLVM::UndefOp>(loc, tokenTy);
+  auto noneToken = rewriter.create<LLVM::NoneTokenOp>(loc);
 
   // %unused = call i1 @llvm.coro.end(ptr %hdl, i1 false, token none)
   auto coroEndFuncType = LLVM::LLVMFunctionType::get(
