@@ -148,7 +148,7 @@ insertCoroutineSuspend(Location loc, ModuleOp module, PatternRewriter &rewriter,
   auto coroSuspendFunc = getOrInsertFunction("llvm.coro.suspend",
                                              coroSuspendType, rewriter, module);
 
-  Value noneToken = rewriter.create<LLVM::UndefOp>(loc, tokenTy);
+  auto noneToken = rewriter.create<LLVM::NoneTokenOp>(loc);
   Value falseConst =
       rewriter.create<LLVM::ConstantOp>(loc, i1Ty, rewriter.getBoolAttr(false));
   Value suspendVal =
