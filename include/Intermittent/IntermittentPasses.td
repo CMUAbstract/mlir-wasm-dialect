@@ -110,8 +110,7 @@ def PreprocessIntermittentToStd
 
   let dependentDialects = [
     "intermittent::IntermittentDialect",
-    "async::AsyncDialect",
-    "func::FuncDialect",
+    "LLVM::LLVMDialect",
   ];
 }
 
