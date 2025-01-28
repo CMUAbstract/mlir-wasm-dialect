@@ -243,8 +243,9 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     auto newFuncOp = getOrInsertFunction(taskName, funcType, rewriter, module);
 
     // Optionally add 'presplitcoroutine' attribute
-    // newFuncOp->setAttr("passthrough",
-    // rewriter.getArrayAttr({rewriter.getStringAttr("presplitcoroutine")}));
+    newFuncOp->setAttr(
+        "passthrough",
+        rewriter.getArrayAttr({rewriter.getStringAttr("presplitcoroutine")}));
 
     // 2. Create entry block
     auto &entryBlock = *newFuncOp.addEntryBlock(rewriter);
