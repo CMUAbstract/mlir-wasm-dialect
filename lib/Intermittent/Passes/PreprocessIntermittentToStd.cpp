@@ -106,7 +106,8 @@ static void buildMainFunctionBody(ModuleOp module, LLVM::LLVMFuncOp mainFunc,
     // Insert or retrieve the task function
     auto taskFnType =
         LLVM::LLVMFunctionType::get(ptrTy, {}, /*isVarArg=*/false);
-    auto taskFn = getOrInsertFunction(module, taskNames[i], taskFnType);
+    std::string taskFnName = (taskNames[i] + "_fn").str();
+    auto taskFn = getOrInsertFunction(module, taskFnName, taskFnType);
 
     // call ptr @taskN()
     auto callOp =
