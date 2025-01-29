@@ -104,7 +104,6 @@ static std::pair<Value, Value> createCoroutineSetup(Location loc,
 
 // ------------------------------------------------------------------
 // Helper: Insert the body (or a placeholder) into the loop block
-// (Replace or extend this function to clone/copy the ops of IdempotentTaskOp)
 // ------------------------------------------------------------------
 static void insertTaskBody(Location loc, IdempotentTaskOp op,
                            PatternRewriter &rewriter, Block *bodyStartBlock,
@@ -145,19 +144,34 @@ static void insertTaskBody(Location loc, IdempotentTaskOp op,
   rewriter.create<LLVM::BrOp>(loc, taskRegionEntry);
 }
 
+static std::pair<Block *, Block *>
+createSuspendAndCleanupBlocks(Location loc, ModuleOp module,
+                              PatternRewriter &rewriter, Value id, Value hdl,
+                              Region *region) {
+  auto ip = rewriter.saveInsertionPoint();
+  auto *suspendBlock = rewriter.createBlock(region);
+  auto *cleanupBlock = rewriter.createBlock(region);
+  rewriter.restoreInsertionPoint(ip);
+
+  return std::make_pair(suspendBlock, cleanupBlock);
+}
+
 // ------------------------------------------------------------------
 // Helper: Insert coro.suspend and branching logic
 //    loop -> switch -> (loop or cleanup), then -> suspend
 // Returns a pair of (suspendBlock, cleanupBlock) for clarity.
 // ------------------------------------------------------------------
-static std::pair<Block *, Block *>
-insertCoroutineSuspend(Location loc, ModuleOp module, PatternRewriter &rewriter,
-                       Value id, Value hdl, Block *currentBlock) {
+static void insertCoroutineSuspendOps(Location loc, ModuleOp module,
+                                      PatternRewriter &rewriter, Value id,
+                                      Value hdl, Block *blockToInsert,
+                                      Block *resumeBlock, Block *suspendBlock,
+                                      Block *cleanupBlock) {
   auto tokenTy = LLVM::LLVMTokenType::get(rewriter.getContext());
   auto i1Ty = rewriter.getI1Type();
   auto i8Ty = rewriter.getI8Type();
 
-  rewriter.setInsertionPointToEnd(currentBlock);
+  auto ip = rewriter.saveInsertionPoint();
+  rewriter.setInsertionPointToEnd(blockToInsert);
 
   // %0 = call i8 @llvm.coro.suspend(token none, i1 false)
   auto coroSuspendType =
@@ -174,13 +188,6 @@ insertCoroutineSuspend(Location loc, ModuleOp module, PatternRewriter &rewriter,
                                 ValueRange{noneToken, falseConst})
           .getResult();
 
-  // Create the suspend and cleanup blocks
-  auto *funcBody = currentBlock->getParent();
-  auto ip = rewriter.saveInsertionPoint();
-  auto *suspendBlock = rewriter.createBlock(funcBody);
-  auto *cleanupBlock = rewriter.createBlock(funcBody);
-  rewriter.restoreInsertionPoint(ip);
-
   SmallVector<APInt, 2> caseValues;
   caseValues.push_back(APInt(8, 0));
   caseValues.push_back(APInt(8, 1));
@@ -192,10 +199,9 @@ insertCoroutineSuspend(Location loc, ModuleOp module, PatternRewriter &rewriter,
       loc, suspendVal, suspendBlock,
       /*defaultOperands=*/ValueRange{},
       /*caseValues=*/caseValuesAttr,
-      /*caseDestinations=*/ArrayRef<Block *>{currentBlock, cleanupBlock},
+      /*caseDestinations=*/ArrayRef<Block *>{resumeBlock, cleanupBlock},
       /*caseOperands=*/ArrayRef<ValueRange>{{}, {}});
-
-  return std::make_pair(suspendBlock, cleanupBlock);
+  rewriter.restoreInsertionPoint(ip);
 }
 
 // ------------------------------------------------------------------
@@ -293,17 +299,15 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
 
     // Create entry block
     Block *entryBlock = newFuncOp.addEntryBlock(rewriter);
-    rewriter.setInsertionPointToStart(entryBlock);
 
+    rewriter.setInsertionPointToStart(entryBlock);
     // Insert coroutine setup: id, hdl
     auto [id, hdl] = createCoroutineSetup(loc, module, rewriter);
 
-    // Create body block and branch there
-    ip = rewriter.saveInsertionPoint();
+    // Create body start and end blocks
+    // task body will be placed between these two blocks
     Block *bodyStartBlock = rewriter.createBlock(&newFuncOp.getBody());
     Block *bodyEndBlock = rewriter.createBlock(&newFuncOp.getBody());
-    rewriter.restoreInsertionPoint(ip);
-    rewriter.create<LLVM::BrOp>(loc, ValueRange{}, bodyStartBlock);
 
     // Insert body in loop block
     rewriter.setInsertionPointToStart(bodyStartBlock);
@@ -313,9 +317,21 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
     ip = rewriter.saveInsertionPoint();
     rewriter.restoreInsertionPoint(ip);
 
-    // Insert coro.suspend logic
-    auto [suspendBlock, cleanupBlock] =
-        insertCoroutineSuspend(loc, module, rewriter, id, hdl, bodyEndBlock);
+    // Insert suspend and cleanup blocks
+    auto [suspendBlock, cleanupBlock] = createSuspendAndCleanupBlocks(
+        loc, module, rewriter, id, hdl, bodyEndBlock->getParent());
+
+    insertCoroutineSuspendOps(loc, module, rewriter, id, hdl,
+                              /*blockToInsert=*/entryBlock,
+                              /*resumeBlock=*/bodyStartBlock,
+                              /*suspendBlock=*/suspendBlock,
+                              /*cleanupBlock=*/cleanupBlock);
+
+    insertCoroutineSuspendOps(loc, module, rewriter, id, hdl,
+                              /*blockToInsert=*/bodyEndBlock,
+                              /*resumeBlock=*/bodyStartBlock,
+                              /*suspendBlock=*/suspendBlock,
+                              /*cleanupBlock=*/cleanupBlock);
 
     // Insert cleanup logic
     insertCoroutineCleanup(loc, module, rewriter, cleanupBlock, suspendBlock,
