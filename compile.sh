@@ -144,7 +144,7 @@ fi
 
 if [[ -n "$BINARYEN_OPT_FLAGS" ]]; then
     echo "Optimizing the WebAssembly output..."
-    wasm-opt "$OUTPUT_BEFOREOPT_WASM" "$BINARYEN_OPT_FLAGS" -o "$OUTPUT_WASM"
+    wasm-opt "$OUTPUT_BEFOREOPT_WASM" $BINARYEN_OPT_FLAGS -o "$OUTPUT_WASM"
 else
     echo "Skipping WebAssembly optimization..."
     cp "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_WASM"
