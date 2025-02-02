@@ -25,7 +25,9 @@ def SsaWasm_WasmIntegerType : SsaWasm_Type<"WasmInteger", "integer"> {
         Represents an integer type in the SSA Wasm dialect.
     }];
     let parameters = (ins "unsigned": $bitWidth);
-    let assemblyFormat = "`i` $bitWidth";
+    // NOTE: assemblyFormat = "`i`$bitWidth" prints `i 32` instead of `i32` so
+    // we use the following format
+    let assemblyFormat = "`i```$bitWidth";
 }
 
 /// SSA Wasm floating-point type. The parameter 'bitWidth' should be 32, 64.
@@ -34,7 +36,9 @@ def SsaWasm_WasmFloatType : SsaWasm_Type<"WasmFloat", "float"> {
         Represents a floating-point type in the SSA Wasm dialect.
     }];
     let parameters = (ins "unsigned": $bitWidth);
-    let assemblyFormat = "`f` $bitWidth";
+    // NOTE: assemblyFormat = "`f`$bitWidth" prints `f 32` instead of `f32` so
+    // we use the following format
+    let assemblyFormat = "`f```$bitWidth";
 }
 
 /// SSA Wasm numeric type constraint, representing the union of integer and
