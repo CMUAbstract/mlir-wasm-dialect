@@ -83,5 +83,59 @@ def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul"> {
   }];
 }
 
+///////////////////////////////////////////////////////////////////////////
+// Function Operations
+///////////////////////////////////////////////////////////////////////////
+
+def SsaWasm_FuncOp : SsaWasm_Op<"func", [FunctionOpInterface]> {
+    let summary = "SSA-based function operation";
+    let description = [{
+        This is the base class for function operations in the SSA Wasm dialect.
+    }];
+
+    let arguments = (ins
+        SymbolNameAttr:$sym_name,
+        TypeAttrOf<FunctionType>:$function_type,
+        OptionalAttr<DictArrayAttr>:$arg_attrs,
+        OptionalAttr<DictArrayAttr>:$res_attrs
+    );
+    let regions = (region AnyRegion:$body);
+
+    let builders = [OpBuilder<(ins
+        "StringRef":$name, "FunctionType":$type,
+        CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)
+    >];
+
+    let extraClassDeclaration = [{
+        //===------------------------------------------------------------------===//
+        // FunctionOpInterface Methods
+        //===------------------------------------------------------------------===//
+
+        /// Returns the argument types of this function.
+        ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
+
+        /// Returns the result types of this function.
+        ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+        Region *getCallableRegion() { return &getBody(); }
+    }];
+    let hasCustomAssemblyFormat = 1;
+    let skipDefaultBuilders = 1;
+}
+
+def SsaWasm_ReturnOp : SsaWasm_Op<"return", [Terminator, HasParent<"FuncOp">, ReturnLike]> {
+    let summary = "SSA-based return operation";
+    let description = [{
+        This is the base class for return operations in the SSA Wasm dialect.
+    }];
+
+    let arguments = (ins Variadic<AnyType>:$operands);
+
+    let builders = [OpBuilder<(ins), [{
+        build($_builder, $_state, std::nullopt);
+    }]>];
+
+    let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+}
 
 #endif // SSAWASM_OPS
