@@ -1,7 +1,7 @@
 #ifndef SSAWASM_ARITHTOSSAWASMPATTERNS_H
 #define SSAWASM_ARITHTOSSAWASMPATTERNS_H
 
-#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "SsaWasm/SsaWasmOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 

@@ -11,5 +11,13 @@
 
 include "mlir/Pass/PassBase.td"
 
+def ConvertToSsaWasm : Pass<"convert-to-ssawasm", "ModuleOp"> {
+  let summary = "Converts to SsaWasm dialect";
+  let dependentDialects = [
+    "ssawasm::SsaWasmDialect",
+    "arith::ArithDialect",
+    "func::FuncDialect",
+  ];
+}
 
 #endif // SSAWASM_PASS
