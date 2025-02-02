@@ -138,4 +138,17 @@ def SsaWasm_ReturnOp : SsaWasm_Op<"return", [Terminator, HasParent<"FuncOp">, Re
     let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
 }
 
+///////////////////////////////////////////////////////////////////////////
+def SsaWasm_LocalOp : SsaWasm_Op<"local", [Pure, SameOperandsAndResultType]> {
+    let summary = "SSA-based local variable operation";
+    let description = [{
+        This is the base class for local variable operations in the SSA Wasm dialect.
+    }];
+
+    let arguments = (ins SsaWasm_WasmNumericLike:$value);
+    let results = (outs SsaWasm_WasmNumericLike:$result);
+
+    let assemblyFormat = "attr-dict $value `:` type($result)";
+}
+
 #endif // SSAWASM_OPS
