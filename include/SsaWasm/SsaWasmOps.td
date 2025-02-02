@@ -32,7 +32,7 @@ class SsaWasm_Op<string mnemonic, list<Trait> traits = []>
 // and their single result.
 ///////////////////////////////////////////////////////////////////////////
 
-class SsaWasm_NumericBinaryOp<string mnemonic, list<Trait> traits = []> 
+class SsaWasm_WasmNumericBinaryOp<string mnemonic, list<Trait> traits = []> 
     : SsaWasm_Op<mnemonic, traits # [Pure, Commutative, SameOperandsAndResultType]> {
   let summary = "SSA-based numeric binary operation";
   let description = [{
@@ -41,8 +41,8 @@ class SsaWasm_NumericBinaryOp<string mnemonic, list<Trait> traits = []>
   }];
 
   // Two explicit operands and one result.
-  let arguments = (ins SsaWasmNumericLike:$lhs, SsaWasmNumericLike:$rhs);
-  let results = (outs SsaWasmNumericLike:$result);
+  let arguments = (ins SsaWasm_WasmNumericLike:$lhs, SsaWasm_WasmNumericLike:$rhs);
+  let results = (outs SsaWasm_WasmNumericLike:$result);
 
   // Assembly format shows the two operands followed by the type of the result.
   let assemblyFormat = "attr-dict $lhs `,` $rhs `:` type($result)";
@@ -52,7 +52,7 @@ class SsaWasm_NumericBinaryOp<string mnemonic, list<Trait> traits = []>
 // Addition Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_AddOp : SsaWasm_NumericBinaryOp<"add"> {
+def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add"> {
   let summary = "SSA-based addition operation";
   let description = [{
     Adds the left-hand-side operand to the right-hand-side operand and
@@ -64,7 +64,7 @@ def SsaWasm_AddOp : SsaWasm_NumericBinaryOp<"add"> {
 // Subtraction Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_SubOp : SsaWasm_NumericBinaryOp<"sub"> {
+def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub"> {
   let summary = "SSA-based subtraction operation";
   let description = [{
     Subtracts the right-hand-side operand from the left-hand-side operand
@@ -76,7 +76,7 @@ def SsaWasm_SubOp : SsaWasm_NumericBinaryOp<"sub"> {
 // Multiplication Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_MulOp : SsaWasm_NumericBinaryOp<"mul"> {
+def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul"> {
   let summary = "SSA-based multiplication operation";
   let description = [{
     Multiplies two operands explicitly and yields the product.

@@ -1,3 +1,7 @@
+#include "SsaWasm/ConversionPatterns/ArithToSsaWasm.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+
+namespace mlir::ssawasm {
 
 namespace {
 struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
@@ -5,14 +9,14 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
   LogicalResult
   matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    op.replaceWithNewOp<ssawasm::AddOp>(op, adaptor.getResult(),
-                                        adaptor.getLhs(), adaptor.getRhs());
+    auto resultType = getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<AddOp>(op, resultType, adaptor.getLhs(),
+                                       adaptor.getRhs());
     return success();
   }
 };
 
 } // namespace
-namespace mlir::ssawasm {
 
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                                     RewritePatternSet &patterns) {
