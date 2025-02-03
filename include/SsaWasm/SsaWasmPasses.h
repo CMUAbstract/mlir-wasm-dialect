@@ -10,6 +10,7 @@
 
 #include "SsaWasm/SsaWasmDialect.h"
 #include "SsaWasm/SsaWasmOps.h"
+#include "Wasm/WasmDialect.h"
 #include "mlir/Pass/Pass.h"
 #include <memory>
 
