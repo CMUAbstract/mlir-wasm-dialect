@@ -21,6 +21,7 @@ def ConvertToSsaWasm : Pass<"convert-to-ssawasm", "ModuleOp"> {
 }
 
 def ReplaceMultiUseOpsWithLocals : Pass<"replace-multi-use-ops-with-locals", "ModuleOp"> {
+  let summary = "Replaces operations with multiple users with locals";
   let description = [{
     This pass replaces operations with multiple users with locals.
     This is a preparatory pass for stackification.
