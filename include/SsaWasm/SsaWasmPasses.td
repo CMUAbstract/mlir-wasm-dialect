@@ -20,4 +20,15 @@ def ConvertToSsaWasm : Pass<"convert-to-ssawasm", "ModuleOp"> {
   ];
 }
 
+def ReplaceMultiUseOpsWithLocals : Pass<"replace-multi-use-ops-with-locals", "ModuleOp"> {
+  let description = [{
+    This pass replaces operations with multiple users with locals.
+    This is a preparatory pass for stackification.
+  }];
+
+  let dependentDialects = [
+    "ssawasm::SsaWasmDialect",
+  ];
+}
+
 #endif // SSAWASM_PASS
