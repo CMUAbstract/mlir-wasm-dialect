@@ -1,4 +1,3 @@
-
 //===- SsaWasmOps.td - SsaWasm dialect ops -----------------*- tablegen -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -21,6 +20,7 @@ include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/Constraints.td"
+include "mlir/IR/BuiltinAttributeInterfaces.td"
 
 class SsaWasm_Op<string mnemonic, list<Trait> traits = []>
     : Op<SsaWasm_Dialect, mnemonic, traits>;
@@ -81,6 +81,42 @@ def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul"> {
   let description = [{
     Multiplies two operands explicitly and yields the product.
   }];
+}
+
+/////////////////////////////////////////////////////////////////////////// 
+// Constant Operation
+///////////////////////////////////////////////////////////////////////////
+
+def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure]> {
+  let summary = "SSA-based constant operation";
+  let description = [{
+    The `ssawasm.constant` operation produces an SSA value equal to some
+    constant specified by an attribute. This constant can be an integer
+    or floating-point value.
+  }];
+
+  let arguments = (ins TypedAttrInterface:$value);
+  let results = (outs SsaWasm_WasmNumericLike:$result);
+
+  // FIXME: Make this pretty
+  let assemblyFormat = "$value type($result) attr-dict";
+
+  let builders = [
+    OpBuilder<(ins "mlir::TypedAttr":$value), [{
+      auto type = value.getType();
+      if (type.isInteger(32)) {
+        build($_builder, $_state, WasmIntegerType::get($_builder.getContext(), 32), value);
+      } else if (type.isInteger(64)) {
+        build($_builder, $_state, WasmIntegerType::get($_builder.getContext(), 64), value);
+      } else if (type.isF32()) {
+        build($_builder, $_state, WasmFloatType::get($_builder.getContext(), 32), value);
+      } else if (type.isF64()) {
+        build($_builder, $_state, WasmFloatType::get($_builder.getContext(), 64), value);
+      } else {
+        // TODO: handle error
+      }
+    }]>
+  ];
 }
 
 ///////////////////////////////////////////////////////////////////////////
