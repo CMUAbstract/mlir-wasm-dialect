@@ -97,4 +97,13 @@ public:
   }
 };
 
+class Stackify : public impl::StackifyBase<Stackify> {
+public:
+  using impl::StackifyBase<Stackify>::StackifyBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    // TODO
+  }
+};
 } // namespace mlir::ssawasm

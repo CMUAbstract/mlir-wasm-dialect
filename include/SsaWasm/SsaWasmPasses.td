@@ -32,4 +32,11 @@ def ReplaceMultiUseOpsWithLocals : Pass<"replace-multi-use-ops-with-locals", "Mo
   ];
 }
 
+def Stackify : Pass<"stackify", "ModuleOp"> {
+  let summary = "Stackifies the module";
+  let dependentDialects = [
+    "ssawasm::SsaWasmDialect",
+  ];
+}
+
 #endif // SSAWASM_PASS
