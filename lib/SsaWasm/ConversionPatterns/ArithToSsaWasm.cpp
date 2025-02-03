@@ -16,11 +16,20 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
   }
 };
 
+struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
+  using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ConstantOp>(op, adaptor.getValue());
+    return success();
+  }
+};
 } // namespace
 
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                                     RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns.add<AddIOpLowering>(typeConverter, context);
+  patterns.add<AddIOpLowering, ConstantOpLowering>(typeConverter, context);
 }
 } // namespace mlir::ssawasm
