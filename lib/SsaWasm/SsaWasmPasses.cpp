@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "SsaWasm/ConversionPatterns/ArithToSsaWasm.h"
 #include "SsaWasm/ConversionPatterns/FuncToSsaWasm.h"
@@ -20,6 +21,8 @@ using namespace std;
 
 namespace mlir::ssawasm {
 #define GEN_PASS_DEF_CONVERTTOSSAWASM
+#define GEN_PASS_DEF_REPLACEMULTIUSEOPSWITHLOCALS
+#define GEN_PASS_DEF_CONVERTSSAWASMTOWASM
 #include "SsaWasm/SsaWasmPasses.h.inc"
 
 class ConvertToSsaWasm : public impl::ConvertToSsaWasmBase<ConvertToSsaWasm> {
@@ -46,24 +49,32 @@ public:
   }
 };
 
-class UseCount {
-public:
-  UseCount(ModuleOp module) {
-    module.walk([&](FuncOp funcOp) {
-      for (auto &block : funcOp.getBody().getBlocks()) {
-        for (auto &op : block) {
-          useCount[&op] = op.getUsers().size();
-        }
-      }
-    });
+namespace {
+struct MultiUseOpLowering : public RewritePattern {
+  MultiUseOpLowering(MLIRContext *context)
+      : RewritePattern(MatchAnyOpTypeTag(), 1, context) {}
+
+  LogicalResult match(Operation *op) const override {
+    assert(op->getDialect() ==
+           op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>());
+    if (isa<LocalOp>(op)) {
+      return failure();
+    }
+    if (std::distance(op->getUsers().begin(), op->getUsers().end()) > 1) {
+      return success();
+    }
+    return failure();
   }
-  int getUseCount(Operation *op) const { return useCount.at(op); }
 
-private:
-  DenseMap<Operation *, int> useCount;
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    rewriter.setInsertionPointAfter(op);
+    auto localOp = rewriter.create<LocalOp>(op->getLoc(), op->getResult(0));
+    // we assume that the op has one operand
+    rewriter.replaceAllUsesExcept(op->getResult(0), localOp.getResult(),
+                                  localOp);
+  }
 };
-
-namespace {}
+} // namespace
 
 class ReplaceMultiUseOpsWithLocals
     : public impl::ReplaceMultiUseOpsWithLocalsBase<
@@ -77,79 +88,13 @@ public:
     MLIRContext *context = module.getContext();
     OpBuilder builder(context);
 
-    UseCount useCount(module);
-    // TODO
+    RewritePatternSet patterns(context);
+    patterns.add<MultiUseOpLowering>(context);
+
+    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+      signalPassFailure();
+    }
   }
 };
 
-class ConvertSsaWasmToWasm
-    : public impl::ConvertSsaWasmToWasmBase<ConvertSsaWasmToWasm> {
-public:
-  using impl::ConvertSsaWasmToWasmBase<
-      ConvertSsaWasmToWasm>::ConvertSsaWasmToWasmBase;
-
-  void runOnOperation() final {
-    auto module = getOperation();
-    MLIRContext *context = module.getContext();
-    OpBuilder builder(context);
-
-    UseCount useCount(module);
-
-    module.walk([&](FuncOp funcOp) {
-      for (auto &block : funcOp.getBody().getBlocks()) {
-        stackifyBlock(builder, &block);
-      }
-    });
-    // TODO: Convert SsaWasm loop ops to Wasm loop ops
-    // TODO: Convert ssawasm::Func to wasm::WasmFunc
-  }
-
-private:
-  void stackifyBlock(OpBuilder &builder, Block *block, UseCount &useCount) {
-    vector<Operation *> ops;
-    for (auto &op : *block) {
-      ops.push_back(&op);
-    }
-
-    int index = ops.size() - 1;
-
-    while (index >= 0) {
-      recoverTree(builder, index, ops, useCount);
-    }
-  }
-
-  void recoverTree(OpBuilder &builder, int &index, vector<Operation *> &ops,
-                   UseCount &useCount) {
-    Operation *currentOp = ops[index];
-    SmallVector<Value, 4> nestedOperands;
-
-    ops.pop_back();
-    for (int operandIdx = currentOp->getNumOperands() - 1; operandIdx >= 0;
-         --operandIdx) {
-      Value operand = currentOp->getOperand(operandIdx);
-      Operation *definingOp = operand.getDefiningOp();
-      if (!definingOp) {
-        assert(isa<BlockArgument>(operand) && "Expected a block argument");
-        // Block argument can be used directly.
-        nestedOperands.insert(nestedOperands.begin(), operand);
-      } else if (useCount.getUseCount(definingOp) == 1 && index > 0 &&
-                 ops[index - 1] == definingOp) {
-        // This is a value defined by an operation that is used only once
-        // and the operation is the previous operation in the block.
-        index--;
-        Operation *nestedOp = recoverTree(builder, index, ops, useCount);
-        nestedOperands.insert(nestedOperands.begin(), nestedOp->getResult(0));
-      } else {
-        // TODO
-      }
-    }
-
-    stackifyOperation(builder, currentOp, nestedOperands);
-    // TODO
-  }
-  void stackifyOperation(OpBuilder &builder, Operation *op,
-                         SmallVector<Value, 4> &operands) {
-    // TODO
-  }
-};
 } // namespace mlir::ssawasm
