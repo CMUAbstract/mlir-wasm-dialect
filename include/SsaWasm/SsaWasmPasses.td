@@ -37,6 +37,7 @@ def Stackify : Pass<"stackify", "ModuleOp"> {
   let summary = "Stackifies the module";
   let dependentDialects = [
     "ssawasm::SsaWasmDialect",
+    "wasm::WasmDialect",
   ];
 }
 
