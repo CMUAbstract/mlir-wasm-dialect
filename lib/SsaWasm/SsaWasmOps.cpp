@@ -13,7 +13,6 @@
 #include "SsaWasm/SsaWasmTypes.h"
 
 #define GET_OP_CLASSES
-#include "SsaWasm/SsaWasmOps.cpp.inc"
 
 namespace mlir::ssawasm {
 void FuncOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
@@ -102,4 +101,52 @@ ParseResult StoreOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
+// for SsaWasm::GlobalOp
+// copied from mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
+
+static void printGlobalMemrefOpTypeAndInitialValue(OpAsmPrinter &p, GlobalOp op,
+                                                   TypeAttr type,
+                                                   Attribute initialValue) {
+  p << type;
+  if (!op.isExternal()) {
+    p << " = ";
+    if (op.isUninitialized())
+      p << "uninitialized";
+    else
+      p.printAttributeWithoutType(initialValue);
+  }
+}
+
+static ParseResult
+parseGlobalMemrefOpTypeAndInitialValue(OpAsmParser &parser, TypeAttr &typeAttr,
+                                       Attribute &initialValue) {
+  Type type;
+  if (parser.parseType(type))
+    return failure();
+
+  auto memrefType = llvm::dyn_cast<MemRefType>(type);
+  if (!memrefType || !memrefType.hasStaticShape())
+    return parser.emitError(parser.getNameLoc())
+           << "type should be static shaped memref, but got " << type;
+  typeAttr = TypeAttr::get(type);
+
+  if (parser.parseOptionalEqual())
+    return success();
+
+  if (succeeded(parser.parseOptionalKeyword("uninitialized"))) {
+    initialValue = UnitAttr::get(parser.getContext());
+    return success();
+  }
+
+  Type tensorType = memref::getTensorTypeFromMemRefType(memrefType);
+  if (parser.parseAttribute(initialValue, tensorType))
+    return failure();
+  if (!llvm::isa<ElementsAttr>(initialValue))
+    return parser.emitError(parser.getNameLoc())
+           << "initial value should be a unit or elements attribute";
+  return success();
+}
+
 } // namespace mlir::ssawasm
+
+#include "SsaWasm/SsaWasmOps.cpp.inc"

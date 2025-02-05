@@ -240,12 +240,36 @@ def SsaWasm_CallOp : SsaWasm_Op<"call",
 // Memory Operations
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_GlobalOp : SsaWasm_Op<"global", [Pure]> {
-    // TODO
+def MemRefTypeAttr
+    : TypeAttrBase<"::mlir::MemRefType", "memref type attribute"> {
+  let constBuilderCall = "::mlir::TypeAttr::get($0)";
+}
+
+def SsaWasm_GlobalOp : SsaWasm_Op<"global", [Symbol]> {
+   let arguments = (ins SymbolNameAttr:$sym_name,
+                       MemRefTypeAttr:$type,
+                       StrAttr:$initial_value,
+                       UnitAttr:$constant,
+                       I32Attr:$base_addr);
+
+  let assemblyFormat = [{
+       (`constant` $constant^)?
+       $sym_name `:`
+       custom<GlobalMemrefOpTypeAndInitialValue>($type, $initial_value)
+       `at` $base_addr
+       attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+     bool isExternal() { return false; } // TODO: support external globals
+     bool isUninitialized() {
+        return false; // TODO: support uninitialized globals
+     }
+  }];
 }
 
 def SsaWasm_GetGlobalOp : SsaWasm_Op<"get_global", [Pure]> {
-    // TODO
+  // TODO
 }
 
 def SsaWasm_LoadOp : SsaWasm_Op<"load"> {
