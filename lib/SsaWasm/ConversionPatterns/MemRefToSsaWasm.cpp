@@ -7,40 +7,6 @@ namespace mlir::ssawasm {
 namespace {
 using namespace std;
 
-static const uint8_t s_is_char_escaped[] = {
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
-
-static const char s_hexdigits[] = "0123456789abcdef";
-
-std::string generateStr(const void *bytes, size_t length) {
-  const uint8_t *u8_data = static_cast<const uint8_t *>(bytes);
-
-  std::stringstream ss;
-
-  for (size_t i = 0; i < length; ++i) {
-    uint8_t c = u8_data[i];
-    if (s_is_char_escaped[c]) {
-      ss << "\\";
-      ss << s_hexdigits[c >> 4];
-      ss << s_hexdigits[c & 0xf];
-    } else {
-      ss << c;
-    }
-  }
-
-  return ss.str();
-}
-
 struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
   using OpConversionPattern<memref::GlobalOp>::OpConversionPattern;
   LogicalResult
@@ -50,19 +16,14 @@ struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
     auto initialValue = adaptor.getInitialValue();
 
     if (initialValue.has_value()) {
-      if (auto elementsAttr =
-              dyn_cast<DenseElementsAttr>(initialValue.value())) {
-        auto rawData = elementsAttr.getRawData();
-        std::string bytes = generateStr(rawData.data(), rawData.size());
-        rewriter.replaceOpWithNewOp<ssawasm::GlobalOp>(
-            op,
-            adaptor.getSymName(), // StringAttr
-            adaptor.getType(),    // TypeAttr
-            bytes,
-            adaptor.getConstant(), // UnitAttr
-            0);                    // TODO: compute base_addr
-        return success();
-      }
+      rewriter.replaceOpWithNewOp<ssawasm::GlobalOp>(
+          op,
+          adaptor.getSymName(), // StringAttr
+          adaptor.getType(),    // TypeAttr
+          initialValue.value(),
+          adaptor.getConstant(), // UnitAttr
+          0);                    // TODO: compute base_addr
+      return success();
     }
     return rewriter.notifyMatchFailure(op, "not supported");
   }
