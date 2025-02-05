@@ -133,7 +133,7 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
         rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(size));
     rewriter.replaceOpWithNewOp<CallOp>(
         op, "malloc",
-        TypeRange{WasmIntegerType::get(rewriter.getContext(), 32)},
+        TypeRange{WasmMemRefType::get(rewriter.getContext(), memRefType)},
         ValueRange{constantOp.getResult()});
     return success();
   }
