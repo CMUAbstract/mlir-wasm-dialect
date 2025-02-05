@@ -250,6 +250,31 @@ def SsaWasm_CallOp : SsaWasm_Op<"call",
 }
 
 ///////////////////////////////////////////////////////////////////////////
+// Memory Operations
+///////////////////////////////////////////////////////////////////////////
+
+def SsaWasm_GlobalOp : SsaWasm_Op<"global", [Pure]> {
+    // TODO
+}
+
+def SsaWasm_GetGlobalOp : SsaWasm_Op<"get_global", [Pure]> {
+    // TODO
+}
+
+def SsaWasm_LoadOp : SsaWasm_Op<"load"> {
+  let arguments = (ins SsaWasm_WasmIntegerType:$addr);
+  let results = (outs AnyType:$result);
+  let hasCustomAssemblyFormat = 1;
+}
+
+def SsaWasm_StoreOp : SsaWasm_Op<"store"> {
+  let arguments = (ins SsaWasm_WasmIntegerType:$addr, AnyType:$value);
+  let hasCustomAssemblyFormat = 1;
+}
+
+///////////////////////////////////////////////////////////////////////////
+// Local Operations
+///////////////////////////////////////////////////////////////////////////
 def SsaWasm_LocalOp : SsaWasm_Op<"local", [Pure, SameOperandsAndResultType]> {
     let summary = "SSA-based local variable operation";
     let description = [{

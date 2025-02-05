@@ -50,43 +50,56 @@ void FuncOp::print(mlir::OpAsmPrinter &p) {
       getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
-LogicalResult CallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-  // Check that the callee attribute was specified.
-  auto fnAttr = (*this)->getAttrOfType<FlatSymbolRefAttr>("callee");
-  if (!fnAttr)
-    return emitOpError("requires a 'callee' symbol reference attribute");
-  FuncOp fn = symbolTable.lookupNearestSymbolFrom<FuncOp>(*this, fnAttr);
-  if (!fn)
-    return emitOpError() << "'" << fnAttr.getValue()
-                         << "' does not reference a valid function";
+FunctionType CallOp::getCalleeType() {
+  return FunctionType::get(getContext(), getOperandTypes(), getResultTypes());
+}
 
-  // Verify that the operand and result types match the callee.
-  auto fnType = fn.getFunctionType();
-  if (fnType.getNumInputs() != getNumOperands())
-    return emitOpError("incorrect number of operands for callee");
+void LoadOp::print(OpAsmPrinter &p) {
+  p << "ssawasm.load ";
+  p.printOperand(getAddr());
+}
 
-  for (unsigned i = 0, e = fnType.getNumInputs(); i != e; ++i)
-    if (getOperand(i).getType() != fnType.getInput(i))
-      return emitOpError("operand type mismatch: expected operand type ")
-             << fnType.getInput(i) << ", but provided "
-             << getOperand(i).getType() << " for operand number " << i;
+ParseResult LoadOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand addr;
+  if (parser.parseOperand(addr))
+    return failure();
 
-  if (fnType.getNumResults() != getNumResults())
-    return emitOpError("incorrect number of results for callee");
+  Type addrType = WasmIntegerType::get(parser.getContext(), 32);
+  if (parser.resolveOperand(addr, addrType, result.operands))
+    return failure();
 
-  for (unsigned i = 0, e = fnType.getNumResults(); i != e; ++i)
-    if (getResult(i).getType() != fnType.getResult(i)) {
-      auto diag = emitOpError("result type mismatch at index ") << i;
-      diag.attachNote() << "      op result types: " << getResultTypes();
-      diag.attachNote() << "function result types: " << fnType.getResults();
-      return diag;
-    }
+  Type resultType;
+  if (parser.parseColonType(resultType))
+    return failure();
+  result.addTypes(resultType);
 
   return success();
 }
 
-FunctionType CallOp::getCalleeType() {
-  return FunctionType::get(getContext(), getOperandTypes(), getResultTypes());
+void StoreOp::print(OpAsmPrinter &p) {
+  p << "ssawasm.store ";
+  p.printOperand(getAddr());
+  p << ", ";
+  p.printOperand(getValue());
+}
+
+ParseResult StoreOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand addr;
+  OpAsmParser::UnresolvedOperand value;
+  if (parser.parseOperand(addr) || parser.parseComma() ||
+      parser.parseOperand(value))
+    return failure();
+
+  Type addrType = WasmIntegerType::get(parser.getContext(), 32);
+  if (parser.resolveOperand(addr, addrType, result.operands))
+    return failure();
+
+  Type resultType;
+  if (parser.parseColonType(resultType))
+    return failure();
+  result.addTypes(resultType);
+
+  return success();
 }
 
 } // namespace mlir::ssawasm
