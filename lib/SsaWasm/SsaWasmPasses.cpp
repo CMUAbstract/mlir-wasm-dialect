@@ -174,8 +174,6 @@ private:
   IntroduceLocalAnalysis &introduceLocal;
 };
 
-} // namespace
-
 class IntroduceLocals : public impl::IntroduceLocalsBase<IntroduceLocals> {
 public:
   using impl::IntroduceLocalsBase<IntroduceLocals>::IntroduceLocalsBase;
@@ -226,6 +224,28 @@ private:
   DenseMap<FuncOp, DenseMap<Value, int>> localIndex;
 };
 
+class StackifyTypeConverter : public TypeConverter {
+public:
+  StackifyTypeConverter(MLIRContext *ctx) {
+    addConversion([ctx](WasmIntegerType type) -> Type {
+      auto bitWidth = type.getBitWidth();
+      return wasm::LocalType::get(ctx, IntegerType::get(ctx, bitWidth));
+    });
+    addConversion([ctx](WasmFloatType type) -> Type {
+      auto bitWidth = type.getBitWidth();
+      if (bitWidth == 32) {
+        return wasm::LocalType::get(ctx, FloatType::getF32(ctx));
+      } else if (bitWidth == 64) {
+        return wasm::LocalType::get(ctx, FloatType::getF64(ctx));
+      } else {
+        assert(false && "Unsupported float type");
+      }
+    });
+  }
+};
+
+} // namespace
+
 class Stackify : public impl::StackifyBase<Stackify> {
 public:
   using impl::StackifyBase<Stackify>::StackifyBase;
@@ -234,25 +254,71 @@ public:
     auto module = getOperation();
     UseCountAnalysis useCount(module);
     LocalIndexAnalysis localIndex(module);
-    OpBuilder builder(module.getContext());
+    IRRewriter rewriter(module.getContext());
+    StackifyTypeConverter typeConverter(module.getContext());
 
     module.walk([&](FuncOp funcOp) {
-      llvm::dbgs() << "Stackifying function\n";
-      funcOp.dump();
       for (auto &block : funcOp.getBody().getBlocks()) {
-        llvm::dbgs() << "Stackifying block\n";
-        block.dump();
-        stackifyBlock(funcOp, &block, useCount, localIndex, builder);
+        stackifyBlock(funcOp, &block, useCount, localIndex, rewriter);
       }
-      // TODO: convert funcop and add local declarations
+      convertFuncOp(funcOp, rewriter, typeConverter);
     });
   }
 
 private:
+  void convertFuncOp(FuncOp funcOp, IRRewriter &rewriter,
+                     TypeConverter &typeConverter) {
+    TypeConverter::SignatureConversion signatureConverter(
+        funcOp.getFunctionType().getNumInputs());
+    for (const auto &inputType :
+         enumerate(funcOp.getFunctionType().getInputs())) {
+      signatureConverter.addInputs(
+          inputType.index(), typeConverter.convertType(inputType.value()));
+    }
+
+    // we should return i32 for memref types
+    llvm::SmallVector<Type, 4> newResultTypes;
+    for (auto resultType : funcOp.getFunctionType().getResults()) {
+      if (isa<MemRefType>(resultType)) {
+        newResultTypes.push_back(rewriter.getI32Type());
+      } else {
+        newResultTypes.push_back(resultType);
+      }
+    }
+
+    auto newFuncType = rewriter.getFunctionType(
+        signatureConverter.getConvertedTypes(), newResultTypes);
+    rewriter.setInsertionPoint(funcOp);
+    auto newFuncOp = rewriter.create<wasm::WasmFuncOp>(
+        funcOp.getLoc(), funcOp.getName(), newFuncType);
+
+    for (Block &block : funcOp.getBody()) {
+      // Convert block argument types
+      for (BlockArgument arg : block.getArguments()) {
+        Type newType = typeConverter.convertType(arg.getType());
+        if (!newType) {
+          llvm::dbgs() << "Failed to convert block argument type\n";
+          assert(false && "Failed to convert block argument type");
+        }
+        arg.setType(newType);
+      }
+    }
+
+    rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
+                                newFuncOp.end());
+
+    for (const auto &namedAttr : funcOp->getAttrs()) {
+      if (namedAttr.getName() != funcOp.getFunctionTypeAttrName() &&
+          namedAttr.getName() != SymbolTable::getSymbolAttrName())
+        newFuncOp->setAttr(namedAttr.getName(), namedAttr.getValue());
+    }
+
+    rewriter.eraseOp(funcOp);
+  }
   void stackifyBlock(FuncOp funcOp, Block *block,
                      UseCountAnalysis &useCountAnalysis,
                      LocalIndexAnalysis &localIndexAnalysis,
-                     OpBuilder &builder) {
+                     IRRewriter &rewriter) {
     vector<Operation *> ops;
     for (auto &op : *block) {
       ops.push_back(&op);
@@ -262,7 +328,7 @@ private:
 
     while (index >= 0) {
       stackify(funcOp, index, ops, useCountAnalysis, localIndexAnalysis,
-               builder);
+               rewriter);
     }
   }
 
@@ -270,15 +336,15 @@ private:
   Operation *stackify(FuncOp funcOp, int &index, vector<Operation *> ops,
                       UseCountAnalysis &useCountAnalysis,
                       LocalIndexAnalysis &localIndexAnalysis,
-                      OpBuilder &builder) {
+                      IRRewriter &rewriter) {
     Operation *currentOp = ops[index];
     llvm::dbgs() << "Stackifying operation\n";
     currentOp->dump();
     index--;
 
     Operation *newOp =
-        stackifyOperation(currentOp, localIndexAnalysis, builder);
-    builder.setInsertionPoint(newOp);
+        stackifyOperation(currentOp, localIndexAnalysis, rewriter);
+    rewriter.setInsertionPoint(newOp);
 
     if (isa<LocalOp>(currentOp)) {
       currentOp->erase();
@@ -298,22 +364,22 @@ private:
         assert(isa<BlockArgument>(operand) && "Expected a block argument");
         llvm::dbgs() << "Block argument. creating localget\n";
         int localIndex = localIndexAnalysis.getLocalIndex(funcOp, operand);
-        builder.create<wasm::LocalGetOp>(newOp->getLoc(),
-                                         builder.getIndexAttr(localIndex));
+        rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
+                                          rewriter.getIndexAttr(localIndex));
 
       } else if (isa<LocalOp>(definingOp)) {
         definingOp->dump();
         llvm::dbgs() << "Local operation. creating localget\n";
         int localIndex =
             localIndexAnalysis.getLocalIndex(funcOp, definingOp->getResult(0));
-        builder.create<wasm::LocalGetOp>(newOp->getLoc(),
-                                         builder.getIndexAttr(localIndex));
+        rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
+                                          rewriter.getIndexAttr(localIndex));
       } else {
         definingOp->dump();
         llvm::dbgs() << "stackify success\n";
         Operation *newOp = stackify(funcOp, index, ops, useCountAnalysis,
-                                    localIndexAnalysis, builder);
-        builder.setInsertionPoint(newOp);
+                                    localIndexAnalysis, rewriter);
+        rewriter.setInsertionPoint(newOp);
       }
     }
     return newOp;
@@ -321,22 +387,22 @@ private:
 
   Operation *stackifyOperation(Operation *op,
                                LocalIndexAnalysis &localIndexAnalysis,
-                               OpBuilder &builder) {
+                               IRRewriter &rewriter) {
     Operation *newOp;
-    builder.setInsertionPoint(op);
+    rewriter.setInsertionPoint(op);
     if (isa<AddOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(op->getResult(0).getType());
-      newOp = builder.create<wasm::AddOp>(op->getLoc(), typeAttr);
+      newOp = rewriter.create<wasm::AddOp>(op->getLoc(), typeAttr);
     } else if (isa<ConstantOp>(op)) {
-      newOp = builder.create<wasm::ConstantOp>(op->getLoc(),
-                                               cast<ConstantOp>(op).getValue());
+      newOp = rewriter.create<wasm::ConstantOp>(
+          op->getLoc(), cast<ConstantOp>(op).getValue());
     } else if (isa<LocalOp>(op)) {
       FuncOp funcOp = op->getParentOfType<FuncOp>();
-      newOp = builder.create<wasm::LocalSetOp>(
-          op->getLoc(), builder.getIndexAttr(localIndexAnalysis.getLocalIndex(
+      newOp = rewriter.create<wasm::LocalSetOp>(
+          op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
                             funcOp, op->getResult(0))));
     } else if (isa<ReturnOp>(op)) {
-      newOp = builder.create<wasm::WasmReturnOp>(op->getLoc());
+      newOp = rewriter.create<wasm::WasmReturnOp>(op->getLoc());
     } else {
       newOp = nullptr;
     }
