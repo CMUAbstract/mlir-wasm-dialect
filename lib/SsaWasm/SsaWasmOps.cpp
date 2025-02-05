@@ -101,6 +101,26 @@ ParseResult StoreOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
+void AsPointerOp::print(OpAsmPrinter &p) {
+  p << " ";
+  p.printOperand(getMemref());
+  p << " : ";
+  p.printType(getType());
+}
+
+ParseResult AsPointerOp::parse(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::UnresolvedOperand memref;
+  if (parser.parseOperand(memref))
+    return failure();
+
+  Type pointerType = WasmIntegerType::get(parser.getContext(), 32);
+  if (parser.parseColonType(pointerType))
+    return failure();
+  result.addTypes(pointerType);
+
+  return success();
+}
+
 // for SsaWasm::GlobalOp
 // copied from mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
 

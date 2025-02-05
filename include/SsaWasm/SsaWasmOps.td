@@ -289,6 +289,17 @@ def SsaWasm_StoreOp : SsaWasm_Op<"store"> {
   let hasCustomAssemblyFormat = 1;
 }
 
+def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer"> {
+  let arguments = (ins SsaWasm_WasmMemRefType:$memref);
+  let results = (outs SsaWasm_WasmIntegerType:$result);
+  let hasCustomAssemblyFormat = 1;
+
+  let builders = [OpBuilder<(ins "Value":$memref), [{
+    $_state.addOperands(memref);
+    $_state.addTypes(WasmIntegerType::get($_builder.getContext(), 32));
+  }]>];
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // Local Operations
 ///////////////////////////////////////////////////////////////////////////
