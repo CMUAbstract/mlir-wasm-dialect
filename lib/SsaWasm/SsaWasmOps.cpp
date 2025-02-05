@@ -56,6 +56,8 @@ FunctionType CallOp::getCalleeType() {
 void LoadOp::print(OpAsmPrinter &p) {
   p << " ";
   p.printOperand(getAddr());
+  p << " : ";
+  p.printType(getType());
 }
 
 ParseResult LoadOp::parse(OpAsmParser &parser, OperationState &result) {
@@ -97,26 +99,6 @@ ParseResult StoreOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseColonType(resultType))
     return failure();
   result.addTypes(resultType);
-
-  return success();
-}
-
-void AsPointerOp::print(OpAsmPrinter &p) {
-  p << " ";
-  p.printOperand(getMemref());
-  p << " : ";
-  p.printType(getType());
-}
-
-ParseResult AsPointerOp::parse(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::UnresolvedOperand memref;
-  if (parser.parseOperand(memref))
-    return failure();
-
-  Type pointerType = WasmIntegerType::get(parser.getContext(), 32);
-  if (parser.parseColonType(pointerType))
-    return failure();
-  result.addTypes(pointerType);
 
   return success();
 }

@@ -292,7 +292,7 @@ def SsaWasm_StoreOp : SsaWasm_Op<"store"> {
 def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer"> {
   let arguments = (ins SsaWasm_WasmMemRefType:$memref);
   let results = (outs SsaWasm_WasmIntegerType:$result);
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = "$memref `:` type($memref) `->` type($result) attr-dict";
 
   let builders = [OpBuilder<(ins "Value":$memref), [{
     $_state.addOperands(memref);
