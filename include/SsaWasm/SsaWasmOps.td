@@ -177,21 +177,8 @@ def SsaWasm_ReturnOp : SsaWasm_Op<"return", [Terminator, HasParent<"FuncOp">, Re
 
 
 def SsaWasm_CallOp : SsaWasm_Op<"call",
-    [CallOpInterface, MemRefsNormalizable,
-     DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+    [CallOpInterface]> {
     let summary = "call operation";
-    let description = [{
-      The `func.call` operation represents a direct call to a function that is
-      within the same symbol scope as the call. The operands and result types of
-      the call must match the specified function type. The callee is encoded as a
-      symbol reference attribute named "callee".
-
-      Example:
-
-      ```mlir
-      %2 = ssawasm.call @my_add(%0, %1) : (f32, f32) -> f32
-      ```
-    }];
 
     let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
     let results = (outs Variadic<AnyType>);
