@@ -13,6 +13,7 @@
 
 #include "SsaWasm/ConversionPatterns/ArithToSsaWasm.h"
 #include "SsaWasm/ConversionPatterns/FuncToSsaWasm.h"
+#include "SsaWasm/ConversionPatterns/MemRefToSsaWasm.h"
 #include "SsaWasm/SsaWasmPasses.h"
 #include "SsaWasm/SsaWasmTypeConverter.h"
 #include "Wasm/WasmOps.h"
@@ -38,11 +39,13 @@ public:
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
     target.addIllegalDialect<arith::ArithDialect>();
     target.addIllegalDialect<func::FuncDialect>();
+    target.addIllegalDialect<memref::MemRefDialect>();
 
     RewritePatternSet patterns(context);
     SsaWasmTypeConverter typeConverter(context);
     populateArithToSsaWasmPatterns(typeConverter, patterns);
     populateFuncToSsaWasmPatterns(typeConverter, patterns);
+    populateMemRefToSsaWasmPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
