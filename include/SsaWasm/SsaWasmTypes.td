@@ -47,4 +47,12 @@ def SsaWasm_WasmNumericLike : TypeConstraint<
         SsaWasm_WasmFloatType.predicate]>,
     "ssawasm integer or float type">;
 
+def SsaWasm_WasmMemRefType : SsaWasm_Type<"WasmMemRef", "memref"> {
+    let description = [{
+        Represents a memory reference type in the SSA Wasm dialect.
+    }];
+    let parameters = (ins AnyMemRef:$memRefType);
+    let assemblyFormat = "$memRefType";
+}
+
 #endif // SSAWASM_TYPES
