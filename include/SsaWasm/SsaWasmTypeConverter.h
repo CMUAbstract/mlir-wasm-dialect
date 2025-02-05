@@ -12,6 +12,9 @@ public:
     addConversion([ctx](FloatType type) -> Type {
       return WasmFloatType::get(ctx, type.getWidth());
     });
+    addConversion([ctx](MemRefType type) -> Type {
+      return WasmMemRefType::get(ctx, type);
+    });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) -> Value {
