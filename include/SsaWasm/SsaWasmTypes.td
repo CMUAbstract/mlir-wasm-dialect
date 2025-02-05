@@ -40,13 +40,7 @@ def SsaWasm_WasmFloatType : SsaWasm_Type<"WasmFloat", "float"> {
     let assemblyFormat = "$bitWidth";
 }
 
-/// SSA Wasm numeric type constraint, representing the union of integer and
-/// floating-point types. 
-def SsaWasm_WasmNumericLike : TypeConstraint<
-    Or<[SsaWasm_WasmIntegerType.predicate,
-        SsaWasm_WasmFloatType.predicate]>,
-    "ssawasm integer or float type">;
-
+// We treat this as i32 type with meta information.
 def SsaWasm_WasmMemRefType : SsaWasm_Type<"WasmMemRef", "memref"> {
     let description = [{
         Represents a memory reference type in the SSA Wasm dialect.
@@ -55,5 +49,14 @@ def SsaWasm_WasmMemRefType : SsaWasm_Type<"WasmMemRef", "memref"> {
     let parameters = (ins AnyMemRef:$memRefType);
     let assemblyFormat = "$memRefType";
 }
+
+/// SSA Wasm numeric type constraint, representing the union of integer and
+/// floating-point types. 
+def SsaWasm_WasmNumericLike : TypeConstraint<
+    Or<[SsaWasm_WasmIntegerType.predicate,
+        SsaWasm_WasmFloatType.predicate,
+        SsaWasm_WasmMemRefType.predicate]>,
+    "ssawasm integer or float type">;
+
 
 #endif // SSAWASM_TYPES

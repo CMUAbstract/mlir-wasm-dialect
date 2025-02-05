@@ -5,6 +5,8 @@
 namespace mlir::ssawasm {
 
 namespace {
+using namespace std;
+
 static const uint8_t s_is_char_escaped[] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -79,12 +81,66 @@ struct GetGlobalOpLowering : public OpConversionPattern<memref::GetGlobalOp> {
   }
 };
 
+pair<LogicalResult, Value>
+generatePointerComputation(Operation *op, Value base, MemRefType memRefType,
+                           ValueRange indices,
+                           const TypeConverter *const typeConverter,
+                           ConversionPatternRewriter &rewriter) {
+
+  Location loc = op->getLoc();
+  SmallVector<int64_t, 4> strides;
+  int64_t offset;
+  // Compute strides and offset using the utility function
+  if (failed(mlir::getStridesAndOffset(memRefType, strides, offset))) {
+    return std::make_pair(
+        rewriter.notifyMatchFailure(
+            op, "Cannot compute strides and offset for the given MemRefType."),
+        Value());
+  }
+
+  auto pointerAsInteger = rewriter.create<AsPointerOp>(loc, base).getResult();
+
+  Value result = pointerAsInteger;
+  // linearIndex += indices[i] * strides[i] * 4;
+  for (int i = 0; i < memRefType.getRank(); i++) {
+    if (ShapedType::isDynamic(strides[i])) {
+      return std::make_pair(
+          rewriter.notifyMatchFailure(
+              op, "Cannot handle dynamic strides in the MemRefType."),
+          Value());
+    } else {
+      Value stride =
+          rewriter
+              .create<ConstantOp>(loc, rewriter.getI32IntegerAttr(strides[i]))
+              .getResult();
+      Value multiplied =
+          rewriter.create<MulOp>(loc, stride, indices[i]).getResult();
+      result = rewriter.create<AddOp>(loc, result, multiplied).getResult();
+    }
+  }
+
+  return std::make_pair(success(), result);
+}
+
 struct LoadOpLowering : public OpConversionPattern<memref::LoadOp> {
   using OpConversionPattern<memref::LoadOp>::OpConversionPattern;
   LogicalResult
   matchAndRewrite(memref::LoadOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO
+
+    auto [result, pointer] = generatePointerComputation(
+        op, adaptor.getMemref(), op.getMemRefType(), adaptor.getIndices(),
+        typeConverter, rewriter);
+
+    if (failed(result)) {
+      return result;
+    }
+
+    auto memRefType = op.getMemRefType();
+    auto elementType = memRefType.getElementType();
+    auto resultType = getTypeConverter()->convertType(elementType);
+
+    rewriter.replaceOpWithNewOp<LoadOp>(op, resultType, pointer);
     return success();
   }
 };
