@@ -50,6 +50,7 @@ def SsaWasm_WasmNumericLike : TypeConstraint<
 def SsaWasm_WasmMemRefType : SsaWasm_Type<"WasmMemRef", "memref"> {
     let description = [{
         Represents a memory reference type in the SSA Wasm dialect.
+        This is an i32 type with meta information.
     }];
     let parameters = (ins AnyMemRef:$memRefType);
     let assemblyFormat = "$memRefType";

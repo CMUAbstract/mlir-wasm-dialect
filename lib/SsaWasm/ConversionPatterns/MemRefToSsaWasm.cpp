@@ -71,7 +71,10 @@ struct GetGlobalOpLowering : public OpConversionPattern<memref::GetGlobalOp> {
   LogicalResult
   matchAndRewrite(memref::GetGlobalOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO
+    WasmMemRefType memRefType =
+        WasmMemRefType::get(rewriter.getContext(), op.getResult().getType());
+
+    rewriter.replaceOpWithNewOp<GetGlobalOp>(op, memRefType, adaptor.getName());
     return success();
   }
 };

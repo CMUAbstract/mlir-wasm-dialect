@@ -269,7 +269,13 @@ def SsaWasm_GlobalOp : SsaWasm_Op<"global", [Symbol]> {
 }
 
 def SsaWasm_GetGlobalOp : SsaWasm_Op<"get_global", [Pure]> {
-  // TODO
+  // TODO: Add DeclareOpInterfaceMethods<SymbolUserOpInterface> with a
+  // verifier
+  let summary = "similar to memref::GetGlobalOp";
+
+  let arguments = (ins FlatSymbolRefAttr:$name);
+  let results = (outs SsaWasm_WasmMemRefType:$result);
+  let assemblyFormat = "$name `:` type($result) attr-dict";
 }
 
 def SsaWasm_LoadOp : SsaWasm_Op<"load"> {
