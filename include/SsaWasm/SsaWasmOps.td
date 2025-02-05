@@ -16,6 +16,7 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/FunctionInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/EnumAttr.td"
@@ -172,6 +173,80 @@ def SsaWasm_ReturnOp : SsaWasm_Op<"return", [Terminator, HasParent<"FuncOp">, Re
     }]>];
 
     let assemblyFormat = "attr-dict ($operands^ `:` type($operands))?";
+}
+
+
+def SsaWasm_CallOp : SsaWasm_Op<"call",
+    [CallOpInterface, MemRefsNormalizable,
+     DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+    let summary = "call operation";
+    let description = [{
+      The `func.call` operation represents a direct call to a function that is
+      within the same symbol scope as the call. The operands and result types of
+      the call must match the specified function type. The callee is encoded as a
+      symbol reference attribute named "callee".
+
+      Example:
+
+      ```mlir
+      %2 = ssawasm.call @my_add(%0, %1) : (f32, f32) -> f32
+      ```
+    }];
+
+    let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
+    let results = (outs Variadic<AnyType>);
+
+    let builders = [
+      OpBuilder<(ins "FuncOp":$callee, CArg<"ValueRange", "{}">:$operands), [{
+        $_state.addOperands(operands);
+        $_state.addAttribute("callee", SymbolRefAttr::get(callee));
+        $_state.addTypes(callee.getFunctionType().getResults());
+      }]>,
+      OpBuilder<(ins "SymbolRefAttr":$callee, "TypeRange":$results,
+        CArg<"ValueRange", "{}">:$operands), [{
+        $_state.addOperands(operands);
+        $_state.addAttribute("callee", callee);
+        $_state.addTypes(results);
+      }]>,
+      OpBuilder<(ins "StringAttr":$callee, "TypeRange":$results,
+        CArg<"ValueRange", "{}">:$operands), [{
+        build($_builder, $_state, SymbolRefAttr::get(callee), results, operands);
+      }]>,
+      OpBuilder<(ins "StringRef":$callee, "TypeRange":$results,
+        CArg<"ValueRange", "{}">:$operands), [{
+        build($_builder, $_state, StringAttr::get($_builder.getContext(), callee),
+              results, operands);
+      }]>];
+
+    let extraClassDeclaration = [{
+      FunctionType getCalleeType();
+
+      /// Get the argument operands to the called function.
+      operand_range getArgOperands() {
+        return {arg_operand_begin(), arg_operand_end()};
+      }
+
+      MutableOperandRange getArgOperandsMutable() {
+        return getOperandsMutable();
+      }
+
+      operand_iterator arg_operand_begin() { return operand_begin(); }
+      operand_iterator arg_operand_end() { return operand_end(); }
+
+      /// Return the callee of this operation.
+      CallInterfaceCallable getCallableForCallee() {
+        return (*this)->getAttrOfType<SymbolRefAttr>("callee");
+      }
+
+      /// Set the callee for this operation.
+      void setCalleeFromCallable(CallInterfaceCallable callee) {
+        (*this)->setAttr("callee", callee.get<SymbolRefAttr>());
+      }
+    }];
+
+    let assemblyFormat = [{
+      $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
+    }];
 }
 
 ///////////////////////////////////////////////////////////////////////////
