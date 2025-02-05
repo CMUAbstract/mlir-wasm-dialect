@@ -106,10 +106,6 @@ private:
   int traverseTree(int index, vector<Operation *> &ops,
                    UseCountAnalysis &useCount) {
     Operation *currentOp = ops[index];
-    llvm::dbgs() << "Index: " << index << "\n";
-    llvm::dbgs() << "Current operation: ";
-    currentOp->print(llvm::dbgs());
-    llvm::dbgs() << "\n";
     if (currentOp->getNumOperands() == 0) {
       return index - 1;
     }
@@ -121,15 +117,12 @@ private:
       Operation *definingOp = operand.getDefiningOp();
       if (!definingOp) {
         assert(isa<BlockArgument>(operand) && "Expected a block argument");
-        llvm::dbgs() << "Block argument\n";
       } else if (useCount.getUseCount(definingOp) == 1 && newIndex >= 0 &&
                  ops[newIndex] == definingOp) {
         // This is a value defined by an operation that is used only once
         // and the operation is the previous operation in the block.
-        llvm::dbgs() << "Single use operation\n";
         newIndex--;
       } else {
-        llvm::dbgs() << "Local required operation\n";
         // We should introduce a local for this operation.
         if (std::find(localRequiredOps.begin(), localRequiredOps.end(),
                       definingOp) == localRequiredOps.end()) {
@@ -160,9 +153,6 @@ struct IntroduceLocalPattern : public RewritePattern {
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
-    llvm::dbgs() << "Rewrite operation\n";
-    op->dump();
-
     rewriter.setInsertionPointAfter(op);
     auto localOp = rewriter.create<LocalOp>(op->getLoc(), op->getResult(0));
     // we assume that the op has one operand
@@ -182,11 +172,6 @@ public:
     auto module = getOperation();
     MLIRContext *context = module.getContext();
     IntroduceLocalAnalysis introduceLocal(module);
-
-    for (auto op : introduceLocal.getLocalRequiredOps()) {
-      llvm::dbgs() << "Local required operation\n";
-      op->dump();
-    }
 
     // introduce locals
     RewritePatternSet patterns(context);
@@ -348,8 +333,6 @@ private:
                       LocalIndexAnalysis &localIndexAnalysis,
                       IRRewriter &rewriter) {
     Operation *currentOp = ops[index];
-    llvm::dbgs() << "Stackifying operation\n";
-    currentOp->dump();
     index--;
 
     Operation *newOp =
@@ -372,21 +355,16 @@ private:
       Operation *definingOp = operand.getDefiningOp();
       if (!definingOp) {
         assert(isa<BlockArgument>(operand) && "Expected a block argument");
-        llvm::dbgs() << "Block argument. creating localget\n";
         int localIndex = localIndexAnalysis.getLocalIndex(funcOp, operand);
         rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
                                           rewriter.getIndexAttr(localIndex));
 
       } else if (isa<LocalOp>(definingOp)) {
-        definingOp->dump();
-        llvm::dbgs() << "Local operation. creating localget\n";
         int localIndex =
             localIndexAnalysis.getLocalIndex(funcOp, definingOp->getResult(0));
         rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
                                           rewriter.getIndexAttr(localIndex));
       } else {
-        definingOp->dump();
-        llvm::dbgs() << "stackify success\n";
         Operation *newOp = stackify(funcOp, index, ops, useCountAnalysis,
                                     localIndexAnalysis, rewriter);
         rewriter.setInsertionPoint(newOp);
