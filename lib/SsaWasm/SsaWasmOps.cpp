@@ -54,7 +54,7 @@ FunctionType CallOp::getCalleeType() {
 }
 
 void LoadOp::print(OpAsmPrinter &p) {
-  p << "ssawasm.load ";
+  p << " ";
   p.printOperand(getAddr());
 }
 
@@ -76,7 +76,7 @@ ParseResult LoadOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 void StoreOp::print(OpAsmPrinter &p) {
-  p << "ssawasm.store ";
+  p << " ";
   p.printOperand(getAddr());
   p << ", ";
   p.printOperand(getValue());
