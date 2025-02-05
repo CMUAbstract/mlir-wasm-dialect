@@ -16,6 +16,18 @@ struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
   }
 };
 
+struct AddFOpLowering : public OpConversionPattern<arith::AddFOp> {
+  using OpConversionPattern<arith::AddFOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::AddFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType = getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<AddOp>(op, resultType, adaptor.getLhs(),
+                                       adaptor.getRhs());
+    return success();
+  }
+};
+
 struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
   LogicalResult
@@ -30,6 +42,7 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                                     RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns.add<AddIOpLowering, ConstantOpLowering>(typeConverter, context);
+  patterns.add<AddIOpLowering, AddFOpLowering, ConstantOpLowering>(
+      typeConverter, context);
 }
 } // namespace mlir::ssawasm

@@ -100,7 +100,7 @@ def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure]> {
   let results = (outs SsaWasm_WasmNumericLike:$result);
 
   // FIXME: Make this pretty
-  let assemblyFormat = "$value type($result) attr-dict";
+  let assemblyFormat = "$value `:` type($result) attr-dict";
 
   let builders = [
     OpBuilder<(ins "mlir::TypedAttr":$value), [{
