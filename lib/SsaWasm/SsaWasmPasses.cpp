@@ -224,22 +224,32 @@ private:
   DenseMap<FuncOp, DenseMap<Value, int>> localIndex;
 };
 
+Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
+  if (isa<WasmIntegerType>(type)) {
+    auto bitWidth = cast<WasmIntegerType>(type).getBitWidth();
+    return IntegerType::get(ctx, bitWidth);
+  } else if (isa<WasmFloatType>(type)) {
+    auto bitWidth = cast<WasmFloatType>(type).getBitWidth();
+    if (bitWidth == 32) {
+      return FloatType::getF32(ctx);
+    } else if (bitWidth == 64) {
+      return FloatType::getF64(ctx);
+    } else {
+      assert(false && "Unsupported float type");
+    }
+  } else {
+    assert(false && "Unsupported type");
+  }
+}
+
 class StackifyTypeConverter : public TypeConverter {
 public:
   StackifyTypeConverter(MLIRContext *ctx) {
     addConversion([ctx](WasmIntegerType type) -> Type {
-      auto bitWidth = type.getBitWidth();
-      return wasm::LocalType::get(ctx, IntegerType::get(ctx, bitWidth));
+      return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
     });
     addConversion([ctx](WasmFloatType type) -> Type {
-      auto bitWidth = type.getBitWidth();
-      if (bitWidth == 32) {
-        return wasm::LocalType::get(ctx, FloatType::getF32(ctx));
-      } else if (bitWidth == 64) {
-        return wasm::LocalType::get(ctx, FloatType::getF64(ctx));
-      } else {
-        assert(false && "Unsupported float type");
-      }
+      return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
     });
   }
 };
@@ -391,7 +401,8 @@ private:
     Operation *newOp;
     rewriter.setInsertionPoint(op);
     if (isa<AddOp>(op)) {
-      TypeAttr typeAttr = TypeAttr::get(op->getResult(0).getType());
+      TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
+          op->getResult(0).getType(), op->getContext()));
       newOp = rewriter.create<wasm::AddOp>(op->getLoc(), typeAttr);
     } else if (isa<ConstantOp>(op)) {
       newOp = rewriter.create<wasm::ConstantOp>(
