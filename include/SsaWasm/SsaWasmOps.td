@@ -105,7 +105,7 @@ def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure]> {
   let builders = [
     OpBuilder<(ins "mlir::TypedAttr":$value), [{
       auto type = value.getType();
-      if (type.isInteger(32)) {
+      if (type.isInteger(32) || type.isIndex()) {
         build($_builder, $_state, WasmIntegerType::get($_builder.getContext(), 32), value);
       } else if (type.isInteger(64)) {
         build($_builder, $_state, WasmIntegerType::get($_builder.getContext(), 64), value);

@@ -15,6 +15,9 @@ public:
     addConversion([ctx](MemRefType type) -> Type {
       return WasmMemRefType::get(ctx, type);
     });
+    addConversion([ctx](IndexType type) -> Type {
+      return WasmIntegerType::get(ctx, 32);
+    });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) -> Value {
