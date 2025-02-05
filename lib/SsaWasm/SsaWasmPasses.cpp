@@ -302,6 +302,18 @@ private:
     rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
                                 newFuncOp.end());
 
+    // create locals for the function arguments
+    Block &entryBlock = newFuncOp.getBody().front();
+    rewriter.setInsertionPointToStart(&entryBlock);
+    vector<Attribute> typesAttr;
+    for (auto inputType : newFuncType.getInputs()) {
+      typesAttr.push_back(
+          TypeAttr::get(cast<wasm::LocalType>(inputType).getInner()));
+    }
+    ArrayRef<Attribute> types(typesAttr);
+    rewriter.create<wasm::LocalOp>(funcOp.getLoc(),
+                                   rewriter.getArrayAttr(types));
+
     for (const auto &namedAttr : funcOp->getAttrs()) {
       if (namedAttr.getName() != funcOp.getFunctionTypeAttrName() &&
           namedAttr.getName() != SymbolTable::getSymbolAttrName())
