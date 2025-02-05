@@ -1,4 +1,5 @@
 #include "SsaWasm/ConversionPatterns/MemRefToSsaWasm.h"
+#include "Wasm/utility.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 
 namespace mlir::ssawasm {
@@ -49,7 +50,20 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
   LogicalResult
   matchAndRewrite(memref::AllocOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO
+    Location loc = op.getLoc();
+    MemRefType memRefType = op.getType();
+    int64_t alignment = 1;
+    auto alignmentAttr = adaptor.getAlignment();
+    if (alignmentAttr.has_value()) {
+      alignment = alignmentAttr.value();
+    }
+    int64_t size = wasm::memRefSize(memRefType, alignment);
+    auto constantOp =
+        rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(size));
+    rewriter.replaceOpWithNewOp<CallOp>(
+        op, "malloc",
+        TypeRange{WasmIntegerType::get(rewriter.getContext(), 32)},
+        ValueRange{constantOp.getResult()});
     return success();
   }
 };
@@ -59,7 +73,9 @@ struct DeallocOpLowering : public OpConversionPattern<memref::DeallocOp> {
   LogicalResult
   matchAndRewrite(memref::DeallocOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO
+    rewriter.replaceOpWithNewOp<CallOp>(
+        op, "free", WasmIntegerType::get(rewriter.getContext(), 32),
+        adaptor.getMemref());
     return success();
   }
 };
