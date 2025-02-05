@@ -248,7 +248,7 @@ def MemRefTypeAttr
 def SsaWasm_GlobalOp : SsaWasm_Op<"global", [Symbol]> {
    let arguments = (ins SymbolNameAttr:$sym_name,
                        MemRefTypeAttr:$type,
-                       StrAttr:$initial_value,
+                       AnyAttr:$initial_value,
                        UnitAttr:$constant,
                        I32Attr:$base_addr);
 
