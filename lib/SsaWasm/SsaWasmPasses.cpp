@@ -41,7 +41,6 @@ public:
     target.addIllegalDialect<arith::ArithDialect>();
     target.addIllegalDialect<func::FuncDialect>();
     target.addIllegalDialect<memref::MemRefDialect>();
-    target.addIllegalDialect<scf::SCFDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
@@ -49,9 +48,21 @@ public:
     populateArithToSsaWasmPatterns(typeConverter, patterns);
     populateFuncToSsaWasmPatterns(typeConverter, patterns);
     populateMemRefToSsaWasmPatterns(typeConverter, patterns);
-    populateScfToSsaWasmPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+
+    // we need to apply scf conversion separately because calling
+    // `replaceAllUsesWith()` on induction variable will cause the conversion to
+    // fail with the error message "Assertion failed: (!impl->wasOpReplaced(op)
+    // && "attempting to modify a replaced/erased op")"
+    RewritePatternSet nextPatterns(context);
+    target.addIllegalDialect<scf::SCFDialect>();
+    populateScfToSsaWasmPatterns(typeConverter, nextPatterns);
+
+    if (failed(
+            applyPartialConversion(module, target, std::move(nextPatterns)))) {
       signalPassFailure();
     }
   }
