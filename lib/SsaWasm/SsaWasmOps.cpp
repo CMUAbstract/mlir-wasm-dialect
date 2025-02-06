@@ -103,6 +103,22 @@ ParseResult StoreOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
+// BlockLoopOp
+std::tuple<Block *, Block *, Block *>
+BlockLoopOp::initialize(OpBuilder &builder) {
+  Block *entryBlock = builder.createBlock(&getRegion());
+  Block *loopStartLabel = builder.createBlock(&getRegion());
+  Block *blockEndLabel = builder.createBlock(&getRegion());
+
+  builder.setInsertionPointToEnd(entryBlock);
+  builder.create<TempBranchOp>(getLoc(), loopStartLabel);
+
+  builder.setInsertionPointToEnd(blockEndLabel);
+  builder.create<BlockLoopTerminatorOp>(getLoc());
+
+  return std::make_tuple(entryBlock, loopStartLabel, blockEndLabel);
+}
+
 // for SsaWasm::GlobalOp
 // copied from mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
 

@@ -84,6 +84,13 @@ def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul"> {
   }];
 }
 
+def SsaWasm_IleUOp : SsaWasm_WasmNumericBinaryOp<"ileu"> {
+  let summary = "SSA-based integer less than or equal to unsigned operation";
+  let description = [{
+    Compares two operands explicitly and yields the result of the comparison.
+  }];
+}
+
 /////////////////////////////////////////////////////////////////////////// 
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
@@ -313,6 +320,58 @@ def SsaWasm_LocalOp : SsaWasm_Op<"local", [Pure, SameOperandsAndResultType]> {
     let results = (outs SsaWasm_WasmNumericLike:$result);
 
     let assemblyFormat = "attr-dict $value `:` type($result)";
+}
+
+// TODO: Enforce that local and value have the same type
+def SsaWasm_LocalSetOp : SsaWasm_Op<"local_set"> {
+  let summary = "local variable set operation";
+  let description = [{
+    This operation sets the value of a local variable.
+    The definingOp of `local` must be LocalOp.
+  }];
+  // TODO: Type-level enforcement of the above constraint
+  let arguments = (ins SsaWasm_WasmNumericLike:$local, SsaWasm_WasmNumericLike:$value);
+  let assemblyFormat = "$local `,` $value `:` type($local) `->` type($value) attr-dict";
+}
+
+def SsaWasm_BlockLoopOp : SsaWasm_Op<"blockloop"> {
+  let description = [{
+    This is a temporary operation used to model 
+    a loop inside a block.
+  }];
+  let regions = (region AnyRegion:$body);
+  let extraClassDeclaration = [{
+    // TODO: Convert this to a builder
+    std::tuple<Block *, Block *, Block *> initialize(OpBuilder &builder);
+  }];
+}
+
+
+def SsaWasm_BlockLoopTerminatorOp : SsaWasm_Op<"blockloop.terminator", [Terminator]> {
+  let description = [{
+    This is a temporary operation to be put at the exit block of a BlockLoopOp.
+  }];
+}
+
+def SsaWasm_BlockLoopBranchOp : SsaWasm_Op<"blockloop.br", 
+  [Terminator, HasParent<"BlockLoopOp">]> {
+  let successors = (successor AnySuccessor:$dest);
+}
+
+def SsaWasm_BlockLoopCondBranchOp : SsaWasm_Op<"blockloop.cond_br", 
+  [Terminator, HasParent<"BlockLoopOp">]> {
+  let arguments = (ins SsaWasm_WasmIntegerType:$condition);
+  let successors = (successor AnySuccessor:$dest, AnySuccessor:$falseDest);
+}
+
+def SsaWasm_TempBranchOp : SsaWasm_Op<"temp_branch", [Terminator]> {
+  let description = [{
+    This is a temporary operation used to model branch within a BlockOp or
+    LoopOp.
+    Must branch to the next block in the region.
+    Should be removed when lowering to Wasm.
+  }];
+  let successors = (successor AnySuccessor:$dest);
 }
 
 #endif // SSAWASM_OPS
