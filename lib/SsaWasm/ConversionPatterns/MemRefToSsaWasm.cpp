@@ -111,7 +111,15 @@ struct StoreOpLowering : public OpConversionPattern<memref::StoreOp> {
   LogicalResult
   matchAndRewrite(memref::StoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO
+    auto [result, pointer] = generatePointerComputation(
+        op, adaptor.getMemref(), op.getMemRefType(), adaptor.getIndices(),
+        typeConverter, rewriter);
+
+    if (failed(result)) {
+      return result;
+    }
+
+    rewriter.replaceOpWithNewOp<StoreOp>(op, pointer, adaptor.getValue());
     return success();
   }
 };
