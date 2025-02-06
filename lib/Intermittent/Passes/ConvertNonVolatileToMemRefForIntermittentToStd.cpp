@@ -88,7 +88,6 @@ struct ConvertNonVolatileToMemRefForIntermittentToStd
     });
 
     llvm::dbgs() << "Removed all NonVolatileNewOps\n";
-    moduleOp.dump();
     moduleOp.walk([&](NonVolatileNewOp newOp) { newOp->erase(); });
   }
 };

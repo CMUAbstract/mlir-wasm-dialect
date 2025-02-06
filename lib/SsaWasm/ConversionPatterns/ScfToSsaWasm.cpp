@@ -67,7 +67,6 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.inlineRegionBefore(op.getRegion(), inductionVariableUpdateBlock);
 
     // NOTE: bodyStartBlock and bodyEndBlock may be the same
-    bodyStartBlock->dump();
     auto bodyArgs = bodyStartBlock->getArguments();
 
     // create locals for iteration variables before the BlockLoopOp:w
