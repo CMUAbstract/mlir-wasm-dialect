@@ -4,29 +4,29 @@
 namespace mlir::ssawasm {
 
 namespace {
-struct AddIOpLowering : public OpConversionPattern<arith::AddIOp> {
-  using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
+template <typename SrcOp, typename TgtOp>
+struct NumericBinaryOpLowering : public OpConversionPattern<SrcOp> {
+  using OpConversionPattern<SrcOp>::OpConversionPattern;
+
   LogicalResult
-  matchAndRewrite(arith::AddIOp op, OpAdaptor adaptor,
+  matchAndRewrite(SrcOp op, typename SrcOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto resultType = getTypeConverter()->convertType(op.getResult().getType());
-    rewriter.replaceOpWithNewOp<AddOp>(op, resultType, adaptor.getLhs(),
+    // Convert the result type
+    auto resultType =
+        this->getTypeConverter()->convertType(op.getResult().getType());
+    // Replace old op with the new AddOp from your target dialect
+    rewriter.replaceOpWithNewOp<TgtOp>(op, resultType, adaptor.getLhs(),
                                        adaptor.getRhs());
     return success();
   }
 };
 
-struct AddFOpLowering : public OpConversionPattern<arith::AddFOp> {
-  using OpConversionPattern<arith::AddFOp>::OpConversionPattern;
-  LogicalResult
-  matchAndRewrite(arith::AddFOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    auto resultType = getTypeConverter()->convertType(op.getResult().getType());
-    rewriter.replaceOpWithNewOp<AddOp>(op, resultType, adaptor.getLhs(),
-                                       adaptor.getRhs());
-    return success();
-  }
-};
+using AddIOpLowering = NumericBinaryOpLowering<arith::AddIOp, AddOp>;
+using AddFOpLowering = NumericBinaryOpLowering<arith::AddFOp, AddOp>;
+using SubIOpLowering = NumericBinaryOpLowering<arith::SubIOp, SubOp>;
+using SubFOpLowering = NumericBinaryOpLowering<arith::SubFOp, SubOp>;
+using MulIOpLowering = NumericBinaryOpLowering<arith::MulIOp, MulOp>;
+using MulFOpLowering = NumericBinaryOpLowering<arith::MulFOp, MulOp>;
 
 struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
@@ -42,7 +42,8 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                                     RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns.add<AddIOpLowering, AddFOpLowering, ConstantOpLowering>(
+  patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+               MulIOpLowering, MulFOpLowering, ConstantOpLowering>(
       typeConverter, context);
 }
 } // namespace mlir::ssawasm
