@@ -460,43 +460,45 @@ def Wasm_Unreachable : Wasm_Op<"unreachable", []> {
 
 // control flow instructions
 
-def Wasm_BlockLoopOp : Wasm_Op<"blockloop"> {
+def Wasm_BlockOp : Wasm_Op<"block"> {
   let description = [{
-    This is a temporary operation used to model 
-    a loop inside a block.
+    A block operation.
+  }];
+  let arguments = (ins SymbolNameAttr:$name);
+  let regions = (region AnyRegion:$body);
+}
+
+def Wasm_BlockEndOp : Wasm_Op<"block.end", [Terminator, HasParent<"BlockOp">]> {
+  let description = [{
+    A block end operation.
+  }];
+}
+
+def Wasm_LoopOp : Wasm_Op<"loop"> {
+  let description = [{
+    A loop operation.
   }];
   let regions = (region AnyRegion:$body);
-  let extraClassDeclaration = [{
-    // TODO: Convert this to a builder
-    std::tuple<Block *, Block *, Block *> initialize(OpBuilder &builder);
-  }];
 }
 
-
-def Wasm_BlockLoopTerminatorOp : Wasm_Op<"blockloop.terminator", [Terminator]> {
+def Wasm_LoopEndOp : Wasm_Op<"loop.end", [Terminator, HasParent<"LoopOp">]> {
   let description = [{
-    This is a temporary operation to be put at the exit block of a BlockLoopOp.
+    A loop end operation.
   }];
 }
 
-def Wasm_BlockLoopBranchOp : Wasm_Op<"blockloop.br", 
-  [Terminator, HasParent<"BlockLoopOp">]> {
-  let successors = (successor AnySuccessor:$dest);
-}
-
-def Wasm_BlockLoopCondBranchOp : Wasm_Op<"blockloop.cond_br", 
-  [Terminator, HasParent<"BlockLoopOp">]> {
-  let successors = (successor AnySuccessor:$dest, AnySuccessor:$falseDest);
-}
-
-def Wasm_TempBranchOp : Wasm_Op<"temp_branch", [Terminator]> {
+def Wasm_BranchOp : Wasm_Op<"br", [HasParent<"BlockOp">]> {
   let description = [{
-    This is a temporary operation used to model branch within a BlockOp or
-    LoopOp.
-    Must branch to the next block in the region.
-    Should be removed when lowering to Wasm.
+    A branch operation.
   }];
-  let successors = (successor AnySuccessor:$dest);
+  let arguments = (ins FlatSymbolRefAttr:$name);
+}
+
+def Wasm_CondBranchOp : Wasm_Op<"cond_br", [HasParent<"BlockOp">]> {
+  let description = [{
+    A conditional branch operation.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$name);
 }
 
 
@@ -525,7 +527,7 @@ def Wasm_BlockLoopEndOpDeprecated: Wasm_Op<"blockloop_end_deprecated", [Terminat
     // TODO: HasParent<BlockLoopOp>
 }
 
-def Wasm_LoopOp: Wasm_Op<"loop"> {
+def Wasm_LoopOpDeprecated: Wasm_Op<"loop_deprecated"> {
     let description = [{
         The `loop` operation is used to represent a loop.
         Since MLIR does not allow region entry blocks to have predecessors,
@@ -547,7 +549,7 @@ def Wasm_LoopOp: Wasm_Op<"loop"> {
     }];
 }
 
-def Wasm_LoopEndOp: Wasm_Op<"loop_end", [Terminator, HasParent<"LoopOp">]> {
+def Wasm_LoopEndOpDeprecated: Wasm_Op<"loop_end_deprecated", [Terminator, HasParent<"LoopOpDeprecated">]> {
     let summary = "Loop end operation";
     let description = [{
         The `loop_end` operation is used to indicate the end of a loop.
@@ -556,11 +558,11 @@ def Wasm_LoopEndOp: Wasm_Op<"loop_end", [Terminator, HasParent<"LoopOp">]> {
     }];
 }
 
-def Wasm_BranchOp: Wasm_Op<"br", [Terminator]> {
+def Wasm_BranchOpDeprecated: Wasm_Op<"br_deprecated", [Terminator]> {
     let successors = (successor AnySuccessor:$dest);
 }
 
-def Wasm_CondBranchOp: Wasm_Op<"cond_br", [Terminator]> {
+def Wasm_CondBranchOpDeprecated: Wasm_Op<"cond_br_deprecated", [Terminator]> {
     let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
 }
 

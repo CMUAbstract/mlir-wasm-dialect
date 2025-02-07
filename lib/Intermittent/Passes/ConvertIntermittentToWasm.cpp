@@ -104,7 +104,7 @@ int getTaskIndexBySymbolName(ModuleOp module, StringRef symName) {
 }
 
 void convertTransitionToOp(MLIRContext *context, TransitionToOp transitionToOp,
-                           wasm::LoopOp loopOp, Value contLocal,
+                           wasm::LoopOpDeprecated loopOp, Value contLocal,
                            ConversionPatternRewriter &rewriter) {
   rewriter.setInsertionPoint(transitionToOp);
   Location loc = transitionToOp.getLoc();
@@ -161,7 +161,7 @@ void convertTransitionToOp(MLIRContext *context, TransitionToOp transitionToOp,
   // stack. save it
   rewriter.create<wasm::TempLocalSetOp>(loc, contLocal);
   // jump to the beginning of the loop
-  rewriter.create<wasm::BranchOp>(loc, loopOp.getMainBlock());
+  rewriter.create<wasm::BranchOpDeprecated>(loc, loopOp.getMainBlock());
 }
 
 struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
@@ -196,7 +196,7 @@ struct IdempotentTaskOpLowering : public OpConversionPattern<IdempotentTaskOp> {
 
     // Create an enclosing loop
     auto loopName = taskOp.getSymName().str() + "_loop";
-    auto loopOp = rewriter.create<wasm::LoopOp>(loc, loopName);
+    auto loopOp = rewriter.create<wasm::LoopOpDeprecated>(loc, loopName);
     loopOp.initialize(rewriter);
 
     // Inline the original task body into the loop's region
