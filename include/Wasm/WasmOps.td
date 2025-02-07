@@ -478,6 +478,7 @@ def Wasm_LoopOp : Wasm_Op<"loop"> {
   let description = [{
     A loop operation.
   }];
+  let arguments = (ins SymbolNameAttr:$name);
   let regions = (region AnyRegion:$body);
 }
 
@@ -487,14 +488,14 @@ def Wasm_LoopEndOp : Wasm_Op<"loop.end", [Terminator, HasParent<"LoopOp">]> {
   }];
 }
 
-def Wasm_BranchOp : Wasm_Op<"br", [HasParent<"BlockOp">]> {
+def Wasm_BranchOp : Wasm_Op<"br", [ParentOneOf<["BlockOp", "LoopOp"]>]> {
   let description = [{
     A branch operation.
   }];
   let arguments = (ins FlatSymbolRefAttr:$name);
 }
 
-def Wasm_CondBranchOp : Wasm_Op<"cond_br", [HasParent<"BlockOp">]> {
+def Wasm_CondBranchOp : Wasm_Op<"cond_br", [ParentOneOf<["BlockOp", "LoopOp"]>]> {
   let description = [{
     A conditional branch operation.
   }];
