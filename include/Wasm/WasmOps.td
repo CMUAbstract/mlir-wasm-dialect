@@ -502,7 +502,6 @@ def Wasm_CondBranchOp : Wasm_Op<"cond_br", [HasParent<"BlockOp">]> {
 }
 
 
-
 def Wasm_BlockLoopOpDeprecated: Wasm_Op<"blockloop_deprecated"> {
     let summary = "Wasm dialect-only operation to represent loop inside block";
     let description = [{
