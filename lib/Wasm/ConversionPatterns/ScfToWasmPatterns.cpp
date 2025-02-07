@@ -116,7 +116,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
       rewriter.replaceAllUsesWith(bodyArgs[i + 1], castedLocal);
     }
 
-    rewriter.create<BranchOp>(loc, conditionBlock);
+    rewriter.create<BranchOpDeprecated>(loc, conditionBlock);
 
     // Body end block: update iteration variables and branch to
     // inductionVariableUpdateBlock
@@ -136,7 +136,8 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
       rewriter.eraseOp(yieldOp);
     }
 
-    rewriter.create<wasm::BranchOp>(loc, inductionVariableUpdateBlock);
+    rewriter.create<wasm::BranchOpDeprecated>(loc,
+                                              inductionVariableUpdateBlock);
 
     // Condition block
     rewriter.setInsertionPointToEnd(conditionBlock);
@@ -148,7 +149,8 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     // check if upper bound <= induction variable
     // if true, branch to termination block
     rewriter.create<wasm::ILeUOp>(loc, indexType);
-    rewriter.create<wasm::CondBranchOp>(loc, terminationBlock, bodyStartBlock);
+    rewriter.create<wasm::CondBranchOpDeprecated>(loc, terminationBlock,
+                                                  bodyStartBlock);
 
     // Induction variable update block
     rewriter.setInsertionPointToEnd(inductionVariableUpdateBlock);
@@ -159,7 +161,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.create<wasm::AddOp>(loc, indexType);
     rewriter.create<wasm::TempLocalSetOp>(loc, inductionLocal);
 
-    rewriter.create<wasm::BranchOp>(loc, conditionBlock);
+    rewriter.create<wasm::BranchOpDeprecated>(loc, conditionBlock);
 
     // Termination block: read final values of iteration variables
     rewriter.setInsertionPointToEnd(terminationBlock);

@@ -178,27 +178,28 @@ void TempGlobalIndexOp::print(OpAsmPrinter &p) {
   p << " : " << getGlobal().getType().getInner();
 }
 
-void LoopOp::initialize(OpBuilder &builder) {
+void LoopOpDeprecated::initialize(OpBuilder &builder) {
   Region &body = getBody();
   auto *entryBlock = builder.createBlock(&body);
   auto *mainBlock = builder.createBlock(&body);
 
   auto ip = builder.saveInsertionPoint();
   builder.setInsertionPointToStart(entryBlock);
-  builder.create<BranchOp>(getLoc(), mainBlock);
+  builder.create<BranchOpDeprecated>(getLoc(), mainBlock);
   builder.restoreInsertionPoint(ip);
 }
-Block *LoopOp::getEntryBlock() { return &getRegion().front(); }
+Block *LoopOpDeprecated::getEntryBlock() { return &getRegion().front(); }
 
-Block *LoopOp::getMainBlock() {
+Block *LoopOpDeprecated::getMainBlock() {
   Region &region = getRegion();
   auto it = region.begin();
   ++it; // Skip the entry block.
   return &*it;
 }
 
-llvm::LogicalResult LoopOp::inlineRegionToMainBlock(Region &sourceRegion,
-                                                    PatternRewriter &rewriter) {
+llvm::LogicalResult
+LoopOpDeprecated::inlineRegionToMainBlock(Region &sourceRegion,
+                                          PatternRewriter &rewriter) {
   // Ensure the source region has exactly one block for simplicity.
   if (sourceRegion.getBlocks().size() != 1) {
     return emitOpError(

@@ -215,12 +215,12 @@ llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
     output << "\n";
   }
 
-  if (!isa<BranchOp>(preheaderOpEnd)) {
+  if (!isa<BranchOpDeprecated>(preheaderOpEnd)) {
     loopOp.emitError(
         "the last operation in the preheader block should be a branch");
     return failure();
   }
-  auto preheaderBranchOp = cast<BranchOp>(preheaderOpEnd);
+  auto preheaderBranchOp = cast<BranchOpDeprecated>(preheaderOpEnd);
   if (preheaderBranchOp.getSuccessor() != conditionBlock) {
     loopOp.emitError("preheader block should have exactly one operation which "
                      "is a branch to the condition block");
@@ -248,7 +248,7 @@ llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
     output << "\n";
   }
   Operation *lastConditionOp = &*conditionOpEnd;
-  if (!isa<CondBranchOp>(lastConditionOp)) {
+  if (!isa<CondBranchOpDeprecated>(lastConditionOp)) {
     loopOp.emitError(
         "Last operation in condition block should be a CondBranchOp");
     return failure();
@@ -270,8 +270,9 @@ llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
     output << "\n";
   }
   Operation *lastBodyBlockOp = &*bodyBlockOpEnd;
-  if (!isa<BranchOp>(lastBodyBlockOp)) {
-    loopOp.emitError("Last operation in body block should be a BranchOp");
+  if (!isa<BranchOpDeprecated>(lastBodyBlockOp)) {
+    loopOp.emitError(
+        "Last operation in body block should be a BranchOpDeprecated");
     return failure();
   }
   // we don't need an explicit branch to the inductionVariableUpdateBlock
@@ -299,9 +300,9 @@ llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
 
   // Handle the last operation: Branch to condition block
   Operation *lastUpdateOp = &*updateOpEnd;
-  if (!isa<BranchOp>(lastUpdateOp)) {
+  if (!isa<BranchOpDeprecated>(lastUpdateOp)) {
     loopOp.emitError("Last operation in induction variable update block should "
-                     "be a BranchOp");
+                     "be a BranchOpDeprecated");
     return failure();
   }
   output << "br " << loopName << "\n";
@@ -325,7 +326,8 @@ llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
   return success();
 }
 
-LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
+LogicalResult translateLoopOpDeprecated(LoopOpDeprecated loopOp,
+                                        raw_ostream &output) {
   output << "(loop $" << loopOp.getName() << "\n";
   for (auto &block : loopOp.getBody()) {
     if (&block == loopOp.getEntryBlock()) {
@@ -345,10 +347,12 @@ LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
   return success();
 }
 
-LogicalResult translateBranchOp(BranchOp branchOp, raw_ostream &output) {
+LogicalResult translateBranchOpDeprecated(BranchOpDeprecated branchOp,
+                                          raw_ostream &output) {
   // For now, we assume that the branch destination is a LoopOp
   // TODO: Handle other types of destinations
-  auto loopOp = cast<LoopOp>(branchOp->getSuccessor(0)->getParentOp());
+  auto loopOp =
+      cast<LoopOpDeprecated>(branchOp->getSuccessor(0)->getParentOp());
 
   // loop name
   output << "(br $" << loopOp.getName() << ")";
@@ -432,10 +436,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFMaxOp(fMaxOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
     return translateReturnOp(returnOp, output);
-  } else if (auto loopOp = dyn_cast<LoopOp>(op)) {
-    return translateLoopOp(loopOp, output);
-  } else if (auto branchOp = dyn_cast<BranchOp>(op)) {
-    return translateBranchOp(branchOp, output);
+  } else if (auto loopOp = dyn_cast<LoopOpDeprecated>(op)) {
+    return translateLoopOpDeprecated(loopOp, output);
+  } else if (auto branchOp = dyn_cast<BranchOpDeprecated>(op)) {
+    return translateBranchOpDeprecated(branchOp, output);
   } else if (auto blockLoopOp = dyn_cast<BlockLoopOpDeprecated>(op)) {
     return translateBlockLoopOpDeprecated(blockLoopOp, output);
   } else if (auto globalGetOp = dyn_cast<GlobalGetOp>(op)) {
