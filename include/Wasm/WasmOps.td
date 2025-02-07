@@ -516,10 +516,6 @@ def Wasm_BlockLoopOpDeprecated: Wasm_Op<"blockloop_deprecated"> {
     }
     }];
     let regions = (region AnyRegion:$body);
-
-    let builders = [
-        OpBuilder<(ins)>,
-    ];
 }
 
 def Wasm_BlockLoopEndOpDeprecated: Wasm_Op<"blockloop_end_deprecated", [Terminator]> {

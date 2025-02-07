@@ -449,30 +449,8 @@ private:
     } else if (isa<ReturnOp>(op)) {
       newOp = rewriter.create<wasm::WasmReturnOp>(op->getLoc());
     } else if (isa<BlockLoopOp>(op)) {
-      BlockLoopOp blockLoopOp = cast<BlockLoopOp>(op);
+      // TODO
 
-      wasm::BlockOp newBlockOp =
-          rewriter.create<wasm::BlockOp>(blockLoopOp.getLoc(), "block_0");
-
-      // create loop op
-
-      // iterate over the body of blockloopop in topological order
-
-      // copy entry block of blockLoopOp to blockLoopOp, except TempBranchOp
-
-      // block end op should be created by the builder
-
-      // inline
-
-      rewriter.inlineRegionBefore(blockLoopOp.getBody(),
-                                  newBlockLoopOp.getBody(),
-                                  newBlockLoopOp.getBody().end());
-      // recursively stackify the body of the block loop
-      for (auto &block : newBlockLoopOp.getBody().getBlocks()) {
-        stackifyBlock(funcOp, &block, useCountAnalysis, localIndexAnalysis,
-                      rewriter);
-      }
-      newOp = newBlockLoopOp;
     } else if (isa<ILeUOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));

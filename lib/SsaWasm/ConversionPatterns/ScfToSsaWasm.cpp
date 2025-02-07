@@ -58,7 +58,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     Block *inductionVariableUpdateBlock =
         rewriter.createBlock(&blockLoopOp.getRegion());
 
-    assert(op.getRegion().getBlocks().size() == 1,
+    assert(op.getRegion().getBlocks().size() == 1 &&
            "Only support scf.for op with one block");
     Block *bodyBlock = &op.getRegion().front();
 
@@ -101,9 +101,9 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
 
     // Body End Block: update induction variable and branch to
     // inductionVariableUpdateBlock
-    rewriter.setInsertionPointToEnd(bodyEndBlock);
+    rewriter.setInsertionPointToEnd(bodyBlock);
     // get the old terminator
-    Operation *terminator = bodyEndBlock->getTerminator();
+    Operation *terminator = bodyBlock->getTerminator();
     rewriter.eraseOp(terminator);
     rewriter.create<TempBranchOp>(loc, inductionVariableUpdateBlock);
 
