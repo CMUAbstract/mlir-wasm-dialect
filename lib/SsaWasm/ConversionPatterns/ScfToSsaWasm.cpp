@@ -84,11 +84,6 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
             .create<UnrealizedConversionCastOp>(loc, rewriter.getI32Type(),
                                                 inductionLocal)
             .getResult(0);
-    castedInductionLocal.dump();
-
-    for (unsigned i = 0; i < iterationLocals.size(); ++i) {
-      iterationLocals[i].dump();
-    }
 
     // replace uses of iteration variables and induction variable with locals
     rewriter.replaceAllUsesWith(bodyArgs[0], castedInductionLocal);
@@ -99,7 +94,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     // Condition Block: evaluate loop condition
     rewriter.setInsertionPointToStart(conditionBlock);
     auto comparisonOp =
-        rewriter.create<IleUOp>(loc, upperBound, inductionLocal);
+        rewriter.create<ILeUOp>(loc, upperBound, inductionLocal);
 
     rewriter.create<BlockLoopCondBranchOp>(loc, comparisonOp.getResult(),
                                            blockEndLabel, bodyBlock);
