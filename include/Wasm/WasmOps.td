@@ -458,7 +458,48 @@ def Wasm_Unreachable : Wasm_Op<"unreachable", []> {
     }];
 }
 
-// TODO: control flow instructions
+// control flow instructions
+
+def Wasm_BlockLoopOp : Wasm_Op<"blockloop"> {
+  let description = [{
+    This is a temporary operation used to model 
+    a loop inside a block.
+  }];
+  let regions = (region AnyRegion:$body);
+  let extraClassDeclaration = [{
+    // TODO: Convert this to a builder
+    std::tuple<Block *, Block *, Block *> initialize(OpBuilder &builder);
+  }];
+}
+
+
+def Wasm_BlockLoopTerminatorOp : Wasm_Op<"blockloop.terminator", [Terminator]> {
+  let description = [{
+    This is a temporary operation to be put at the exit block of a BlockLoopOp.
+  }];
+}
+
+def Wasm_BlockLoopBranchOp : Wasm_Op<"blockloop.br", 
+  [Terminator, HasParent<"BlockLoopOp">]> {
+  let successors = (successor AnySuccessor:$dest);
+}
+
+def Wasm_BlockLoopCondBranchOp : Wasm_Op<"blockloop.cond_br", 
+  [Terminator, HasParent<"BlockLoopOp">]> {
+  let successors = (successor AnySuccessor:$dest, AnySuccessor:$falseDest);
+}
+
+def Wasm_TempBranchOp : Wasm_Op<"temp_branch", [Terminator]> {
+  let description = [{
+    This is a temporary operation used to model branch within a BlockOp or
+    LoopOp.
+    Must branch to the next block in the region.
+    Should be removed when lowering to Wasm.
+  }];
+  let successors = (successor AnySuccessor:$dest);
+}
+
+
 
 def Wasm_BlockLoopOpDeprecated: Wasm_Op<"blockloop_deprecated"> {
     let summary = "Wasm dialect-only operation to represent loop inside block";
