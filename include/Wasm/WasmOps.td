@@ -460,7 +460,7 @@ def Wasm_Unreachable : Wasm_Op<"unreachable", []> {
 
 // TODO: control flow instructions
 
-def Wasm_BlockLoopOp: Wasm_Op<"blockloop"> {
+def Wasm_BlockLoopOpDeprecated: Wasm_Op<"blockloop_deprecated"> {
     let summary = "Wasm dialect-only operation to represent loop inside block";
     let description = [{
     Since Wasm block has control flow semantics that is not supported by MLIR yet,
@@ -480,7 +480,7 @@ def Wasm_BlockLoopOp: Wasm_Op<"blockloop"> {
     ];
 }
 
-def Wasm_BlockLoopEndOp: Wasm_Op<"blockloop_end", [Terminator]> {
+def Wasm_BlockLoopEndOpDeprecated: Wasm_Op<"blockloop_end_deprecated", [Terminator]> {
     // TODO: HasParent<BlockLoopOp>
 }
 

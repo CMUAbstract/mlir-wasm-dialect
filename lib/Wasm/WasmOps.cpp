@@ -66,7 +66,7 @@ void TempLocalSetOp::print(OpAsmPrinter &p) {
   p << " : " << getLocal().getType().getInner();
 }
 
-void BlockLoopOp::build(OpBuilder &builder, OperationState &state) {
+void BlockLoopOpDeprecated::build(OpBuilder &builder, OperationState &state) {
   state.addRegion();
 }
 
