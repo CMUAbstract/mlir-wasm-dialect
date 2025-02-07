@@ -8,25 +8,22 @@ namespace mlir::ssawasm {
 // +----------------------------------------+
 // | entrypointBlock                        |
 // |   <initialize induction variable>      |
-// |   cf.br ^conditionBlock                |
+// |   br ^conditionBlock                   |
 // +----------------------------------------+
 //                 |
 //                 v
 // +----------------------------------------+
 // | conditionBlock                         |
 // |   <evaluate loop condition>            |
-// |   cond_br %cond, ^bodyStartBlock       |
+// |   cond_br %cond, ^exit                 |
 // +----------------------------------------+
 //         |
 //         | True
 //         v
 // +----------------------------------------+
-// | bodyStartBlock                         |
+// | bodyBlock                              |
 // |   <loop body begins>                   |
 // |                                        |
-// |   ... (possible intermediate blocks)   |
-// |                                        |
-// | bodyEndBlock                           |
 // |   <loop body ends>                     |
 // +----------------------------------------+
 //                 |
@@ -34,7 +31,7 @@ namespace mlir::ssawasm {
 // +----------------------------------------+
 // | inductionVariableUpdateBlock           |
 // |   <update induction variable>          |
-// |   cf.br ^conditionBlock                |
+// |   br ^conditionBlock                   |
 // +----------------------------------------+
 //                 |
 //                 v
@@ -61,13 +58,13 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     Block *inductionVariableUpdateBlock =
         rewriter.createBlock(&blockLoopOp.getRegion());
 
-    Block *bodyStartBlock = &op.getRegion().front();
-    Block *bodyEndBlock = &op.getRegion().back();
+    assert(op.getRegion().getBlocks().size() == 1,
+           "Only support scf.for op with one block");
+    Block *bodyBlock = &op.getRegion().front();
 
     rewriter.inlineRegionBefore(op.getRegion(), inductionVariableUpdateBlock);
 
-    // NOTE: bodyStartBlock and bodyEndBlock may be the same
-    auto bodyArgs = bodyStartBlock->getArguments();
+    auto bodyArgs = bodyBlock->getArguments();
 
     // create locals for iteration variables before the BlockLoopOp:w
     rewriter.setInsertionPoint(blockLoopOp);
@@ -105,7 +102,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
         rewriter.create<IleUOp>(loc, upperBound, inductionLocal);
 
     rewriter.create<BlockLoopCondBranchOp>(loc, comparisonOp.getResult(),
-                                           blockEndLabel, bodyStartBlock);
+                                           blockEndLabel, bodyBlock);
 
     // Body End Block: update induction variable and branch to
     // inductionVariableUpdateBlock
@@ -126,8 +123,8 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
 
     // Remove block args
     TypeConverter::SignatureConversion signatureConversion(
-        bodyStartBlock->getNumArguments());
-    rewriter.applySignatureConversion(bodyStartBlock, signatureConversion);
+        bodyBlock->getNumArguments());
+    rewriter.applySignatureConversion(bodyBlock, signatureConversion);
 
     return success();
   }

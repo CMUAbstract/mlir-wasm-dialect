@@ -180,8 +180,8 @@ std::string getUniqueLoopName() { return "$loop" + std::to_string(counter++); }
 // TODO: move this to header file?
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output);
 
-llvm::LogicalResult translateBlockLoopOp(BlockLoopOp loopOp,
-                                         raw_ostream &output) {
+llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
+                                                   raw_ostream &output) {
   // FIXME: This translation logic should be all handled by lowering passes
   // and this function should perform only trivial translation
 
@@ -313,8 +313,9 @@ llvm::LogicalResult translateBlockLoopOp(BlockLoopOp loopOp,
     return failure();
   }
   auto &terminationOp = *terminationBlock->getOperations().begin();
-  if (!isa<BlockLoopEndOp>(terminationOp)) { // Assuming BlockLoopEndOp
-                                             // represents loop termination
+  if (!isa<BlockLoopEndOpDeprecated>(
+          terminationOp)) { // Assuming BlockLoopEndOp
+                            // represents loop termination
     loopOp.emitError(
         "Termination block's operation should be a BlockLoopEndOp");
     return failure();
@@ -435,8 +436,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateLoopOp(loopOp, output);
   } else if (auto branchOp = dyn_cast<BranchOp>(op)) {
     return translateBranchOp(branchOp, output);
-  } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
-    return translateBlockLoopOp(blockLoopOp, output);
+  } else if (auto blockLoopOp = dyn_cast<BlockLoopOpDeprecated>(op)) {
+    return translateBlockLoopOpDeprecated(blockLoopOp, output);
   } else if (auto globalGetOp = dyn_cast<GlobalGetOp>(op)) {
     return translateGlobalGetOp(globalGetOp, output);
   } else if (auto globalSetOp = dyn_cast<GlobalSetOp>(op)) {
