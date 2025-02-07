@@ -109,6 +109,7 @@ public:
   }
 
 private:
+  // TODO: We have to analyze block recursively
   void analyzeBlock(Block *block, UseCountAnalysis &useCount) {
     vector<Operation *> ops;
     for (auto &op : *block) {
@@ -124,7 +125,13 @@ private:
   int traverseTree(int index, vector<Operation *> &ops,
                    UseCountAnalysis &useCount) {
     Operation *currentOp = ops[index];
+
+    // skip operations that do not have any operands
     if (currentOp->getNumOperands() == 0) {
+      return index - 1;
+    }
+    // skip local operations
+    if (isa<LocalOp>(currentOp)) {
       return index - 1;
     }
 
@@ -135,6 +142,10 @@ private:
       Operation *definingOp = operand.getDefiningOp();
       if (!definingOp) {
         assert(isa<BlockArgument>(operand) && "Expected a block argument");
+      } else if (isa<LocalOp>(definingOp)) {
+        // if the defining operation is already a local, we do not need to
+        // introduce a new local
+        newIndex--;
       } else if (useCount.getUseCount(definingOp) == 1 && newIndex >= 0 &&
                  ops[newIndex] == definingOp) {
         // This is a value defined by an operation that is used only once
@@ -344,6 +355,9 @@ private:
                      UseCountAnalysis &useCountAnalysis,
                      LocalIndexAnalysis &localIndexAnalysis,
                      IRRewriter &rewriter) {
+    llvm::dbgs() << "Stackifying block\n";
+    block->print(llvm::dbgs());
+
     vector<Operation *> ops;
     for (auto &op : *block) {
       ops.push_back(&op);
@@ -364,9 +378,10 @@ private:
                       IRRewriter &rewriter) {
     Operation *currentOp = ops[index];
     index--;
+    bool isCurrentOpLocalSet = isa<LocalSetOp>(currentOp);
 
-    Operation *newOp =
-        stackifyOperation(currentOp, localIndexAnalysis, rewriter);
+    Operation *newOp = stackifyOperation(currentOp, useCountAnalysis,
+                                         localIndexAnalysis, rewriter);
     rewriter.setInsertionPoint(newOp);
 
     if (isa<LocalOp>(currentOp)) {
@@ -390,10 +405,14 @@ private:
                                           rewriter.getIndexAttr(localIndex));
 
       } else if (isa<LocalOp>(definingOp)) {
-        int localIndex =
-            localIndexAnalysis.getLocalIndex(funcOp, definingOp->getResult(0));
-        rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
-                                          rewriter.getIndexAttr(localIndex));
+        if (!isCurrentOpLocalSet) {
+          // We don't need to "get" the local for local_set
+          // Do nothing
+          int localIndex = localIndexAnalysis.getLocalIndex(
+              funcOp, definingOp->getResult(0));
+          rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
+                                            rewriter.getIndexAttr(localIndex));
+        }
       } else {
         Operation *newOp = stackify(funcOp, index, ops, useCountAnalysis,
                                     localIndexAnalysis, rewriter);
@@ -404,10 +423,13 @@ private:
   }
 
   Operation *stackifyOperation(Operation *op,
+                               UseCountAnalysis &useCountAnalysis,
                                LocalIndexAnalysis &localIndexAnalysis,
                                IRRewriter &rewriter) {
     Operation *newOp;
+    FuncOp funcOp = op->getParentOfType<FuncOp>();
     rewriter.setInsertionPoint(op);
+    // TODO: Refactor this
     if (isa<AddOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));
@@ -416,13 +438,47 @@ private:
       newOp = rewriter.create<wasm::ConstantOp>(
           op->getLoc(), cast<ConstantOp>(op).getValue());
     } else if (isa<LocalOp>(op)) {
-      FuncOp funcOp = op->getParentOfType<FuncOp>();
       newOp = rewriter.create<wasm::LocalSetOp>(
           op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
                             funcOp, op->getResult(0))));
+    } else if (isa<LocalSetOp>(op)) {
+      LocalSetOp localSetOp = cast<LocalSetOp>(op);
+      newOp = rewriter.create<wasm::LocalSetOp>(
+          op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
+                            funcOp, localSetOp.getLocal())));
     } else if (isa<ReturnOp>(op)) {
       newOp = rewriter.create<wasm::WasmReturnOp>(op->getLoc());
+    } else if (isa<BlockLoopOp>(op)) {
+      BlockLoopOp blockLoopOp = cast<BlockLoopOp>(op);
+
+      wasm::BlockOp newBlockOp =
+          rewriter.create<wasm::BlockOp>(blockLoopOp.getLoc(), "block_0");
+
+      // create loop op
+
+      // iterate over the body of blockloopop in topological order
+
+      // copy entry block of blockLoopOp to blockLoopOp, except TempBranchOp
+
+      // block end op should be created by the builder
+
+      // inline
+
+      rewriter.inlineRegionBefore(blockLoopOp.getBody(),
+                                  newBlockLoopOp.getBody(),
+                                  newBlockLoopOp.getBody().end());
+      // recursively stackify the body of the block loop
+      for (auto &block : newBlockLoopOp.getBody().getBlocks()) {
+        stackifyBlock(funcOp, &block, useCountAnalysis, localIndexAnalysis,
+                      rewriter);
+      }
+      newOp = newBlockLoopOp;
+    } else if (isa<ILeUOp>(op)) {
+      TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
+          op->getResult(0).getType(), op->getContext()));
+      newOp = rewriter.create<wasm::ILeUOp>(op->getLoc(), typeAttr);
     } else {
+      llvm::errs() << "Unsupported operation: " << op->getName() << "\n";
       newOp = nullptr;
     }
     return newOp;
