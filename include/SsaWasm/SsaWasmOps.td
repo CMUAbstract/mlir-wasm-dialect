@@ -84,7 +84,7 @@ def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul"> {
   }];
 }
 
-def SsaWasm_IleUOp : SsaWasm_WasmNumericBinaryOp<"ileu"> {
+def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu"> {
   let summary = "SSA-based integer less than or equal to unsigned operation";
   let description = [{
     Compares two operands explicitly and yields the result of the comparison.
