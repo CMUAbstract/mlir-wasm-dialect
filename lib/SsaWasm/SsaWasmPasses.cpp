@@ -212,6 +212,7 @@ public:
 class LocalIndexAnalysis {
 public:
   LocalIndexAnalysis(ModuleOp module) {
+
     module.walk([&](FuncOp funcOp) {
       int index = 0;
       // each wasm function argument is treated as a local
@@ -220,13 +221,21 @@ public:
         index++;
       }
 
-      for (auto &block : funcOp.getBody().getBlocks()) {
-        for (auto &op : block) {
+      std::function<void(Block *)> traverse = [&](Block *block) {
+        for (auto &op : *block) {
           if (isa<LocalOp>(op)) {
             localIndex[funcOp][op.getResult(0)] = index;
             index++;
+          } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
+            for (auto &nestedBlock : blockLoopOp.getRegion()) {
+              traverse(&nestedBlock);
+            }
           }
         }
+      };
+
+      for (auto &block : funcOp.getBody().getBlocks()) {
+        traverse(&block);
       }
     });
   }
@@ -377,8 +386,15 @@ private:
                       LocalIndexAnalysis &localIndexAnalysis,
                       IRRewriter &rewriter) {
     Operation *currentOp = ops[index];
+
     index--;
     bool isCurrentOpLocalSet = isa<LocalSetOp>(currentOp);
+
+    // do nothing if the operation is not in the ssaWasm dialect
+    if (currentOp->getDialect() !=
+        currentOp->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>()) {
+      return currentOp;
+    }
 
     Operation *newOp = stackifyOperation(currentOp, useCountAnalysis,
                                          localIndexAnalysis, rewriter);
@@ -389,15 +405,20 @@ private:
       return newOp;
     }
 
+    llvm::dbgs() << "currentOp->getNumOperands(): "
+                 << currentOp->getNumOperands() << "\n";
+
     SmallVector<Value> operands;
-    for (int operandIdx = currentOp->getNumOperands() - 1; operandIdx >= 0;
-         operandIdx--) {
+    for (unsigned int operandIdx = 0; operandIdx < currentOp->getNumOperands();
+         operandIdx++) {
       operands.push_back(currentOp->getOperand(operandIdx));
     }
     currentOp->erase();
 
-    for (auto operand : operands) {
+    for (int operandIdx = operands.size() - 1; operandIdx >= 0; operandIdx--) {
+      Value operand = operands[operandIdx];
       Operation *definingOp = operand.getDefiningOp();
+
       if (!definingOp) {
         assert(isa<BlockArgument>(operand) && "Expected a block argument");
         int localIndex = localIndexAnalysis.getLocalIndex(funcOp, operand);
@@ -405,9 +426,8 @@ private:
                                           rewriter.getIndexAttr(localIndex));
 
       } else if (isa<LocalOp>(definingOp)) {
-        if (!isCurrentOpLocalSet) {
-          // We don't need to "get" the local for local_set
-          // Do nothing
+        if (!isCurrentOpLocalSet || operandIdx != 0) {
+          // We don't need to "get" the local of local_set
           int localIndex = localIndexAnalysis.getLocalIndex(
               funcOp, definingOp->getResult(0));
           rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
@@ -429,6 +449,10 @@ private:
     Operation *newOp;
     FuncOp funcOp = op->getParentOfType<FuncOp>();
     rewriter.setInsertionPoint(op);
+
+    llvm::dbgs() << "stackifying operation\n";
+    op->print(llvm::dbgs());
+    llvm::dbgs() << "\n";
     // TODO: Refactor this
     if (isa<AddOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
@@ -448,9 +472,73 @@ private:
                             funcOp, localSetOp.getLocal())));
     } else if (isa<ReturnOp>(op)) {
       newOp = rewriter.create<wasm::WasmReturnOp>(op->getLoc());
-    } else if (isa<BlockLoopOp>(op)) {
-      // TODO
+    } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
 
+      auto blockOp =
+          rewriter.create<wasm::BlockOp>(op->getLoc(), "todo_block_label");
+
+      rewriter.moveBlockBefore(blockLoopOp.getEntryBlock(), &blockOp.getBody(),
+                               blockOp.getBody().begin());
+      Block *blockBody = &blockOp.getBody().front();
+      rewriter.eraseOp(blockBody->getTerminator());
+
+      // stackify the block
+      stackifyBlock(funcOp, blockBody, useCountAnalysis, localIndexAnalysis,
+                    rewriter);
+
+      llvm::dbgs() << "stackified block body\n";
+      blockBody->print(llvm::dbgs());
+      llvm::dbgs() << "\n";
+
+      // nested loop
+      rewriter.setInsertionPointToEnd(blockBody);
+      auto loopOp =
+          rewriter.create<wasm::LoopOp>(op->getLoc(), "todo_loop_label");
+      rewriter.create<wasm::BlockEndOp>(op->getLoc());
+
+      llvm::dbgs() << "entry block\n";
+      blockLoopOp.getEntryBlock()->print(llvm::dbgs());
+      llvm::dbgs() << "\n";
+
+      llvm::dbgs() << "exit block\n";
+      blockLoopOp.getExitBlock()->print(llvm::dbgs());
+      llvm::dbgs() << "\n";
+
+      Block *loopBody = rewriter.createBlock(&loopOp.getBody());
+      rewriter.setInsertionPointToStart(loopBody);
+      for (Block &block : blockLoopOp.getRegion()) {
+        if (&block != blockLoopOp.getEntryBlock() &&
+            &block != blockLoopOp.getExitBlock()) {
+          llvm::dbgs() << "moving and stackifying block\n";
+          block.print(llvm::dbgs());
+          llvm::dbgs() << "\n";
+          vector<Operation *> opsToMove;
+          for (auto &op : block) {
+            opsToMove.push_back(&op);
+          }
+          for (auto &op : opsToMove) {
+            if (isa<TempBranchOp>(op)) {
+              // do not clone this
+            } else if (isa<BlockLoopBranchOp>(op)) {
+              rewriter.create<wasm::BranchOp>(op->getLoc(), "TODO");
+            } else if (isa<BlockLoopCondBranchOp>(op)) {
+              rewriter.create<wasm::CondBranchOp>(op->getLoc(), "TODO");
+            } else {
+              llvm::dbgs() << "moving op\n";
+              op->print(llvm::dbgs());
+              llvm::dbgs() << "\n";
+              rewriter.moveOpBefore(op, loopBody, loopBody->end());
+            }
+          }
+        }
+      }
+      llvm::dbgs() << "stackifying loop body\n";
+      stackifyBlock(funcOp, loopBody, useCountAnalysis, localIndexAnalysis,
+                    rewriter);
+      rewriter.setInsertionPointToEnd(loopBody);
+      rewriter.create<wasm::LoopEndOp>(op->getLoc());
+
+      newOp = blockOp;
     } else if (isa<ILeUOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));

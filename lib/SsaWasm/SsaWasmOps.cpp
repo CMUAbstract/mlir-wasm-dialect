@@ -119,6 +119,17 @@ BlockLoopOp::initialize(OpBuilder &builder) {
   return std::make_tuple(entryBlock, loopStartLabel, blockEndLabel);
 }
 
+Block *BlockLoopOp::getEntryBlock() { return &getRegion().front(); }
+Block *BlockLoopOp::getExitBlock() {
+  // find block with BlockLoopTerminatorOp
+  for (Block &block : getRegion()) {
+    if (isa<BlockLoopTerminatorOp>(block.getTerminator())) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
 // for SsaWasm::GlobalOp
 // copied from mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
 

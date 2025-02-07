@@ -343,6 +343,8 @@ def SsaWasm_BlockLoopOp : SsaWasm_Op<"blockloop"> {
   let extraClassDeclaration = [{
     // TODO: Convert this to a builder
     std::tuple<Block *, Block *, Block *> initialize(OpBuilder &builder);
+    Block *getEntryBlock();
+    Block *getExitBlock();
   }];
 }
 
