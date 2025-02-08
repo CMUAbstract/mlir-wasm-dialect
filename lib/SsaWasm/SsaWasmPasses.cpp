@@ -518,36 +518,7 @@ private:
         if (&block != blockLoopOp.getEntryBlock() &&
             &block != blockLoopOp.getExitBlock()) {
           llvm::dbgs() << "moving and stackifying block\n";
-          block.print(llvm::dbgs());
-          llvm::dbgs() << "\n";
-          vector<Operation *> opsToMove;
-          for (auto &op : block) {
-            opsToMove.push_back(&op);
-          }
-          for (auto &op : opsToMove) {
-            if (isa<TempBranchOp>(op)) {
-              // do not clone this
-            } else if (auto blockLoopBranchOp =
-                           dyn_cast<BlockLoopBranchOp>(op)) {
-              if (blockLoopBranchOp.isBranchingToBegin()) {
-                rewriter.create<wasm::BranchOp>(op->getLoc(), loopLabel);
-              } else {
-                rewriter.create<wasm::BranchOp>(op->getLoc(), blockLabel);
-              }
-            } else if (auto blockLoopCondBranchOp =
-                           dyn_cast<BlockLoopCondBranchOp>(op)) {
-              if (blockLoopCondBranchOp.isBranchingToBegin()) {
-                rewriter.create<wasm::CondBranchOp>(op->getLoc(), loopLabel);
-              } else {
-                rewriter.create<wasm::CondBranchOp>(op->getLoc(), blockLabel);
-              }
-            } else {
-              llvm::dbgs() << "moving op\n";
-              op->print(llvm::dbgs());
-              llvm::dbgs() << "\n";
-              rewriter.moveOpBefore(op, loopBody, loopBody->end());
-            }
-          }
+          moveAndMergeBlock(&block, loopBody, rewriter, loopLabel, blockLabel);
         }
       }
       llvm::dbgs() << "stackifying loop body\n";
@@ -566,6 +537,37 @@ private:
       newOp = nullptr;
     }
     return newOp;
+  }
+  void moveAndMergeBlock(Block *from, Block *to, IRRewriter &rewriter,
+                         std::string loopLabel, std::string blockLabel) {
+    rewriter.setInsertionPointToEnd(to);
+    vector<Operation *> opsToMove;
+    for (auto &op : *from) {
+      opsToMove.push_back(&op);
+    }
+    for (auto &op : opsToMove) {
+      if (isa<TempBranchOp>(op)) {
+        // do not clone this
+      } else if (auto blockLoopBranchOp = dyn_cast<BlockLoopBranchOp>(op)) {
+        if (blockLoopBranchOp.isBranchingToBegin()) {
+          rewriter.create<wasm::BranchOp>(op->getLoc(), loopLabel);
+        } else {
+          rewriter.create<wasm::BranchOp>(op->getLoc(), blockLabel);
+        }
+      } else if (auto blockLoopCondBranchOp =
+                     dyn_cast<BlockLoopCondBranchOp>(op)) {
+        if (blockLoopCondBranchOp.isBranchingToBegin()) {
+          rewriter.create<wasm::CondBranchOp>(op->getLoc(), loopLabel);
+        } else {
+          rewriter.create<wasm::CondBranchOp>(op->getLoc(), blockLabel);
+        }
+      } else {
+        llvm::dbgs() << "moving op\n";
+        op->print(llvm::dbgs());
+        llvm::dbgs() << "\n";
+        rewriter.moveOpBefore(op, to, to->end());
+      }
+    }
   }
 };
 } // namespace mlir::ssawasm
