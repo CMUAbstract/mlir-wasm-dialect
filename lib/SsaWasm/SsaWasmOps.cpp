@@ -123,8 +123,10 @@ Block *BlockLoopOp::getEntryBlock() { return &getRegion().front(); }
 Block *BlockLoopOp::getExitBlock() {
   // find block with BlockLoopTerminatorOp
   for (Block &block : getRegion()) {
-    if (isa<BlockLoopTerminatorOp>(block.getTerminator())) {
-      return &block;
+    for (Operation &op : block) {
+      if (isa<BlockLoopTerminatorOp>(op)) {
+        return &block;
+      }
     }
   }
   return nullptr;
