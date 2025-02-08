@@ -459,37 +459,8 @@ private:
     } else if (isa<ReturnOp>(op)) {
       rewriter.create<wasm::WasmReturnOp>(op->getLoc());
     } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
-      std::string blockLabel = "block_" + std::to_string(newLabelIndex++);
-      auto blockOp = rewriter.create<wasm::BlockOp>(op->getLoc(), blockLabel);
-
-      // move the entry block of the loop into the block
-      rewriter.moveBlockBefore(blockLoopOp.getEntryBlock(), &blockOp.getBody(),
-                               blockOp.getBody().begin());
-      Block *blockBody = &blockOp.getBody().front();
-      rewriter.eraseOp(blockBody->getTerminator());
-      convertBlock(funcOp, blockBody, localIndexAnalysis, rewriter,
-                   newLabelIndex);
-
-      // loop inside block
-      rewriter.setInsertionPointToEnd(blockBody);
-      std::string loopLabel = "loop_" + std::to_string(newLabelIndex++);
-      auto loopOp = rewriter.create<wasm::LoopOp>(op->getLoc(), loopLabel);
-      rewriter.create<wasm::BlockEndOp>(op->getLoc());
-
-      Block *loopBody = rewriter.createBlock(&loopOp.getBody());
-      rewriter.setInsertionPointToStart(loopBody);
-
-      for (Block &block : blockLoopOp.getRegion()) {
-        if (&block != blockLoopOp.getExitBlock()) {
-          moveAndMergeBlock(&block, loopBody, rewriter, loopLabel, blockLabel);
-        }
-      }
-
-      convertBlock(funcOp, loopBody, localIndexAnalysis, rewriter,
-                   newLabelIndex);
-
-      rewriter.setInsertionPointToEnd(loopBody);
-      rewriter.create<wasm::LoopEndOp>(op->getLoc());
+      convertBlockLoopOp(funcOp, blockLoopOp, rewriter, localIndexAnalysis,
+                         newLabelIndex);
     } else if (isa<ILeUOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));
@@ -500,6 +471,42 @@ private:
     rewriter.eraseOp(op);
     return;
   }
+  void convertBlockLoopOp(FuncOp funcOp, BlockLoopOp blockLoopOp,
+                          IRRewriter &rewriter,
+                          LocalIndexAnalysis &localIndexAnalysis,
+                          int &newLabelIndex) {
+    Location loc = blockLoopOp.getLoc();
+    std::string blockLabel = "block_" + std::to_string(newLabelIndex++);
+    auto blockOp = rewriter.create<wasm::BlockOp>(loc, blockLabel);
+
+    // move the entry block of the loop into the block
+    rewriter.moveBlockBefore(blockLoopOp.getEntryBlock(), &blockOp.getBody(),
+                             blockOp.getBody().begin());
+    Block *blockBody = &blockOp.getBody().front();
+    rewriter.eraseOp(blockBody->getTerminator());
+    convertBlock(funcOp, blockBody, localIndexAnalysis, rewriter,
+                 newLabelIndex);
+
+    // loop inside block
+    rewriter.setInsertionPointToEnd(blockBody);
+    std::string loopLabel = "loop_" + std::to_string(newLabelIndex++);
+    auto loopOp = rewriter.create<wasm::LoopOp>(loc, loopLabel);
+    rewriter.create<wasm::BlockEndOp>(loc);
+
+    Block *loopBody = rewriter.createBlock(&loopOp.getBody());
+    rewriter.setInsertionPointToStart(loopBody);
+
+    for (Block &block : blockLoopOp.getRegion()) {
+      if (&block != blockLoopOp.getExitBlock()) {
+        moveAndMergeBlock(&block, loopBody, rewriter, loopLabel, blockLabel);
+      }
+    }
+
+    convertBlock(funcOp, loopBody, localIndexAnalysis, rewriter, newLabelIndex);
+
+    rewriter.setInsertionPointToEnd(loopBody);
+    rewriter.create<wasm::LoopEndOp>(loc);
+  }
 
   void moveAndMergeBlock(Block *from, Block *to, IRRewriter &rewriter,
                          std::string loopLabel, std::string blockLabel) {
@@ -509,24 +516,25 @@ private:
       opsToMove.push_back(&op);
     }
     for (auto &op : opsToMove) {
+      Location loc = op->getLoc();
       if (isa<TempBranchOp>(op)) {
         // do not clone this
         rewriter.eraseOp(op);
       } else if (auto blockLoopBranchOp = dyn_cast<BlockLoopBranchOp>(op)) {
         if (blockLoopBranchOp.isBranchingToBegin()) {
-          rewriter.create<wasm::BranchOp>(op->getLoc(), loopLabel);
+          rewriter.create<wasm::BranchOp>(loc, loopLabel);
         } else {
-          rewriter.create<wasm::BranchOp>(op->getLoc(), blockLabel);
+          rewriter.create<wasm::BranchOp>(loc, blockLabel);
         }
         rewriter.eraseOp(op);
       } else if (auto blockLoopCondBranchOp =
                      dyn_cast<BlockLoopCondBranchOp>(op)) {
         if (blockLoopCondBranchOp.isBranchingToBegin()) {
           // need to add local get here?
-          rewriter.create<wasm::CondBranchOp>(op->getLoc(), loopLabel);
+          rewriter.create<wasm::CondBranchOp>(loc, loopLabel);
         } else {
           // need to add local get here?
-          rewriter.create<wasm::CondBranchOp>(op->getLoc(), blockLabel);
+          rewriter.create<wasm::CondBranchOp>(loc, blockLabel);
         }
         rewriter.eraseOp(op);
       } else {
