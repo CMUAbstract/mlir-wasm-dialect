@@ -334,6 +334,19 @@ def SsaWasm_LocalSetOp : SsaWasm_Op<"local_set"> {
   let assemblyFormat = "$local `,` $value `:` type($local) `->` type($value) attr-dict";
 }
 
+// TODO: Enforce that local and value have the same type
+def SsaWasm_LocalGetOp : SsaWasm_Op<"local_get"> {
+  let summary = "local variable get operation";
+  let description = [{
+    This operation gets the value of a local variable.
+    The definingOp of `local` must be LocalOp.
+  }];
+  // TODO: Type-level enforcement of the above constraint
+  let arguments = (ins SsaWasm_WasmNumericLike:$local);
+  let results = (outs SsaWasm_WasmNumericLike:$result);
+  let assemblyFormat = "$local `:` type($local) `->` type($result) attr-dict";
+}
+
 def SsaWasm_BlockLoopOp : SsaWasm_Op<"blockloop"> {
   let description = [{
     This is a temporary operation used to model 
