@@ -290,9 +290,12 @@ public:
     IRRewriter rewriter(module.getContext());
     StackifyTypeConverter typeConverter(module.getContext());
 
+    int newLabelIndex = 0;
+
     module.walk([&](FuncOp funcOp) {
       for (auto &block : funcOp.getBody().getBlocks()) {
-        stackifyBlock(funcOp, &block, useCount, localIndex, rewriter);
+        stackifyBlock(funcOp, &block, useCount, localIndex, rewriter,
+                      newLabelIndex);
       }
       convertFuncOp(funcOp, rewriter, typeConverter);
     });
@@ -363,7 +366,7 @@ private:
   void stackifyBlock(FuncOp funcOp, Block *block,
                      UseCountAnalysis &useCountAnalysis,
                      LocalIndexAnalysis &localIndexAnalysis,
-                     IRRewriter &rewriter) {
+                     IRRewriter &rewriter, int &newLabelIndex) {
     llvm::dbgs() << "Stackifying block\n";
     block->print(llvm::dbgs());
 
@@ -376,7 +379,7 @@ private:
 
     while (index >= 0) {
       stackify(funcOp, index, ops, useCountAnalysis, localIndexAnalysis,
-               rewriter);
+               rewriter, newLabelIndex);
     }
   }
 
@@ -384,7 +387,7 @@ private:
   Operation *stackify(FuncOp funcOp, int &index, vector<Operation *> ops,
                       UseCountAnalysis &useCountAnalysis,
                       LocalIndexAnalysis &localIndexAnalysis,
-                      IRRewriter &rewriter) {
+                      IRRewriter &rewriter, int &newLabelIndex) {
     Operation *currentOp = ops[index];
 
     index--;
@@ -396,8 +399,9 @@ private:
       return currentOp;
     }
 
-    Operation *newOp = stackifyOperation(currentOp, useCountAnalysis,
-                                         localIndexAnalysis, rewriter);
+    Operation *newOp =
+        stackifyOperation(currentOp, useCountAnalysis, localIndexAnalysis,
+                          rewriter, newLabelIndex);
     rewriter.setInsertionPoint(newOp);
 
     if (isa<LocalOp>(currentOp)) {
@@ -434,8 +438,9 @@ private:
                                             rewriter.getIndexAttr(localIndex));
         }
       } else {
-        Operation *newOp = stackify(funcOp, index, ops, useCountAnalysis,
-                                    localIndexAnalysis, rewriter);
+        Operation *newOp =
+            stackify(funcOp, index, ops, useCountAnalysis, localIndexAnalysis,
+                     rewriter, newLabelIndex);
         rewriter.setInsertionPoint(newOp);
       }
     }
@@ -445,7 +450,7 @@ private:
   Operation *stackifyOperation(Operation *op,
                                UseCountAnalysis &useCountAnalysis,
                                LocalIndexAnalysis &localIndexAnalysis,
-                               IRRewriter &rewriter) {
+                               IRRewriter &rewriter, int &newLabelIndex) {
     Operation *newOp;
     FuncOp funcOp = op->getParentOfType<FuncOp>();
     rewriter.setInsertionPoint(op);
@@ -474,8 +479,10 @@ private:
       newOp = rewriter.create<wasm::WasmReturnOp>(op->getLoc());
     } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
 
-      auto blockOp =
-          rewriter.create<wasm::BlockOp>(op->getLoc(), "todo_block_label");
+      std::string blockLabel = "block_" + std::to_string(newLabelIndex);
+      newLabelIndex++;
+
+      auto blockOp = rewriter.create<wasm::BlockOp>(op->getLoc(), blockLabel);
 
       rewriter.moveBlockBefore(blockLoopOp.getEntryBlock(), &blockOp.getBody(),
                                blockOp.getBody().begin());
@@ -484,7 +491,7 @@ private:
 
       // stackify the block
       stackifyBlock(funcOp, blockBody, useCountAnalysis, localIndexAnalysis,
-                    rewriter);
+                    rewriter, newLabelIndex);
 
       llvm::dbgs() << "stackified block body\n";
       blockBody->print(llvm::dbgs());
@@ -492,8 +499,9 @@ private:
 
       // nested loop
       rewriter.setInsertionPointToEnd(blockBody);
-      auto loopOp =
-          rewriter.create<wasm::LoopOp>(op->getLoc(), "todo_loop_label");
+      std::string loopLabel = "loop_" + std::to_string(newLabelIndex);
+      newLabelIndex++;
+      auto loopOp = rewriter.create<wasm::LoopOp>(op->getLoc(), loopLabel);
       rewriter.create<wasm::BlockEndOp>(op->getLoc());
 
       llvm::dbgs() << "entry block\n";
@@ -519,10 +527,20 @@ private:
           for (auto &op : opsToMove) {
             if (isa<TempBranchOp>(op)) {
               // do not clone this
-            } else if (isa<BlockLoopBranchOp>(op)) {
-              rewriter.create<wasm::BranchOp>(op->getLoc(), "TODO");
-            } else if (isa<BlockLoopCondBranchOp>(op)) {
-              rewriter.create<wasm::CondBranchOp>(op->getLoc(), "TODO");
+            } else if (auto blockLoopBranchOp =
+                           dyn_cast<BlockLoopBranchOp>(op)) {
+              if (blockLoopBranchOp.isBranchingToBegin()) {
+                rewriter.create<wasm::BranchOp>(op->getLoc(), loopLabel);
+              } else {
+                rewriter.create<wasm::BranchOp>(op->getLoc(), blockLabel);
+              }
+            } else if (auto blockLoopCondBranchOp =
+                           dyn_cast<BlockLoopCondBranchOp>(op)) {
+              if (blockLoopCondBranchOp.isBranchingToBegin()) {
+                rewriter.create<wasm::CondBranchOp>(op->getLoc(), loopLabel);
+              } else {
+                rewriter.create<wasm::CondBranchOp>(op->getLoc(), blockLabel);
+              }
             } else {
               llvm::dbgs() << "moving op\n";
               op->print(llvm::dbgs());
@@ -534,7 +552,7 @@ private:
       }
       llvm::dbgs() << "stackifying loop body\n";
       stackifyBlock(funcOp, loopBody, useCountAnalysis, localIndexAnalysis,
-                    rewriter);
+                    rewriter, newLabelIndex);
       rewriter.setInsertionPointToEnd(loopBody);
       rewriter.create<wasm::LoopEndOp>(op->getLoc());
 

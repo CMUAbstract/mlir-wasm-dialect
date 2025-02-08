@@ -358,12 +358,18 @@ def SsaWasm_BlockLoopTerminatorOp : SsaWasm_Op<"blockloop.terminator", [Terminat
 def SsaWasm_BlockLoopBranchOp : SsaWasm_Op<"blockloop.br", 
   [Terminator, HasParent<"BlockLoopOp">]> {
   let successors = (successor AnySuccessor:$dest);
+  let extraClassDeclaration = [{
+    bool isBranchingToBegin();
+  }];
 }
 
 def SsaWasm_BlockLoopCondBranchOp : SsaWasm_Op<"blockloop.cond_br", 
   [Terminator, HasParent<"BlockLoopOp">]> {
   let arguments = (ins SsaWasm_WasmIntegerType:$condition);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$falseDest);
+  let extraClassDeclaration = [{
+    bool isBranchingToBegin();
+  }];
 }
 
 def SsaWasm_TempBranchOp : SsaWasm_Op<"temp_branch", [Terminator]> {
