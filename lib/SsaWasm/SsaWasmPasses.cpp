@@ -73,19 +73,27 @@ namespace {
 class UseCountAnalysis {
 public:
   UseCountAnalysis(ModuleOp module) {
-    module.walk([&](FuncOp funcOp) {
-      for (auto &block : funcOp.getBody().getBlocks()) {
-        for (auto &op : block) {
-          size_t numUsers =
-              std::distance(op.getUsers().begin(), op.getUsers().end());
-          useCount[&op] = numUsers;
-        }
-      }
-    });
+    module.walk([&](FuncOp funcOp) { analyzeRegion(funcOp.getBody()); });
   }
   int getUseCount(Operation *op) const { return useCount.at(op); }
 
 private:
+  void analyzeRegion(Region &region) {
+    for (auto &block : region.getBlocks()) {
+      for (auto &op : block) {
+        // Count direct users of this operation
+        size_t numUsers =
+            std::distance(op.getUsers().begin(), op.getUsers().end());
+        useCount[&op] = numUsers;
+
+        // Recursively analyze any nested regions
+        for (Region &nestedRegion : op.getRegions()) {
+          analyzeRegion(nestedRegion);
+        }
+      }
+    }
+  }
+
   DenseMap<Operation *, int> useCount;
 };
 
@@ -100,12 +108,13 @@ public:
       }
     });
   }
-  SmallVector<Operation *> getLocalRequiredOps() const {
-    return localRequiredOps;
-  }
+  vector<Operation *> getLocalRequiredOps() const { return localRequiredOps; }
   bool isLocalRequired(Operation *op) const {
     return std::find(localRequiredOps.begin(), localRequiredOps.end(), op) !=
            localRequiredOps.end();
+  }
+  vector<int> getLocalRequiredOperandIndices(Operation *op) {
+    return localGetRequiredOps[op];
   }
 
 private:
@@ -125,17 +134,13 @@ private:
   int traverseTree(int index, vector<Operation *> &ops,
                    UseCountAnalysis &useCount) {
     Operation *currentOp = ops[index];
+    int newIndex = index - 1;
 
-    // skip operations that do not have any operands
-    if (currentOp->getNumOperands() == 0) {
-      return index - 1;
-    }
     // skip local operations
     if (isa<LocalOp>(currentOp)) {
-      return index - 1;
+      return newIndex;
     }
 
-    int newIndex = index - 1;
     for (int operandIdx = currentOp->getNumOperands() - 1; operandIdx >= 0;
          operandIdx--) {
       Value operand = currentOp->getOperand(operandIdx);
@@ -145,24 +150,33 @@ private:
       } else if (isa<LocalOp>(definingOp)) {
         // if the defining operation is already a local, we do not need to
         // introduce a new local
-        newIndex--;
+        if (!isa<LocalSetOp>(currentOp) || operandIdx != 0) {
+          localGetRequiredOps[currentOp].push_back(operandIdx);
+        }
       } else if (useCount.getUseCount(definingOp) == 1 && newIndex >= 0 &&
                  ops[newIndex] == definingOp) {
         // This is a value defined by an operation that is used only once
         // and the operation is the previous operation in the block.
-        newIndex--;
       } else {
         // We should introduce a local for this operation.
         if (std::find(localRequiredOps.begin(), localRequiredOps.end(),
                       definingOp) == localRequiredOps.end()) {
           localRequiredOps.push_back(definingOp);
         }
-        break;
+        localGetRequiredOps[currentOp].push_back(operandIdx);
       }
     }
+
+    for (auto &region : currentOp->getRegions()) {
+      for (auto &block : region.getBlocks()) {
+        analyzeBlock(&block, useCount);
+      }
+    }
+
     return newIndex;
   }
-  SmallVector<Operation *> localRequiredOps;
+  vector<Operation *> localRequiredOps;
+  map<Operation *, vector<int>> localGetRequiredOps;
 };
 
 struct IntroduceLocalPattern : public RewritePattern {
@@ -193,6 +207,40 @@ private:
   IntroduceLocalAnalysis &introduceLocal;
 };
 
+struct IntroduceLocalGetPattern : public RewritePattern {
+  IntroduceLocalGetPattern(MLIRContext *context,
+                           IntroduceLocalAnalysis &introduceLocal)
+      : RewritePattern(MatchAnyOpTypeTag(), 1, context),
+        introduceLocal(introduceLocal) {}
+
+  LogicalResult match(Operation *op) const override {
+    assert(op->getDialect() ==
+           op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>());
+
+    if (introduceLocal.getLocalRequiredOperandIndices(op).size() > 0) {
+      return success();
+    }
+    return failure();
+  }
+
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+    rewriter.setInsertionPoint(op);
+    for (int operandIdx : introduceLocal.getLocalRequiredOperandIndices(op)) {
+      auto definingOp = op->getOperand(operandIdx).getDefiningOp();
+      auto local = rewriter
+                       .create<ssawasm::LocalGetOp>(
+                           op->getLoc(), definingOp->getResult(0).getType(),
+                           definingOp->getResult(0))
+                       .getResult();
+      // replace the operand with the local
+      op->setOperand(operandIdx, local);
+    }
+  }
+
+private:
+  IntroduceLocalAnalysis &introduceLocal;
+};
+
 class IntroduceLocals : public impl::IntroduceLocalsBase<IntroduceLocals> {
 public:
   using impl::IntroduceLocalsBase<IntroduceLocals>::IntroduceLocalsBase;
@@ -206,6 +254,11 @@ public:
     RewritePatternSet patterns(context);
     patterns.add<IntroduceLocalPattern>(context, introduceLocal);
     walkAndApplyPatterns(module, std::move(patterns));
+
+    // introduce local gets
+    RewritePatternSet localGetPatterns(context);
+    localGetPatterns.add<IntroduceLocalGetPattern>(context, introduceLocal);
+    walkAndApplyPatterns(module, std::move(localGetPatterns));
   }
 };
 
@@ -294,8 +347,7 @@ public:
 
     module.walk([&](FuncOp funcOp) {
       for (auto &block : funcOp.getBody().getBlocks()) {
-        stackifyBlock(funcOp, &block, useCount, localIndex, rewriter,
-                      newLabelIndex);
+        convertBlock(funcOp, &block, localIndex, rewriter, newLabelIndex);
       }
       convertFuncOp(funcOp, rewriter, typeConverter);
     });
@@ -333,7 +385,6 @@ private:
       for (BlockArgument arg : block.getArguments()) {
         Type newType = typeConverter.convertType(arg.getType());
         if (!newType) {
-          llvm::dbgs() << "Failed to convert block argument type\n";
           assert(false && "Failed to convert block argument type");
         }
         arg.setType(newType);
@@ -363,131 +414,65 @@ private:
 
     rewriter.eraseOp(funcOp);
   }
-  void stackifyBlock(FuncOp funcOp, Block *block,
-                     UseCountAnalysis &useCountAnalysis,
-                     LocalIndexAnalysis &localIndexAnalysis,
-                     IRRewriter &rewriter, int &newLabelIndex) {
+
+  void convertBlock(FuncOp funcOp, Block *block,
+                    LocalIndexAnalysis &localIndexAnalysis,
+                    IRRewriter &rewriter, int &newLabelIndex) {
     vector<Operation *> ops;
     for (auto &op : *block) {
       ops.push_back(&op);
     }
-
-    int index = ops.size() - 1;
-
-    while (index >= 0) {
-      stackify(funcOp, index, ops, useCountAnalysis, localIndexAnalysis,
-               rewriter, newLabelIndex);
+    // we need to convert the operations in reverse order to avoid
+    // Assertion failed: (op->use_empty() && "expected 'op' to have no uses"),
+    // function eraseOp
+    for (auto &op : llvm::reverse(ops)) {
+      convertOperation(funcOp, op, localIndexAnalysis, rewriter, newLabelIndex);
     }
   }
 
-  // This modifies index in place
-  Operation *stackify(FuncOp funcOp, int &index, vector<Operation *> ops,
-                      UseCountAnalysis &useCountAnalysis,
-                      LocalIndexAnalysis &localIndexAnalysis,
-                      IRRewriter &rewriter, int &newLabelIndex) {
-    Operation *currentOp = ops[index];
+  void convertOperation(FuncOp funcOp, Operation *op,
+                        LocalIndexAnalysis &localIndexAnalysis,
+                        IRRewriter &rewriter, int &newLabelIndex) {
 
-    index--;
-    bool isCurrentOpLocalSet = isa<LocalSetOp>(currentOp);
-
-    // do nothing if the operation is not in the ssaWasm dialect
-    if (currentOp->getDialect() !=
-        currentOp->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>()) {
-      return currentOp;
+    if (op->getDialect() !=
+        op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>()) {
+      return;
     }
 
-    Operation *newOp =
-        stackifyOperation(currentOp, useCountAnalysis, localIndexAnalysis,
-                          rewriter, newLabelIndex);
-    rewriter.setInsertionPoint(newOp);
-
-    if (isa<LocalOp>(currentOp)) {
-      currentOp->erase();
-      return newOp;
-    }
-
-    SmallVector<Value> operands;
-    for (unsigned int operandIdx = 0; operandIdx < currentOp->getNumOperands();
-         operandIdx++) {
-      operands.push_back(currentOp->getOperand(operandIdx));
-    }
-    currentOp->erase();
-
-    for (int operandIdx = operands.size() - 1; operandIdx >= 0; operandIdx--) {
-      Value operand = operands[operandIdx];
-      Operation *definingOp = operand.getDefiningOp();
-
-      if (!definingOp) {
-        assert(isa<BlockArgument>(operand) && "Expected a block argument");
-        int localIndex = localIndexAnalysis.getLocalIndex(funcOp, operand);
-        rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
-                                          rewriter.getIndexAttr(localIndex));
-
-      } else if (isa<LocalOp>(definingOp)) {
-        if (!isCurrentOpLocalSet || operandIdx != 0) {
-          // We don't need to "get" the local of local_set
-          int localIndex = localIndexAnalysis.getLocalIndex(
-              funcOp, definingOp->getResult(0));
-          rewriter.create<wasm::LocalGetOp>(newOp->getLoc(),
-                                            rewriter.getIndexAttr(localIndex));
-        }
-      } else {
-        Operation *newOp =
-            stackify(funcOp, index, ops, useCountAnalysis, localIndexAnalysis,
-                     rewriter, newLabelIndex);
-        rewriter.setInsertionPoint(newOp);
-      }
-    }
-    return newOp;
-  }
-
-  Operation *stackifyOperation(Operation *op,
-                               UseCountAnalysis &useCountAnalysis,
-                               LocalIndexAnalysis &localIndexAnalysis,
-                               IRRewriter &rewriter, int &newLabelIndex) {
-    Operation *newOp;
-    FuncOp funcOp = op->getParentOfType<FuncOp>();
     rewriter.setInsertionPoint(op);
-
-    // TODO: Refactor this
     if (isa<AddOp>(op)) {
-      TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
-          op->getResult(0).getType(), op->getContext()));
-      newOp = rewriter.create<wasm::AddOp>(op->getLoc(), typeAttr);
-    } else if (isa<ConstantOp>(op)) {
-      newOp = rewriter.create<wasm::ConstantOp>(
-          op->getLoc(), cast<ConstantOp>(op).getValue());
+      rewriter.create<wasm::AddOp>(op->getLoc(), op->getResult(0).getType());
+    } else if (auto constantOp = dyn_cast<ConstantOp>(op)) {
+      rewriter.create<wasm::ConstantOp>(op->getLoc(), constantOp.getValue());
     } else if (isa<LocalOp>(op)) {
-      newOp = rewriter.create<wasm::LocalSetOp>(
+      rewriter.create<wasm::LocalSetOp>(
           op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
                             funcOp, op->getResult(0))));
-    } else if (isa<LocalSetOp>(op)) {
-      LocalSetOp localSetOp = cast<LocalSetOp>(op);
-      newOp = rewriter.create<wasm::LocalSetOp>(
+    } else if (auto localSetOp = dyn_cast<LocalSetOp>(op)) {
+      rewriter.create<wasm::LocalSetOp>(
           op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
                             funcOp, localSetOp.getLocal())));
+    } else if (auto localGetOp = dyn_cast<LocalGetOp>(op)) {
+      rewriter.create<wasm::LocalGetOp>(
+          op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
+                            funcOp, localGetOp.getLocal())));
     } else if (isa<ReturnOp>(op)) {
-      newOp = rewriter.create<wasm::WasmReturnOp>(op->getLoc());
+      rewriter.create<wasm::WasmReturnOp>(op->getLoc());
     } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
-
-      std::string blockLabel = "block_" + std::to_string(newLabelIndex);
-      newLabelIndex++;
-
+      std::string blockLabel = "block_" + std::to_string(newLabelIndex++);
       auto blockOp = rewriter.create<wasm::BlockOp>(op->getLoc(), blockLabel);
 
+      // move the entry block of the loop into the block
       rewriter.moveBlockBefore(blockLoopOp.getEntryBlock(), &blockOp.getBody(),
                                blockOp.getBody().begin());
       Block *blockBody = &blockOp.getBody().front();
-
       rewriter.eraseOp(blockBody->getTerminator());
+      convertBlock(funcOp, blockBody, localIndexAnalysis, rewriter,
+                   newLabelIndex);
 
-      stackifyBlock(funcOp, blockBody, useCountAnalysis, localIndexAnalysis,
-                    rewriter, newLabelIndex);
-
-      // nested loop
+      // loop inside block
       rewriter.setInsertionPointToEnd(blockBody);
-      std::string loopLabel = "loop_" + std::to_string(newLabelIndex);
-      newLabelIndex++;
+      std::string loopLabel = "loop_" + std::to_string(newLabelIndex++);
       auto loopOp = rewriter.create<wasm::LoopOp>(op->getLoc(), loopLabel);
       rewriter.create<wasm::BlockEndOp>(op->getLoc());
 
@@ -499,21 +484,21 @@ private:
           moveAndMergeBlock(&block, loopBody, rewriter, loopLabel, blockLabel);
         }
       }
-      stackifyBlock(funcOp, loopBody, useCountAnalysis, localIndexAnalysis,
-                    rewriter, newLabelIndex);
+
+      convertBlock(funcOp, loopBody, localIndexAnalysis, rewriter,
+                   newLabelIndex);
+
       rewriter.setInsertionPointToEnd(loopBody);
       rewriter.create<wasm::LoopEndOp>(op->getLoc());
-
-      newOp = blockOp;
     } else if (isa<ILeUOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));
-      newOp = rewriter.create<wasm::ILeUOp>(op->getLoc(), typeAttr);
+      rewriter.create<wasm::ILeUOp>(op->getLoc(), typeAttr);
     } else {
       llvm::errs() << "Unsupported operation: " << op->getName() << "\n";
-      newOp = nullptr;
     }
-    return newOp;
+    rewriter.eraseOp(op);
+    return;
   }
 
   void moveAndMergeBlock(Block *from, Block *to, IRRewriter &rewriter,
@@ -526,6 +511,7 @@ private:
     for (auto &op : opsToMove) {
       if (isa<TempBranchOp>(op)) {
         // do not clone this
+        rewriter.eraseOp(op);
       } else if (auto blockLoopBranchOp = dyn_cast<BlockLoopBranchOp>(op)) {
         if (blockLoopBranchOp.isBranchingToBegin()) {
           rewriter.create<wasm::BranchOp>(op->getLoc(), loopLabel);
