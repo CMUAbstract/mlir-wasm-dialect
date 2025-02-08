@@ -130,6 +130,16 @@ Block *BlockLoopOp::getExitBlock() {
   return nullptr;
 }
 
+bool BlockLoopBranchOp::isBranchingToBegin() {
+  auto blockLoopOp = getParentOp<BlockLoopOp>();
+  return getDest() == blockLoopOp.getEntryBlock();
+}
+
+bool BlockLoopCondBranchOp::isBranchingToBegin() {
+  auto blockLoopOp = getParentOp<BlockLoopOp>();
+  return getDest() == blockLoopOp.getEntryBlock();
+}
+
 // for SsaWasm::GlobalOp
 // copied from mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
 
