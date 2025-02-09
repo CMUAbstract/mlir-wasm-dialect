@@ -97,6 +97,38 @@ private:
   DenseMap<Operation *, int> useCount;
 };
 
+// Returns the operation that effectively defines a value by looking through
+// AsPointerOp wrappers. When a value is defined by an AsPointerOp, this
+// function returns the operation that defines the underlying memref instead,
+// since AsPointerOp is just a type conversion wrapper that doesn't create new
+// data.
+//
+// Example:
+//   %1 = some_op ... : memref<...>
+//   %2 = ssawasm.as_pointer %1 : memref<...> to ptr
+//   getUnderlyingDefiningOp(%2) returns the operation defining %1
+Operation *getUnderlyingDefiningOp(Value value) {
+  auto definingOp = value.getDefiningOp();
+  if (!definingOp) {
+    return nullptr;
+  }
+  if (auto asPointerOp = dyn_cast<AsPointerOp>(definingOp)) {
+    return asPointerOp.getValue().getDefiningOp();
+  }
+  return definingOp;
+}
+
+Value getUnderlyingValue(Value value) {
+  auto definingOp = value.getDefiningOp();
+  if (!definingOp) {
+    return value;
+  }
+  if (auto asPointerOp = dyn_cast<AsPointerOp>(definingOp)) {
+    return asPointerOp.getValue();
+  }
+  return value;
+}
+
 class IntroduceLocalAnalysis {
 public:
   IntroduceLocalAnalysis(ModuleOp module) {
@@ -136,17 +168,21 @@ private:
     Operation *currentOp = ops[index];
     int newIndex = index - 1;
 
-    // skip local operations
-    if (isa<LocalOp>(currentOp)) {
+    // skip local and as_pointer operations
+    // we should not introduce locals for these operations
+    if (isa<LocalOp>(currentOp) || isa<AsPointerOp>(currentOp)) {
       return newIndex;
     }
 
     for (int operandIdx = currentOp->getNumOperands() - 1; operandIdx >= 0;
          operandIdx--) {
       Value operand = currentOp->getOperand(operandIdx);
-      Operation *definingOp = operand.getDefiningOp();
+      Operation *definingOp = getUnderlyingDefiningOp(operand);
       if (!definingOp) {
-        assert(isa<BlockArgument>(operand) && "Expected a block argument");
+        assert((isa<BlockArgument>(operand) ||
+                isa<AsPointerOp>(operand.getDefiningOp())) &&
+               "Expected a block argument or an AsPointerOp");
+        localGetRequiredOps[currentOp].push_back(operandIdx);
       } else if (isa<LocalOp>(definingOp)) {
         // if the defining operation is already a local, we do not need to
         // introduce a new local
@@ -226,11 +262,18 @@ struct IntroduceLocalGetPattern : public RewritePattern {
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     rewriter.setInsertionPoint(op);
     for (int operandIdx : introduceLocal.getLocalRequiredOperandIndices(op)) {
-      auto definingOp = op->getOperand(operandIdx).getDefiningOp();
+      auto underlyingValue = getUnderlyingValue(op->getOperand(operandIdx));
+
+      // if the underlying value is of sswawasm<memref> type,
+      // we convert it to ssawasm<integer> type to make operations
+      // on it legal
+      Type localType = underlyingValue.getType();
+      if (isa<WasmMemRefType>(localType)) {
+        localType = ssawasm::WasmIntegerType::get(op->getContext(), 32);
+      }
       auto local = rewriter
-                       .create<ssawasm::LocalGetOp>(
-                           op->getLoc(), definingOp->getResult(0).getType(),
-                           definingOp->getResult(0))
+                       .create<ssawasm::LocalGetOp>(op->getLoc(), localType,
+                                                    underlyingValue)
                        .getResult();
       // replace the operand with the local
       op->setOperand(operandIdx, local);
@@ -293,7 +336,7 @@ public:
     });
   }
   int getLocalIndex(FuncOp funcOp, Value value) const {
-    return localIndex.at(funcOp).at(value);
+    return localIndex.at(funcOp).at(getUnderlyingValue(value));
   }
 
 private:
