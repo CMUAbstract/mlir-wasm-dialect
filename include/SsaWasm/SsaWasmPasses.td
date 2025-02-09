@@ -33,8 +33,8 @@ def IntroduceLocals : Pass<"introduce-locals", "ModuleOp"> {
   ];
 }
 
-def Stackify : Pass<"stackify", "ModuleOp"> {
-  let summary = "Stackifies the module";
+def ConvertSsaWasmToWasm : Pass<"convert-ssawasm-to-wasm", "ModuleOp"> {
+  let summary = "Converts SsaWasm dialect to Wasm dialect";
   let dependentDialects = [
     "ssawasm::SsaWasmDialect",
     "wasm::WasmDialect",

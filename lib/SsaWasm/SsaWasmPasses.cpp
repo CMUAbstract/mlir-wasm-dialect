@@ -25,7 +25,7 @@ using namespace std;
 namespace mlir::ssawasm {
 #define GEN_PASS_DEF_CONVERTTOSSAWASM
 #define GEN_PASS_DEF_INTRODUCELOCALS
-#define GEN_PASS_DEF_STACKIFY
+#define GEN_PASS_DEF_CONVERTSSAWASMTOWASM
 #include "SsaWasm/SsaWasmPasses.h.inc"
 
 class ConvertToSsaWasm : public impl::ConvertToSsaWasmBase<ConvertToSsaWasm> {
@@ -375,9 +375,11 @@ public:
 
 } // namespace
 
-class Stackify : public impl::StackifyBase<Stackify> {
+class ConvertSsaWasmToWasm
+    : public impl::ConvertSsaWasmToWasmBase<ConvertSsaWasmToWasm> {
 public:
-  using impl::StackifyBase<Stackify>::StackifyBase;
+  using impl::ConvertSsaWasmToWasmBase<
+      ConvertSsaWasmToWasm>::ConvertSsaWasmToWasmBase;
 
   void runOnOperation() final {
     auto module = getOperation();
