@@ -16,7 +16,7 @@ struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
     auto initialValue = adaptor.getInitialValue();
 
     if (initialValue.has_value()) {
-      rewriter.replaceOpWithNewOp<ssawasm::GlobalOp>(
+      rewriter.replaceOpWithNewOp<ssawasm::DataOp>(
           op,
           adaptor.getSymName(), // StringAttr
           adaptor.getType(),    // TypeAttr
@@ -37,7 +37,7 @@ struct GetGlobalOpLowering : public OpConversionPattern<memref::GetGlobalOp> {
     WasmMemRefType memRefType =
         WasmMemRefType::get(rewriter.getContext(), op.getResult().getType());
 
-    rewriter.replaceOpWithNewOp<GetGlobalOp>(op, memRefType, adaptor.getName());
+    rewriter.replaceOpWithNewOp<GetDataOp>(op, memRefType, adaptor.getName());
     return success();
   }
 };

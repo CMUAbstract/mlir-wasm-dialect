@@ -142,10 +142,10 @@ bool BlockLoopCondBranchOp::isBranchingToBegin() {
   return getDest() == blockLoopOp.getEntryBlock();
 }
 
-// for SsaWasm::GlobalOp
+// for SsaWasm::DataOp
 // copied from mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
 
-static void printGlobalMemrefOpTypeAndInitialValue(OpAsmPrinter &p, GlobalOp op,
+static void printGlobalMemrefOpTypeAndInitialValue(OpAsmPrinter &p, DataOp op,
                                                    TypeAttr type,
                                                    Attribute initialValue) {
   p << type;
