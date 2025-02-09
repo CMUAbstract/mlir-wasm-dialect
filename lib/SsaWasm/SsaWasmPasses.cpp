@@ -442,6 +442,8 @@ private:
     rewriter.setInsertionPoint(op);
     if (isa<AddOp>(op)) {
       rewriter.create<wasm::AddOp>(op->getLoc(), op->getResult(0).getType());
+    } else if (isa<MulOp>(op)) {
+      rewriter.create<wasm::MulOp>(op->getLoc(), op->getResult(0).getType());
     } else if (auto constantOp = dyn_cast<ConstantOp>(op)) {
       rewriter.create<wasm::ConstantOp>(op->getLoc(), constantOp.getValue());
     } else if (isa<LocalOp>(op)) {
@@ -465,6 +467,17 @@ private:
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));
       rewriter.create<wasm::ILeUOp>(op->getLoc(), typeAttr);
+    } else if (auto callOp = dyn_cast<CallOp>(op)) {
+      rewriter.create<wasm::CallOp>(op->getLoc(), callOp.getCallee());
+    } else if (auto loadOp = dyn_cast<LoadOp>(op)) {
+      rewriter.create<wasm::LoadOp>(
+          op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
+                            op->getResult(0).getType(), op->getContext())));
+    } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
+      rewriter.create<wasm::StoreOp>(
+          op->getLoc(),
+          TypeAttr::get(convertSsaWasmTypeToWasmType(
+              storeOp.getValue().getType(), storeOp.getContext())));
     } else {
       llvm::errs() << "Unsupported operation: " << op->getName() << "\n";
     }
