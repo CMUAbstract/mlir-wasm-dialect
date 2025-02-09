@@ -34,7 +34,7 @@ class SsaWasm_Op<string mnemonic, list<Trait> traits = []>
 ///////////////////////////////////////////////////////////////////////////
 
 class SsaWasm_WasmNumericBinaryOp<string mnemonic, list<Trait> traits = []> 
-    : SsaWasm_Op<mnemonic, traits # [Pure, Commutative, SameOperandsAndResultType]> {
+    : SsaWasm_Op<mnemonic, traits # [Pure, SameOperandsAndResultType]> {
   let summary = "SSA-based numeric binary operation";
   let description = [{
     This is the base class for numeric binary operations in the SSA Wasm dialect.
@@ -53,7 +53,7 @@ class SsaWasm_WasmNumericBinaryOp<string mnemonic, list<Trait> traits = []>
 // Addition Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add"> {
+def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative]> {
   let summary = "SSA-based addition operation";
   let description = [{
     Adds the left-hand-side operand to the right-hand-side operand and
@@ -77,7 +77,7 @@ def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub"> {
 // Multiplication Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul"> {
+def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative]> {
   let summary = "SSA-based multiplication operation";
   let description = [{
     Multiplies two operands explicitly and yields the product.
@@ -297,12 +297,12 @@ def SsaWasm_StoreOp : SsaWasm_Op<"store"> {
 }
 
 def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer"> {
-  let arguments = (ins SsaWasm_WasmMemRefType:$memref);
+  let arguments = (ins SsaWasm_WasmPointerLike:$value);
   let results = (outs SsaWasm_WasmIntegerType:$result);
-  let assemblyFormat = "$memref `:` type($memref) `->` type($result) attr-dict";
+  let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 
-  let builders = [OpBuilder<(ins "Value":$memref), [{
-    $_state.addOperands(memref);
+  let builders = [OpBuilder<(ins "Value":$value), [{
+    $_state.addOperands(value);
     $_state.addTypes(WasmIntegerType::get($_builder.getContext(), 32));
   }]>];
 }

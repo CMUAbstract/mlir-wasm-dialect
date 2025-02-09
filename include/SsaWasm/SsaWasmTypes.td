@@ -58,5 +58,9 @@ def SsaWasm_WasmNumericLike : TypeConstraint<
         SsaWasm_WasmMemRefType.predicate]>,
     "ssawasm integer or float type">;
 
+def SsaWasm_WasmPointerLike : TypeConstraint<
+    Or<[SsaWasm_WasmMemRefType.predicate,
+        SsaWasm_WasmIntegerType.predicate]>,
+    "ssawasm memref or integer type">;
 
 #endif // SSAWASM_TYPES
