@@ -252,7 +252,7 @@ def MemRefTypeAttr
   let constBuilderCall = "::mlir::TypeAttr::get($0)";
 }
 
-def SsaWasm_GlobalOp : SsaWasm_Op<"global", [Symbol]> {
+def SsaWasm_DataOp : SsaWasm_Op<"data", [Symbol]> {
    let arguments = (ins SymbolNameAttr:$sym_name,
                        MemRefTypeAttr:$type,
                        AnyAttr:$initial_value,
@@ -275,7 +275,7 @@ def SsaWasm_GlobalOp : SsaWasm_Op<"global", [Symbol]> {
   }];
 }
 
-def SsaWasm_GetGlobalOp : SsaWasm_Op<"get_global", [Pure]> {
+def SsaWasm_GetDataOp : SsaWasm_Op<"get_data", [Pure]> {
   // TODO: Add DeclareOpInterfaceMethods<SymbolUserOpInterface> with a
   // verifier
   let summary = "similar to memref::GetGlobalOp";
