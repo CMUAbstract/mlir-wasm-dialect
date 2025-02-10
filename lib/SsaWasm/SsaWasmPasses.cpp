@@ -26,6 +26,7 @@ namespace mlir::ssawasm {
 #define GEN_PASS_DEF_CONVERTTOSSAWASM
 #define GEN_PASS_DEF_INTRODUCELOCALS
 #define GEN_PASS_DEF_CONVERTSSAWASMTOWASM
+#define GEN_PASS_DEF_SSAWASMDATATOLOCAL
 #include "SsaWasm/SsaWasmPasses.h.inc"
 
 class ConvertToSsaWasm : public impl::ConvertToSsaWasmBase<ConvertToSsaWasm> {
@@ -373,6 +374,116 @@ public:
   }
 };
 
+} // namespace
+
+namespace {
+static const uint8_t s_is_char_escaped[] = {
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+static const char s_hexdigits[] = "0123456789abcdef";
+
+std::string generateStr(const void *bytes, size_t length) {
+  const uint8_t *u8_data = static_cast<const uint8_t *>(bytes);
+
+  std::stringstream ss;
+
+  for (size_t i = 0; i < length; ++i) {
+    uint8_t c = u8_data[i];
+    if (s_is_char_escaped[c]) {
+      ss << "\\";
+      ss << s_hexdigits[c >> 4];
+      ss << s_hexdigits[c & 0xf];
+    } else {
+      ss << c;
+    }
+  }
+
+  return ss.str();
+}
+
+class DataOpLowering : public OpConversionPattern<DataOp> {
+public:
+  using OpConversionPattern<DataOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(DataOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (auto denseElementsAttr =
+            dyn_cast<DenseElementsAttr>(adaptor.getInitialValue())) {
+      auto rawData = denseElementsAttr.getRawData();
+      std::string bytes = generateStr(rawData.data(), rawData.size());
+
+      rewriter.replaceOpWithNewOp<wasm::DataOp>(
+          op, adaptor.getSymName(), adaptor.getBaseAddr(),
+          rewriter.getStringAttr(bytes.c_str()),
+          TypeAttr::get(adaptor.getType()));
+
+      return success();
+    }
+    return failure();
+  }
+};
+
+class GetDataOpLowering : public OpConversionPattern<GetDataOp> {
+public:
+  using OpConversionPattern<GetDataOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(GetDataOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    // FIXME: This might have been already converted to wasm::DataOp
+    auto dataOp = SymbolTable::lookupNearestSymbolFrom<ssawasm::DataOp>(
+        op, rewriter.getStringAttr(op.getName()));
+    auto addressConstantOp = rewriter.create<ConstantOp>(
+        loc, rewriter.getI32IntegerAttr(dataOp.getBaseAddr()));
+    auto localOp = rewriter.create<LocalOp>(loc, addressConstantOp.getResult());
+
+    rewriter.replaceOp(op, localOp.getResult());
+
+    return success();
+  }
+};
+
+class SsaWasmDataToLocal
+    : public impl::SsaWasmDataToLocalBase<SsaWasmDataToLocal> {
+public:
+  using impl::SsaWasmDataToLocalBase<
+      SsaWasmDataToLocal>::SsaWasmDataToLocalBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    RewritePatternSet getDataOpLoweringPattern(context);
+    getDataOpLoweringPattern.add<GetDataOpLowering>(context);
+
+    ConversionTarget target(*context);
+    target.addLegalDialect<ssawasm::SsaWasmDialect>();
+    target.addLegalDialect<wasm::WasmDialect>();
+    target.addIllegalOp<GetDataOp>();
+
+    if (failed(applyPartialConversion(module, target,
+                                      std::move(getDataOpLoweringPattern)))) {
+      signalPassFailure();
+    }
+
+    RewritePatternSet dataOpLoweringPattern(context);
+    dataOpLoweringPattern.add<DataOpLowering>(context);
+    target.addIllegalOp<DataOp>();
+    if (failed(applyPartialConversion(module, target,
+                                      std::move(dataOpLoweringPattern)))) {
+      signalPassFailure();
+    }
+  }
+};
 } // namespace
 
 class ConvertSsaWasmToWasm
