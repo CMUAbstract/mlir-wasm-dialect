@@ -91,6 +91,20 @@ def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu"> {
   }];
 }
 
+def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min"> {
+  let summary = "SSA-based minimum operation";
+  let description = [{
+    Compares two operands explicitly and yields the minimum of the two.
+  }];
+}
+
+def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max"> {
+  let summary = "SSA-based maximum operation";
+  let description = [{
+    Compares two operands explicitly and yields the maximum of the two.
+  }];
+}
+
 /////////////////////////////////////////////////////////////////////////// 
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
@@ -305,6 +319,12 @@ def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer"> {
     $_state.addOperands(value);
     $_state.addTypes(WasmIntegerType::get($_builder.getContext(), 32));
   }]>];
+}
+
+def SsaWasm_AsMemRefOp : SsaWasm_Op<"as_memref"> {
+  let arguments = (ins SsaWasm_WasmPointerLike:$value);
+  let results = (outs SsaWasm_WasmMemRefType:$result);
+  let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }
 
 ///////////////////////////////////////////////////////////////////////////

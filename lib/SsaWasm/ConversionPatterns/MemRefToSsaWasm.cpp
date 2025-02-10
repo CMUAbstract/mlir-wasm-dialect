@@ -152,9 +152,8 @@ struct DeallocOpLowering : public OpConversionPattern<memref::DeallocOp> {
   LogicalResult
   matchAndRewrite(memref::DeallocOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<CallOp>(
-        op, "free", WasmIntegerType::get(rewriter.getContext(), 32),
-        adaptor.getMemref());
+    rewriter.replaceOpWithNewOp<CallOp>(op, "free", TypeRange{},
+                                        adaptor.getMemref());
     return success();
   }
 };
@@ -164,8 +163,9 @@ struct ExpandShapeLowering : public OpConversionPattern<memref::ExpandShapeOp> {
   LogicalResult
   matchAndRewrite(memref::ExpandShapeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
-        op, op.getResult().getType(), adaptor.getSrc());
+    auto memRefType = op.getResult().getType();
+    auto resultType = getTypeConverter()->convertType(memRefType);
+    rewriter.replaceOpWithNewOp<AsMemRefOp>(op, resultType, adaptor.getSrc());
     return success();
   }
 };
@@ -176,8 +176,9 @@ struct CollapseShapeLowering
   LogicalResult
   matchAndRewrite(memref::CollapseShapeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
-        op, op.getResult().getType(), adaptor.getSrc());
+    auto memRefType = op.getResult().getType();
+    auto resultType = getTypeConverter()->convertType(memRefType);
+    rewriter.replaceOpWithNewOp<AsMemRefOp>(op, resultType, adaptor.getSrc());
     return success();
   }
 };
