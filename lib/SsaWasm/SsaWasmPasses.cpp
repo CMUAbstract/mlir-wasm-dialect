@@ -602,11 +602,23 @@ private:
 
     rewriter.setInsertionPoint(op);
     if (isa<AddOp>(op)) {
-      rewriter.create<wasm::AddOp>(op->getLoc(), op->getResult(0).getType());
+      rewriter.create<wasm::AddOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
     } else if (isa<MulOp>(op)) {
-      rewriter.create<wasm::MulOp>(op->getLoc(), op->getResult(0).getType());
+      rewriter.create<wasm::MulOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
     } else if (auto constantOp = dyn_cast<ConstantOp>(op)) {
-      rewriter.create<wasm::ConstantOp>(op->getLoc(), constantOp.getValue());
+      if (isa<IndexType>(constantOp.getValue().getType())) {
+        rewriter.create<wasm::ConstantOp>(
+            op->getLoc(),
+            rewriter.getI32IntegerAttr(cast<IntegerAttr>(constantOp.getValue())
+                                           .getValue()
+                                           .getSExtValue()));
+      } else {
+        rewriter.create<wasm::ConstantOp>(op->getLoc(), constantOp.getValue());
+      }
     } else if (isa<LocalOp>(op)) {
       rewriter.create<wasm::LocalSetOp>(
           op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
