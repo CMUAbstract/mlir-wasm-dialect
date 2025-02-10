@@ -357,18 +357,23 @@ Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
     } else {
       assert(false && "Unsupported float type");
     }
+  } else if (isa<WasmMemRefType>(type)) {
+    return IntegerType::get(ctx, 32);
   } else {
     assert(false && "Unsupported type");
   }
 }
 
-class StackifyTypeConverter : public TypeConverter {
+class SsaWasmToWasmTypeConverter : public TypeConverter {
 public:
-  StackifyTypeConverter(MLIRContext *ctx) {
+  SsaWasmToWasmTypeConverter(MLIRContext *ctx) {
     addConversion([ctx](WasmIntegerType type) -> Type {
       return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
     });
     addConversion([ctx](WasmFloatType type) -> Type {
+      return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
+    });
+    addConversion([ctx](WasmMemRefType type) -> Type {
       return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
     });
   }
@@ -497,7 +502,7 @@ public:
     UseCountAnalysis useCount(module);
     LocalIndexAnalysis localIndex(module);
     IRRewriter rewriter(module.getContext());
-    StackifyTypeConverter typeConverter(module.getContext());
+    SsaWasmToWasmTypeConverter typeConverter(module.getContext());
 
     int newLabelIndex = 0;
 
@@ -634,6 +639,9 @@ private:
           op->getLoc(),
           TypeAttr::get(convertSsaWasmTypeToWasmType(
               storeOp.getValue().getType(), storeOp.getContext())));
+    } else if (isa<AsPointerOp>(op)) {
+      // do nothing
+      // This is already handled by the SsaWasmDataToLocal pass
     } else {
       llvm::errs() << "Unsupported operation: " << op->getName() << "\n";
     }
