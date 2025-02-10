@@ -27,6 +27,8 @@ using SubIOpLowering = NumericBinaryOpLowering<arith::SubIOp, SubOp>;
 using SubFOpLowering = NumericBinaryOpLowering<arith::SubFOp, SubOp>;
 using MulIOpLowering = NumericBinaryOpLowering<arith::MulIOp, MulOp>;
 using MulFOpLowering = NumericBinaryOpLowering<arith::MulFOp, MulOp>;
+using MinFOpLowering = NumericBinaryOpLowering<arith::MinimumFOp, MinOp>;
+using MaxFOpLowering = NumericBinaryOpLowering<arith::MaximumFOp, MaxOp>;
 
 struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
@@ -43,7 +45,7 @@ void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                                     RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
   patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-               MulIOpLowering, MulFOpLowering, ConstantOpLowering>(
-      typeConverter, context);
+               MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
+               ConstantOpLowering>(typeConverter, context);
 }
 } // namespace mlir::ssawasm

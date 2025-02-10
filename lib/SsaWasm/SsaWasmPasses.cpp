@@ -99,10 +99,10 @@ private:
 };
 
 // Returns the operation that effectively defines a value by looking through
-// AsPointerOp wrappers. When a value is defined by an AsPointerOp, this
-// function returns the operation that defines the underlying memref instead,
-// since AsPointerOp is just a type conversion wrapper that doesn't create new
-// data.
+// AsPointerOp and AsMemRefOp wrappers. When a value is defined by an
+// AsPointerOp or AsMemRefOp, this function returns the operation that defines
+// the underlying memref instead, since AsPointerOp and AsMemRefOp are just type
+// conversion wrappers that don't create new data.
 //
 // Example:
 //   %1 = some_op ... : memref<...>
@@ -114,7 +114,10 @@ Operation *getUnderlyingDefiningOp(Value value) {
     return nullptr;
   }
   if (auto asPointerOp = dyn_cast<AsPointerOp>(definingOp)) {
-    return asPointerOp.getValue().getDefiningOp();
+    return getUnderlyingDefiningOp(asPointerOp.getValue());
+  }
+  if (auto asMemRefOp = dyn_cast<AsMemRefOp>(definingOp)) {
+    return getUnderlyingDefiningOp(asMemRefOp.getValue());
   }
   return definingOp;
 }
@@ -125,7 +128,10 @@ Value getUnderlyingValue(Value value) {
     return value;
   }
   if (auto asPointerOp = dyn_cast<AsPointerOp>(definingOp)) {
-    return asPointerOp.getValue();
+    return getUnderlyingValue(asPointerOp.getValue());
+  }
+  if (auto asMemRefOp = dyn_cast<AsMemRefOp>(definingOp)) {
+    return getUnderlyingValue(asMemRefOp.getValue());
   }
   return value;
 }
@@ -171,7 +177,7 @@ private:
 
     // skip as_pointer operations
     // we should not introduce locals for these operations
-    if (isa<AsPointerOp>(currentOp)) {
+    if (isa<AsPointerOp>(currentOp) || isa<AsMemRefOp>(currentOp)) {
       return newIndex;
     }
 
@@ -181,8 +187,9 @@ private:
       Operation *definingOp = getUnderlyingDefiningOp(operand);
       if (!definingOp) {
         assert((isa<BlockArgument>(operand) ||
-                isa<AsPointerOp>(operand.getDefiningOp())) &&
-               "Expected a block argument or an AsPointerOp");
+                isa<AsPointerOp>(operand.getDefiningOp()) ||
+                isa<AsMemRefOp>(operand.getDefiningOp())) &&
+               "Expected a block argument or an AsPointerOp or AsMemRefOp");
         localGetRequiredOps[currentOp].push_back(operandIdx);
       } else if (isa<LocalOp>(definingOp)) {
         // if the defining operation is already a local, we do not need to
@@ -225,7 +232,9 @@ struct IntroduceLocalPattern : public RewritePattern {
 
   LogicalResult match(Operation *op) const override {
     assert(op->getDialect() ==
-           op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>());
+               op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>() ||
+           op->getDialect() ==
+               op->getContext()->getLoadedDialect<wasm::WasmDialect>());
 
     if (introduceLocal.isLocalRequired(op)) {
       return success();
@@ -253,7 +262,9 @@ struct IntroduceLocalGetPattern : public RewritePattern {
 
   LogicalResult match(Operation *op) const override {
     assert(op->getDialect() ==
-           op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>());
+               op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>() ||
+           op->getDialect() ==
+               op->getContext()->getLoadedDialect<wasm::WasmDialect>());
 
     if (introduceLocal.getLocalRequiredOperandIndices(op).size() > 0) {
       return success();
@@ -450,14 +461,15 @@ public:
   matchAndRewrite(GetDataOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    // FIXME: This might have been already converted to wasm::DataOp
     auto dataOp = SymbolTable::lookupNearestSymbolFrom<ssawasm::DataOp>(
         op, rewriter.getStringAttr(op.getName()));
     auto addressConstantOp = rewriter.create<ConstantOp>(
         loc, rewriter.getI32IntegerAttr(dataOp.getBaseAddr()));
     auto localOp = rewriter.create<LocalOp>(loc, addressConstantOp.getResult());
+    auto asMemRefOp = rewriter.create<AsMemRefOp>(loc, op.getResult().getType(),
+                                                  localOp.getResult());
 
-    rewriter.replaceOp(op, localOp.getResult());
+    rewriter.replaceOp(op, asMemRefOp.getResult());
 
     return success();
   }
@@ -614,6 +626,14 @@ private:
       rewriter.create<wasm::MulOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
                                                      op->getContext()));
+    } else if (isa<MinOp>(op)) {
+      rewriter.create<wasm::FMinOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
+    } else if (isa<MaxOp>(op)) {
+      rewriter.create<wasm::FMaxOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
     } else if (auto constantOp = dyn_cast<ConstantOp>(op)) {
       if (isa<IndexType>(constantOp.getValue().getType())) {
         rewriter.create<wasm::ConstantOp>(
@@ -656,7 +676,7 @@ private:
           op->getLoc(),
           TypeAttr::get(convertSsaWasmTypeToWasmType(
               storeOp.getValue().getType(), storeOp.getContext())));
-    } else if (isa<AsPointerOp>(op)) {
+    } else if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op)) {
       // do nothing
       // This is already handled by the SsaWasmDataToLocal pass
     } else {
