@@ -307,44 +307,6 @@ public:
   }
 };
 
-class LocalIndexAnalysis {
-public:
-  LocalIndexAnalysis(ModuleOp module) {
-
-    module.walk([&](FuncOp funcOp) {
-      int index = 0;
-      // each wasm function argument is treated as a local
-      for (auto &arg : funcOp.getArguments()) {
-        localIndex[funcOp][arg] = index;
-        index++;
-      }
-
-      std::function<void(Block *)> traverse = [&](Block *block) {
-        for (auto &op : *block) {
-          if (isa<LocalOp>(op)) {
-            localIndex[funcOp][op.getResult(0)] = index;
-            index++;
-          } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
-            for (auto &nestedBlock : blockLoopOp.getRegion()) {
-              traverse(&nestedBlock);
-            }
-          }
-        }
-      };
-
-      for (auto &block : funcOp.getBody().getBlocks()) {
-        traverse(&block);
-      }
-    });
-  }
-  int getLocalIndex(FuncOp funcOp, Value value) const {
-    return localIndex.at(funcOp).at(getUnderlyingValue(value));
-  }
-
-private:
-  DenseMap<FuncOp, DenseMap<Value, int>> localIndex;
-};
-
 Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
   if (isa<WasmIntegerType>(type)) {
     auto bitWidth = cast<WasmIntegerType>(type).getBitWidth();
@@ -364,6 +326,48 @@ Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
     assert(false && "Unsupported type");
   }
 }
+
+class LocalIndexAnalysis {
+public:
+  LocalIndexAnalysis(ModuleOp module) {
+
+    module.walk([&](FuncOp funcOp) {
+      int index = 0;
+      // each wasm function argument is treated as a local
+      for (auto &arg : funcOp.getArguments()) {
+        localIndex[funcOp][arg] = index;
+        index++;
+      }
+
+      std::function<void(Block *)> traverse = [&](Block *block) {
+        for (auto &op : *block) {
+          if (isa<LocalOp>(op)) {
+            localIndex[funcOp][op.getResult(0)] = index;
+            localTypes.push_back(convertSsaWasmTypeToWasmType(
+                op.getResult(0).getType(), op.getContext()));
+            index++;
+          } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
+            for (auto &nestedBlock : blockLoopOp.getRegion()) {
+              traverse(&nestedBlock);
+            }
+          }
+        }
+      };
+
+      for (auto &block : funcOp.getBody().getBlocks()) {
+        traverse(&block);
+      }
+    });
+  }
+  int getLocalIndex(FuncOp funcOp, Value value) const {
+    return localIndex.at(funcOp).at(getUnderlyingValue(value));
+  }
+  vector<Type> getLocalTypes(FuncOp funcOp) const { return localTypes; }
+
+private:
+  DenseMap<FuncOp, DenseMap<Value, int>> localIndex;
+  vector<Type> localTypes;
+};
 
 class SsaWasmToWasmTypeConverter : public TypeConverter {
 public:
@@ -511,13 +515,14 @@ public:
       for (auto &block : funcOp.getBody().getBlocks()) {
         convertBlock(funcOp, &block, localIndex, rewriter, newLabelIndex);
       }
-      convertFuncOp(funcOp, rewriter, typeConverter);
+      convertFuncOp(funcOp, rewriter, typeConverter, localIndex);
     });
   }
 
 private:
   void convertFuncOp(FuncOp funcOp, IRRewriter &rewriter,
-                     TypeConverter &typeConverter) {
+                     TypeConverter &typeConverter,
+                     LocalIndexAnalysis &localIndexAnalysis) {
     TypeConverter::SignatureConversion signatureConverter(
         funcOp.getFunctionType().getNumInputs());
     for (const auto &inputType :
@@ -556,13 +561,12 @@ private:
     rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
                                 newFuncOp.end());
 
-    // create locals for the function arguments
+    // create locals
     Block &entryBlock = newFuncOp.getBody().front();
     rewriter.setInsertionPointToStart(&entryBlock);
     vector<Attribute> typesAttr;
-    for (auto inputType : newFuncType.getInputs()) {
-      typesAttr.push_back(
-          TypeAttr::get(cast<wasm::LocalType>(inputType).getInner()));
+    for (auto type : localIndexAnalysis.getLocalTypes(funcOp)) {
+      typesAttr.push_back(TypeAttr::get(type));
     }
     ArrayRef<Attribute> types(typesAttr);
     rewriter.create<wasm::LocalOp>(funcOp.getLoc(),
