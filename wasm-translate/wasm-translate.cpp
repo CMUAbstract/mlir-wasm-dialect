@@ -409,6 +409,51 @@ LogicalResult translateElemDeclareFuncOp(ElemDeclareFuncOp elemDeclareFuncOp,
   return success();
 }
 
+LogicalResult translateBlockOp(BlockOp blockOp, raw_ostream &output) {
+  output << "(block $" << blockOp.getName() << "\n";
+  for (auto &block : blockOp.getBody()) {
+    for (Operation &op : block) {
+      if (isa<BlockEndOp>(op)) {
+        continue;
+      }
+      if (failed(translateOperation(&op, output))) {
+        return failure();
+      }
+      output << "\n";
+    }
+  }
+  output << ")\n";
+  return success();
+}
+
+LogicalResult translateLoopOp(LoopOp loopOp, raw_ostream &output) {
+  output << "(loop $" << loopOp.getName() << "\n";
+  for (auto &block : loopOp.getBody()) {
+    for (Operation &op : block) {
+      if (isa<LoopEndOp>(op)) {
+        continue;
+      }
+      if (failed(translateOperation(&op, output))) {
+        return failure();
+      }
+      output << "\n";
+    }
+  }
+  output << ")\n";
+  return success();
+}
+
+LogicalResult translateBranchOp(BranchOp branchOp, raw_ostream &output) {
+  output << "(br $" << branchOp.getName() << ")";
+  return success();
+}
+
+LogicalResult translateCondBranchOp(CondBranchOp condBranchOp,
+                                    raw_ostream &output) {
+  output << "(br_if $" << condBranchOp.getName() << ")";
+  return success();
+}
+
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
   if (auto constantOp = dyn_cast<ConstantOp>(op)) {
     return translateConstantOp(constantOp, output);
@@ -460,6 +505,14 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFuncRefOp(funcRefOp, output);
   } else if (auto contNewOp = dyn_cast<ContNewOp>(op)) {
     return translateContNewOp(contNewOp, output);
+  } else if (auto blockOp = dyn_cast<BlockOp>(op)) {
+    return translateBlockOp(blockOp, output);
+  } else if (auto loopOp = dyn_cast<LoopOp>(op)) {
+    return translateLoopOp(loopOp, output);
+  } else if (auto branchOp = dyn_cast<BranchOp>(op)) {
+    return translateBranchOp(branchOp, output);
+  } else if (auto condBranchOp = dyn_cast<CondBranchOp>(op)) {
+    return translateCondBranchOp(condBranchOp, output);
   } else {
     op->emitError("unsupported operation");
     return failure();
