@@ -169,9 +169,9 @@ private:
     Operation *currentOp = ops[index];
     int newIndex = index - 1;
 
-    // skip local and as_pointer operations
+    // skip as_pointer operations
     // we should not introduce locals for these operations
-    if (isa<LocalOp>(currentOp) || isa<AsPointerOp>(currentOp)) {
+    if (isa<AsPointerOp>(currentOp)) {
       return newIndex;
     }
 
@@ -197,7 +197,8 @@ private:
       } else {
         // We should introduce a local for this operation.
         if (std::find(localRequiredOps.begin(), localRequiredOps.end(),
-                      definingOp) == localRequiredOps.end()) {
+                      definingOp) == localRequiredOps.end() &&
+            !isa<LocalOp>(definingOp)) {
           localRequiredOps.push_back(definingOp);
         }
         localGetRequiredOps[currentOp].push_back(operandIdx);
