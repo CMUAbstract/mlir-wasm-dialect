@@ -125,9 +125,18 @@ generatePointerComputation(Operation *op, Value base, MemRefType memRefType,
           rewriter
               .create<ConstantOp>(loc, rewriter.getI32IntegerAttr(strides[i]))
               .getResult();
-      Value multiplied =
+      Value striedTimesIndex =
           rewriter.create<MulOp>(loc, stride, indices[i]).getResult();
-      result = rewriter.create<AddOp>(loc, result, multiplied).getResult();
+
+      Type memRefElementType = memRefType.getElementType();
+      int64_t elementSize = memRefElementType.getIntOrFloatBitWidth() / 8;
+      Value size =
+          rewriter
+              .create<ConstantOp>(loc, rewriter.getI32IntegerAttr(elementSize))
+              .getResult();
+      Value offset =
+          rewriter.create<MulOp>(loc, striedTimesIndex, size).getResult();
+      result = rewriter.create<AddOp>(loc, result, offset).getResult();
     }
   }
 
