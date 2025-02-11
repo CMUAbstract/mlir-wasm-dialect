@@ -36,8 +36,9 @@ fn main() -> Result<()> {
     };
     let mut linker = Linker::new(&engine);
     // these log functions are useful to debug wasm code
-    linker.func_wrap("env", "log_i32", |x: i32| {
+    linker.func_wrap("env", "log_i32", |x: i32| -> i32 {
         println!("log_i32: {}", x);
+        x
     })?;
     linker.func_wrap("env", "log_f32", |x: f32| -> f32 {
         println!("log_f32: {}", x);
@@ -53,12 +54,13 @@ fn main() -> Result<()> {
     let main_fn = instance
         .get_func(&mut store, "main")
         .expect("main not found")
-        .typed::<(), ()>(&store)?;
+        .typed::<(), f32>(&store)?;
 
     let now = Instant::now();
-    main_fn.call(&mut store, ())?;
+    let result = main_fn.call(&mut store, ())?;
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
+    println!("Result: {}", result);
 
     Ok(())
 }
