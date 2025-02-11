@@ -48,7 +48,9 @@ public:
     SsaWasmTypeConverter typeConverter(context);
     populateArithToSsaWasmPatterns(typeConverter, patterns);
     populateFuncToSsaWasmPatterns(typeConverter, patterns);
-    populateMemRefToSsaWasmPatterns(typeConverter, patterns);
+    BaseAddressAnalysis baseAddressAnalysis(module);
+    populateMemRefToSsaWasmPatterns(typeConverter, patterns,
+                                    baseAddressAnalysis);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();

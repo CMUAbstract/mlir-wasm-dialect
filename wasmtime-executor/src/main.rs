@@ -1,10 +1,4 @@
-use aligned_array::{Aligned, A32, A8};
-use bytemuck;
-use run_wasm_lib::mnist;
-use std::cell::RefCell;
 use std::fs;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::{path::PathBuf, time::Instant};
 use structopt::StructOpt;
 use wasmtime::{Config, Engine, Linker, Module, OptLevel, Result, Store};
@@ -13,10 +7,6 @@ use wasmtime::{Config, Engine, Linker, Module, OptLevel, Result, Store};
 struct Opt {
     #[structopt(short, long)]
     input: PathBuf,
-
-    #[structopt(long)]
-    indirect_tensor_pointer: bool,
-    // TODO: Take input tensor as argument
     #[structopt(long)]
     aot: bool,
     #[structopt(long)]
@@ -46,26 +36,15 @@ fn main() -> Result<()> {
     };
     let mut linker = Linker::new(&engine);
     // these log functions are useful to debug wasm code
-    linker.func_wrap("env", "log_i32", |x: i32| -> i32 {
+    linker.func_wrap("env", "log_i32", |x: i32| {
         println!("log_i32: {}", x);
-        x
     })?;
     linker.func_wrap("env", "log_f32", |x: f32| -> f32 {
         println!("log_f32: {}", x);
         x
     })?;
-
-    let counter = Arc::new(Mutex::new(0));
-
-    linker.func_wrap("env", "should_continue_loop", move || -> i32 {
-        let mut counter = counter.lock().unwrap();
-
-        *counter += 1;
-        if *counter < 10000000 {
-            1
-        } else {
-            0
-        }
+    linker.func_wrap("env", "log", || {
+        println!("hi");
     })?;
 
     let mut store = Store::new(&engine, ());
@@ -74,13 +53,12 @@ fn main() -> Result<()> {
     let main_fn = instance
         .get_func(&mut store, "main")
         .expect("main not found")
-        .typed::<(), i32>(&store)?;
+        .typed::<(), ()>(&store)?;
 
     let now = Instant::now();
-    let output = main_fn.call(&mut store, ())?;
+    main_fn.call(&mut store, ())?;
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
-    println!("Output: {}", output);
 
     Ok(())
 }
