@@ -5,7 +5,7 @@
 static void *app_instance_main(wasm_module_inst_t module_inst,
                                wasm_exec_env_t exec_env) {
   const char *exception;
-  uint32_t argv[3];
+  uint32_t argv[5];
 
   float32 data2d[SIZE * SIZE];
   for (int i = 0; i < SIZE * SIZE; i++) {
