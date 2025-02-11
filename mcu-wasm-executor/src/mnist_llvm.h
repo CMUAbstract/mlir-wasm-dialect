@@ -4,6 +4,9 @@
 #include "bh_platform.h"
 #include "input_data.h"
 
+#define INPUT_TENSOR_SIZE 3136
+#define OUTPUT_TENSOR_SIZE 40
+
 typedef struct {
   uint32_t base_ptr;
   uint32_t data;
@@ -39,9 +42,10 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
 
   argv[0] = 32 * 32 * 4;
   wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
-  uint32_t A_ptr = argv[0];
+  uint32_t input_tensor_ptr = argv[0];
 
-  input_tensor_native_ptr = wasm_runtime_addr_app_to_native(module_inst, A_ptr);
+  input_tensor_native_ptr =
+      wasm_runtime_addr_app_to_native(module_inst, input_tensor_ptr);
 
   // preprocess data
   float32 scaled_data[28 * 28];
@@ -66,7 +70,6 @@ static void *app_instance_main(wasm_module_inst_t module_inst,
 
   argv[0] = OUTPUT_TENSOR_SIZE;
   wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);
-  uint32_t output_tensor_ptr = argv[0];
 
   argv[0] = sizeof(Output);
   wasm_runtime_call_wasm(exec_env, malloc_fn, 1, argv);

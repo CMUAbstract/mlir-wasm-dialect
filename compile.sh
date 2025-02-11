@@ -84,7 +84,8 @@ OUTPUT_BEFOREOPT_WASM=""
 
 # Build the project
 echo "Building the project..."
-cmake --build build
+cmake --build build 
+echo "Building the project... done"
 
 if [[ "$COMPILER" == "mlir" ]]; then
     OUTPUT_MLIR="${OUTPUT_BASE}-wasm-1.mlir" # MLIR wasm dialect
@@ -94,7 +95,7 @@ if [[ "$COMPILER" == "mlir" ]]; then
 
     # Convert MLIR file to the Wasm dialect
     echo "Converting $INPUT_MLIR to Wasm dialect..."
-    build/bin/wasm-opt --convert-to-wasm --reconcile-unrealized-casts --wasm-finalize "$INPUT_MLIR" -o "${OUTPUT_MLIR}"
+    build/bin/wasm-opt --convert-to-ssawasm --reconcile-unrealized-casts --ssawasm-data-to-local --introduce-locals --convert-ssawasm-to-wasm "$INPUT_MLIR" -o "${OUTPUT_MLIR}"
 
     # Translate the resulting MLIR file to a .wat file
     echo "Translating $OUTPUT_MLIR to .wat format..."

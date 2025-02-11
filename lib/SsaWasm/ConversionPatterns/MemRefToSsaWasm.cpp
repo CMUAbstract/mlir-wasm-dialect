@@ -1,19 +1,67 @@
 #include "SsaWasm/ConversionPatterns/MemRefToSsaWasm.h"
-#include "Wasm/utility.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 
-namespace mlir::ssawasm {
+#include <map>
 
-namespace {
+namespace mlir::ssawasm {
 using namespace std;
 
+int64_t computeMemRefSize(MemRefType memRefType, int64_t alignment) {
+  // Step 1: Get the shape (dimensions)
+  auto shape = memRefType.getShape();
+
+  // Step 2: Compute the total number of elements
+  int64_t totalElements = 1;
+  for (int64_t dimSize : shape) {
+    totalElements *= dimSize;
+  }
+
+  // Step 3: Determine the size of each element
+  int64_t elementSize = memRefType.getElementType().getIntOrFloatBitWidth() / 8;
+
+  // Step 4: Calculate the total memory size
+  int64_t totalMemorySize = totalElements * elementSize;
+
+  // Step 5: Adjust for alignment
+  // Align to the nearest multiple of 'alignment'
+  int64_t alignedMemorySize =
+      ((totalMemorySize + alignment - 1) / alignment) * alignment;
+
+  return alignedMemorySize;
+}
+
+BaseAddressAnalysis::BaseAddressAnalysis(ModuleOp &moduleOp) {
+  unsigned baseAddress =
+      1024; // start from 1024. This seems to be the wasm convention
+
+  moduleOp.walk([this, &baseAddress](memref::GlobalOp op) {
+    auto symName = op.getSymName().str();
+    baseAddressMap.emplace(symName, baseAddress);
+
+    int64_t alignment = op.getAlignment().value_or(1);
+
+    baseAddress += computeMemRefSize(op.getType(), alignment);
+  });
+}
+
+unsigned BaseAddressAnalysis::getBaseAddress(const string &globalOpName) const {
+  return baseAddressMap.at(globalOpName);
+}
+
+namespace {
+
 struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
-  using OpConversionPattern<memref::GlobalOp>::OpConversionPattern;
+  GlobalOpLowering(TypeConverter &typeConverter, MLIRContext *context,
+                   BaseAddressAnalysis &baseAddressAnalysis)
+      : OpConversionPattern<memref::GlobalOp>(typeConverter, context),
+        baseAddressAnalysis(baseAddressAnalysis) {}
   LogicalResult
   matchAndRewrite(memref::GlobalOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
     auto initialValue = adaptor.getInitialValue();
+    auto baseAddress =
+        baseAddressAnalysis.getBaseAddress(op.getSymName().str());
 
     if (initialValue.has_value()) {
       rewriter.replaceOpWithNewOp<ssawasm::DataOp>(
@@ -22,11 +70,14 @@ struct GlobalOpLowering : public OpConversionPattern<memref::GlobalOp> {
           adaptor.getType(),    // TypeAttr
           initialValue.value(),
           adaptor.getConstant(), // UnitAttr
-          0);                    // TODO: compute base_addr
+          baseAddress);
       return success();
     }
     return rewriter.notifyMatchFailure(op, "not supported");
   }
+
+private:
+  BaseAddressAnalysis &baseAddressAnalysis;
 };
 
 struct GetGlobalOpLowering : public OpConversionPattern<memref::GetGlobalOp> {
@@ -136,7 +187,7 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
     if (alignmentAttr.has_value()) {
       alignment = alignmentAttr.value();
     }
-    int64_t size = wasm::memRefSize(memRefType, alignment);
+    int64_t size = computeMemRefSize(memRefType, alignment);
     auto constantOp =
         rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(size));
     rewriter.replaceOpWithNewOp<CallOp>(
@@ -186,11 +237,14 @@ struct CollapseShapeLowering
 } // namespace
 
 void populateMemRefToSsaWasmPatterns(TypeConverter &typeConverter,
-                                     RewritePatternSet &patterns) {
+                                     RewritePatternSet &patterns,
+                                     BaseAddressAnalysis &baseAddressAnalysis) {
+
   MLIRContext *context = patterns.getContext();
-  patterns.add<GlobalOpLowering, GetGlobalOpLowering, LoadOpLowering,
-               StoreOpLowering, AllocOpLowering, DeallocOpLowering,
-               ExpandShapeLowering, CollapseShapeLowering>(typeConverter,
-                                                           context);
+
+  patterns.add<GlobalOpLowering>(typeConverter, context, baseAddressAnalysis);
+  patterns.add<GetGlobalOpLowering, LoadOpLowering, StoreOpLowering,
+               AllocOpLowering, DeallocOpLowering, ExpandShapeLowering,
+               CollapseShapeLowering>(typeConverter, context);
 }
 } // namespace mlir::ssawasm

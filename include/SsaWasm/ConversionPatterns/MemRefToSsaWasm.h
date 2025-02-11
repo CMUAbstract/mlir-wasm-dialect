@@ -5,9 +5,21 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+using namespace std;
+
 namespace mlir::ssawasm {
+class BaseAddressAnalysis {
+public:
+  BaseAddressAnalysis(ModuleOp &moduleOp);
+  unsigned getBaseAddress(const string &globalOpName) const;
+
+private:
+  map<string, unsigned> baseAddressMap;
+};
+
 void populateMemRefToSsaWasmPatterns(TypeConverter &typeConverter,
-                                     RewritePatternSet &patterns);
+                                     RewritePatternSet &patterns,
+                                     BaseAddressAnalysis &baseAddressAnalysis);
 
 } // namespace mlir::ssawasm
 
