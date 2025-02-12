@@ -19,7 +19,49 @@ using namespace std;
 
 namespace mlir::dcont {
 #define GEN_PASS_DEF_CONVERTINTERMITTENTTODCONT
+#define GEN_PASS_DEF_INTRODUCEMAINFUNCTION
 #include "DCont/DContPasses.h.inc"
+
+// Intermittent to DCont passes
+
+class IntroduceMainFunction
+    : public impl::IntroduceMainFunctionBase<IntroduceMainFunction> {
+  using impl::IntroduceMainFunctionBase<
+      IntroduceMainFunction>::IntroduceMainFunctionBase;
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    MLIRContext *context = &getContext();
+    IRRewriter rewriter(context);
+    Location loc = module.getLoc();
+
+    // introduce main function
+    rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
+    auto mainFuncOp = rewriter.create<func::FuncOp>(
+        loc, "main", rewriter.getFunctionType({}, {}));
+    auto &entryRegion = mainFuncOp.getBody();
+    auto *entryBlock = rewriter.createBlock(&entryRegion);
+    rewriter.setInsertionPointToEnd(entryBlock);
+
+    // run the initial task
+    StringRef initialTaskName = "task1";
+    std::string contName = (initialTaskName + "_cont").str();
+    auto contType = ContType::get(context, StringAttr::get(context, contName));
+    // each task will be converted to a function
+    // that takes a continuation as an argument
+    auto handle =
+        rewriter
+            .create<NewOp>(loc, contType,
+                           FlatSymbolRefAttr::get(context, initialTaskName))
+            .getResult();
+    auto nullCont = rewriter.create<NullContOp>(loc, contType).getResult();
+    rewriter.create<ResumeOp>(loc,
+                              /*return continuation type=*/contType,
+                              /*returned results*/ TypeRange{},
+                              /*continuation*/ handle,
+                              /*arguments*/ ValueRange{nullCont});
+    rewriter.create<func::ReturnOp>(loc, TypeRange{}, ValueRange{});
+  }
+};
 
 namespace {
 struct IdempotentTaskOpLowering
@@ -30,6 +72,7 @@ struct IdempotentTaskOpLowering
   LogicalResult
   matchAndRewrite(intermittent::IdempotentTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    // TODO: IdempotentTaskOp should be converted to
     return success();
   }
 };
@@ -59,6 +102,8 @@ class ConvertIntermittentToDCont
     ConversionTarget target(getContext());
     target.addLegalDialect<dcont::DContDialect>();
     target.addIllegalDialect<intermittent::IntermittentDialect>();
+    // TODO: 1. introduce main function
+    // TODO
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
