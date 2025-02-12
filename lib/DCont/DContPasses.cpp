@@ -72,7 +72,29 @@ struct IdempotentTaskOpLowering
   LogicalResult
   matchAndRewrite(intermittent::IdempotentTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // TODO: IdempotentTaskOp should be converted to
+    // IdempotentTaskOp is lowered to a function that takes a continuation as an
+    // argument
+    MLIRContext *context = op.getContext();
+    auto contName = op.getSymName().str() + "_cont";
+    auto contType = ContType::get(context, StringAttr::get(context, contName));
+    auto funcOp = rewriter.create<func::FuncOp>(
+        op.getLoc(), op.getSymName(),
+        rewriter.getFunctionType(/*inputs=*/{contType}, /*results=*/{}));
+
+    // Create an continuation argument to the function entry block
+    TypeConverter::SignatureConversion signatureConversion(1);
+    signatureConversion.addInputs(0, contType);
+    if (failed(rewriter.convertRegionTypes(&op.getRegion(), *getTypeConverter(),
+                                           &signatureConversion))) {
+      return failure();
+    }
+    // Inline the region into the function body
+    rewriter.inlineRegionBefore(op.getRegion(), funcOp.getBody(),
+                                funcOp.getBody().end());
+
+    // Replace the original op
+    rewriter.eraseOp(op);
+
     return success();
   }
 };
@@ -84,6 +106,23 @@ struct TransitionToOpLowering
   LogicalResult
   matchAndRewrite(intermittent::TransitionToOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    // TODO: Save nonvolatile variables here
+    Location loc = op.getLoc();
+    MLIRContext *context = op.getContext();
+    auto nextTaskName = op.getNextTask().str();
+    auto nextTaskContName = nextTaskName + "_cont";
+    auto contType =
+        ContType::get(context, StringAttr::get(context, nextTaskContName));
+    auto handle = rewriter.create<NewOp>(
+        loc, contType, FlatSymbolRefAttr::get(context, nextTaskName));
+    rewriter.create<SwitchOp>(loc,
+                              /*returedCont=*/contType,
+                              /*results=*/TypeRange{},
+                              /*cont=*/handle,
+                              /*args=*/ValueRange{});
+    rewriter.create<func::ReturnOp>(loc, TypeRange{}, ValueRange{});
+    rewriter.eraseOp(op);
+
     return success();
   }
 };
@@ -101,12 +140,10 @@ class ConvertIntermittentToDCont
 
     ConversionTarget target(getContext());
     target.addLegalDialect<dcont::DContDialect>();
-    target.addIllegalDialect<intermittent::IntermittentDialect>();
-    // TODO: 1. introduce main function
-    // TODO
+    target.addLegalDialect<func::FuncDialect>();
+    target.addIllegalOp<intermittent::IdempotentTaskOp>();
 
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns)))) {
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
