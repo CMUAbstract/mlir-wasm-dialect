@@ -427,4 +427,48 @@ def SsaWasm_TempBranchOp : SsaWasm_Op<"temp_branch", [Terminator]> {
   let successors = (successor AnySuccessor:$dest);
 }
 
+// stack switching related ops
+
+def SsaWasm_TagOp : SsaWasm_Op<"tag", [Pure]> {
+  let description = [{
+    This operation declares a tag.
+  }];
+  let arguments = (ins SymbolNameAttr:$name);
+  let results = (outs SsaWasm_WasmTagType:$result);
+  let assemblyFormat = "attr-dict $name `->` type($result)";
+}
+
+def SsaWasm_ContNewOp : SsaWasm_Op<"cont_new"> {
+  let description = [{
+    This operation creates a new continuation.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$function_name);
+  let results = (outs SsaWasm_WasmContinuationType:$result);
+  let assemblyFormat = "attr-dict $function_name `->` type($result)";
+}
+
+def SsaWasm_ContNullOp : SsaWasm_Op<"cont_null"> {
+  let description = [{
+    This operation creates a null continuation.
+  }];
+  let results = (outs SsaWasm_WasmContinuationType:$result);
+  let assemblyFormat = "attr-dict `->` type($result)";
+}
+
+def SsaWasm_ResumeSwitchOp : SsaWasm_Op<"resume_switch"> {
+  let description = [{
+    This corresponds to the `resume` operation in Wasm with a switch handler.
+  }];
+  let arguments = (ins SsaWasm_WasmTagType:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
+  let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
+}
+
+def SsaWasm_SwitchOp : SsaWasm_Op<"switch"> {
+  let description = [{
+    This corresponds to the `switch` operation in Wasm.
+  }];
+  let arguments = (ins SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
+  let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
+}
+
 #endif // SSAWASM_OPS
