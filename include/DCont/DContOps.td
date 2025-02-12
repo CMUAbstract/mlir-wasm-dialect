@@ -32,9 +32,18 @@ def DCont_NewOp : DCont_Op<"new"> {
     let description = [{
         The `new` operation creates a new delimited continuation.
     }];
-    let arguments = (ins FlatSymbolRefAttr:$name);
+    let arguments = (ins FlatSymbolRefAttr:$function_name);
     let results = (outs DCont_ContType:$cont);
-    let assemblyFormat = "attr-dict $name `->` type($cont)";
+    let assemblyFormat = "attr-dict $function_name `->` type($cont)";
+}
+
+def DCont_NullContOp : DCont_Op<"null_cont"> {
+    let summary = "null delimited continuation";
+    let description = [{
+        The `null_cont` operation represents a null delimited continuation.
+        Resume a `null_cont` operation is a no-op.
+    }];
+    let results = (outs DCont_ContType:$cont);
 }
 
 def DCont_ResumeOp : DCont_Op<"resume"> {

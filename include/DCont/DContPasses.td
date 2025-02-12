@@ -11,6 +11,17 @@
 
 include "mlir/Pass/PassBase.td"
 
+def IntroduceMainFunction : Pass<"introduce-main-function", "ModuleOp"> {
+  let summary = "Introduce a main function in the module";
+  let description = [{
+    This pass introduces a main function in the module.
+  }];
+  let dependentDialects = [
+    "func::FuncDialect",
+    "dcont::DContDialect",
+  ];
+}
+
 
 def ConvertIntermittentToDCont : Pass<"convert-intermittent-to-dcont", "ModuleOp"> {
   let summary = "Convert intermittent computing control flow to delimited continuations";
