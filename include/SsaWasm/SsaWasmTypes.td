@@ -63,4 +63,24 @@ def SsaWasm_WasmPointerLike : TypeConstraint<
         SsaWasm_WasmIntegerType.predicate]>,
     "ssawasm memref or integer type">;
 
+// stack switching related types
+
+def SsaWasm_WasmTagType : SsaWasm_Type<"WasmTag", "tag"> {
+    let description = [{
+        Represents a tag type in the SSA Wasm dialect.
+    }];
+    let parameters = (ins "StringAttr":$name);
+    let assemblyFormat = "$name";
+}
+
+def SsaWasm_WasmContinuationType : SsaWasm_Type<"WasmContinuation", "cont"> {
+    let description = [{
+        Represents a continuation type in the SSA Wasm dialect.
+    }];
+    // TODO: Ideally we should use FunctionType here, but we use
+    // StringAttr for now to allow recursive types.
+    let parameters = (ins "StringAttr":$function_name);
+    let assemblyFormat = "$function_name";
+}
+
 #endif // SSAWASM_TYPES
