@@ -52,7 +52,7 @@ def DCont_ResumeOp : DCont_Op<"resume"> {
         The `resume` operation resumes a delimited continuation.
     }];
     let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returnedCont, Variadic<AnyType>:$results);
+    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
     // TODO: add assembly format
 }
 
@@ -63,7 +63,7 @@ def DCont_ResumeSwitchOp : DCont_Op<"resume_switch"> {
         The resumed continuation can switch to other continuations.
     }];
     let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returnedCont, Variadic<AnyType>:$results);
+    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
     // TODO: add assembly format
 }
 
@@ -73,7 +73,7 @@ def DCont_SuspendOp : DCont_Op<"suspend"> {
         The `suspend` operation suspends a delimited continuation.
     }];
     let arguments = (ins Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returnedCont, Variadic<AnyType>:$results);
+    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
     // TODO: add assembly format
 }
 
@@ -83,7 +83,7 @@ def DCont_SwitchOp : DCont_Op<"switch"> {
         The `switch` operation switches to a different delimited continuation.
     }];
     let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returnedCont, Variadic<AnyType>:$results);
+    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
     // TODO: add assembly format
 }
 
