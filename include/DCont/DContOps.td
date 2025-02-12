@@ -32,7 +32,50 @@ def DCont_NewOp : DCont_Op<"new"> {
     let description = [{
         The `new` operation creates a new delimited continuation.
     }];
-    
+    let arguments = (ins FlatSymbolRefAttr:$name);
+    let results = (outs DCont_ContType:$cont);
+    let assemblyFormat = "attr-dict $name `->` type($cont)";
+}
+
+def DCont_ResumeOp : DCont_Op<"resume"> {
+    let summary = "resume a delimited continuation";
+    let description = [{
+        The `resume` operation resumes a delimited continuation.
+    }];
+    let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
+    let results = (outs DCont_ContType:$returnedCont, Variadic<AnyType>:$results);
+    // TODO: add assembly format
+}
+
+def DCont_ResumeSwitchOp : DCont_Op<"resume_switch"> {
+    let summary = "resume a delimited continuation so that childs can switch to each other";
+    let description = [{
+        The `resume_switch` operation resumes a delimited continuation.
+        The resumed continuation can switch to other continuations.
+    }];
+    let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
+    let results = (outs DCont_ContType:$returnedCont, Variadic<AnyType>:$results);
+    // TODO: add assembly format
+}
+
+def DCont_SuspendOp : DCont_Op<"suspend"> {
+    let summary = "suspend a delimited continuation";
+    let description = [{
+        The `suspend` operation suspends a delimited continuation.
+    }];
+    let arguments = (ins Variadic<AnyType>:$args);
+    let results = (outs DCont_ContType:$returnedCont, Variadic<AnyType>:$results);
+    // TODO: add assembly format
+}
+
+def DCont_SwitchOp : DCont_Op<"switch"> {
+    let summary = "switch to a different delimited continuation";
+    let description = [{
+        The `switch` operation switches to a different delimited continuation.
+    }];
+    let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
+    let results = (outs DCont_ContType:$returnedCont, Variadic<AnyType>:$results);
+    // TODO: add assembly format
 }
 
 #endif // DCONT_OPS
