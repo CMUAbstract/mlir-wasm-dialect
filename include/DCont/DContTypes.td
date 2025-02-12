@@ -20,8 +20,8 @@ class DCont_Type<string name, string typeMnemonic, list<Trait> traits = []>
 }
 
 def DCont_ContType : DCont_Type<"Cont", "cont"> {
-    let parameters = (ins AnyType:$elementType);
-    let assemblyFormat = "`<` $elementType `>`";
+    let parameters = (ins FunctionType:$functionType);
+    let assemblyFormat = "`<` $functionType `>`";
 }
 
 
