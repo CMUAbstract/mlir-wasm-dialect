@@ -13,14 +13,58 @@
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
 #include "DCont/DContPasses.h"
+#include "Intermittent/IntermittentOps.h"
 
 using namespace std;
 
 namespace mlir::dcont {
-#define GEN_PASS_DEF_CONVERTTOSSAWASM
-#define GEN_PASS_DEF_INTRODUCELOCALS
-#define GEN_PASS_DEF_CONVERTSSAWASMTOWASM
-#define GEN_PASS_DEF_SSAWASMDATATOLOCAL
+#define GEN_PASS_DEF_CONVERTINTERMITTENTTODCONT
 #include "DCont/DContPasses.h.inc"
+
+namespace {
+struct IdempotentTaskOpLowering
+    : public OpConversionPattern<intermittent::IdempotentTaskOp> {
+  using OpConversionPattern<
+      intermittent::IdempotentTaskOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(intermittent::IdempotentTaskOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    return success();
+  }
+};
+
+struct TransitionToOpLowering
+    : public OpConversionPattern<intermittent::TransitionToOp> {
+  using OpConversionPattern<intermittent::TransitionToOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(intermittent::TransitionToOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    return success();
+  }
+};
+} // namespace
+class ConvertIntermittentToDCont
+    : public impl::ConvertIntermittentToDContBase<ConvertIntermittentToDCont> {
+  using impl::ConvertIntermittentToDContBase<
+      ConvertIntermittentToDCont>::ConvertIntermittentToDContBase;
+
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+    patterns.add<IdempotentTaskOpLowering, TransitionToOpLowering>(context);
+
+    ConversionTarget target(getContext());
+    target.addLegalDialect<dcont::DContDialect>();
+    target.addIllegalDialect<intermittent::IntermittentDialect>();
+
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
 
 } // namespace mlir::dcont

@@ -10,6 +10,7 @@
 
 #include "DCont/DContDialect.h"
 #include "DCont/DContOps.h"
+#include "Intermittent/IntermittentDialect.h"
 #include "mlir/Pass/Pass.h"
 #include <memory>
 
