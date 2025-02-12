@@ -12,6 +12,8 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
+#include "DCont/DContDialect.h"
+#include "DCont/DContPasses.h"
 #include "Intermittent/IntermittentDialect.h"
 #include "Intermittent/IntermittentPasses.h"
 #include "SsaWasm/SsaWasmDialect.h"
@@ -24,13 +26,14 @@ int main(int argc, char **argv) {
   mlir::wasm::registerPasses();
   mlir::intermittent::registerPasses();
   mlir::ssawasm::registerPasses();
+  mlir::dcont::registerPasses();
 
   mlir::DialectRegistry registry;
-  registry
-      .insert<mlir::wasm::WasmDialect, mlir::intermittent::IntermittentDialect,
-              mlir::arith::ArithDialect, mlir::func::FuncDialect,
-              mlir::scf::SCFDialect, mlir::memref::MemRefDialect,
-              mlir::affine::AffineDialect, mlir::ssawasm::SsaWasmDialect>();
+  registry.insert<
+      mlir::wasm::WasmDialect, mlir::intermittent::IntermittentDialect,
+      mlir::arith::ArithDialect, mlir::func::FuncDialect, mlir::scf::SCFDialect,
+      mlir::memref::MemRefDialect, mlir::affine::AffineDialect,
+      mlir::ssawasm::SsaWasmDialect, mlir::dcont::DContDialect>();
   // Add the following to include *all* MLIR Core dialects, or selectively
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated
