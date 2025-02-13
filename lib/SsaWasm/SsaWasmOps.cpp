@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/CommonFolders.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
 
 #include "SsaWasm/SsaWasmDialect.h"
@@ -15,6 +16,291 @@
 #define GET_OP_CLASSES
 
 namespace mlir::ssawasm {
+
+//===----------------------------------------------------------------------===//
+// Helpers
+//===----------------------------------------------------------------------===//
+
+/// Returns true if 'attr' is an integer constant that fits in either i32 or
+/// i64.
+static bool isInt32Or64(Attribute attr) {
+  if (!attr)
+    return false;
+  auto intAttr = dyn_cast<IntegerAttr>(attr);
+  if (!intAttr)
+    return false;
+  unsigned bitWidth = intAttr.getValue().getBitWidth();
+  return (bitWidth == 32 || bitWidth == 64);
+}
+
+/// Returns true if 'attr' is a float constant of type f32 or f64.
+static bool isF32OrF64(Attribute attr) {
+  if (!attr)
+    return false;
+  auto floatAttr = dyn_cast<FloatAttr>(attr);
+  if (!floatAttr)
+    return false;
+  Type t = floatAttr.getType();
+  return (t.isF32() || t.isF64());
+}
+
+/// Adds two integer constants (32-bit or 64-bit).
+static Attribute foldAddInteger(IntegerAttr lhs, IntegerAttr rhs,
+                                MLIRContext *ctx) {
+  APInt result = lhs.getValue() + rhs.getValue();
+  // Use the same type as lhs or rhs (they match for your ops).
+  return IntegerAttr::get(lhs.getType(), result);
+}
+
+/// Sub two integer constants (32-bit or 64-bit).
+static Attribute foldSubInteger(IntegerAttr lhs, IntegerAttr rhs,
+                                MLIRContext *ctx) {
+  APInt result = lhs.getValue() - rhs.getValue();
+  return IntegerAttr::get(lhs.getType(), result);
+}
+
+/// Mul two integer constants (32-bit or 64-bit).
+static Attribute foldMulInteger(IntegerAttr lhs, IntegerAttr rhs,
+                                MLIRContext *ctx) {
+  APInt result = lhs.getValue() * rhs.getValue();
+  return IntegerAttr::get(lhs.getType(), result);
+}
+
+/// Returns min of two integer constants (handles both i32, i64).
+static Attribute foldMinInteger(IntegerAttr lhs, IntegerAttr rhs) {
+  const APInt &l = lhs.getValue();
+  const APInt &r = rhs.getValue();
+  // For your "min" or "max" you have to decide if it's signed or unsigned.
+  // If it's unsigned min, use 'ult', else if signed, use 'slt'.
+  // For demonstration, let's pick "min" as a *signed* min:
+  APInt result = l.slt(r) ? l : r;
+  return IntegerAttr::get(lhs.getType(), result);
+}
+
+/// Returns max of two integer constants.
+static Attribute foldMaxInteger(IntegerAttr lhs, IntegerAttr rhs) {
+  const APInt &l = lhs.getValue();
+  const APInt &r = rhs.getValue();
+  // For demonstration, let's do signed max:
+  APInt result = l.sgt(r) ? l : r;
+  return IntegerAttr::get(lhs.getType(), result);
+}
+
+/// Fold float add, sub, mul, min, max, etc.
+static Attribute foldAddFloat(FloatAttr lhs, FloatAttr rhs) {
+  APFloat val = lhs.getValue();
+  val.add(rhs.getValue(), APFloat::rmNearestTiesToEven);
+  return FloatAttr::get(lhs.getType(), val);
+}
+
+static Attribute foldSubFloat(FloatAttr lhs, FloatAttr rhs) {
+  APFloat val = lhs.getValue();
+  val.subtract(rhs.getValue(), APFloat::rmNearestTiesToEven);
+  return FloatAttr::get(lhs.getType(), val);
+}
+
+static Attribute foldMulFloat(FloatAttr lhs, FloatAttr rhs) {
+  APFloat val = lhs.getValue();
+  val.multiply(rhs.getValue(), APFloat::rmNearestTiesToEven);
+  return FloatAttr::get(lhs.getType(), val);
+}
+
+/// For min or max, you can choose IEEE `minimum` / `maximum` or do a simpler
+/// check. This is a simplified version using LLVM's APFloat helpers:
+static Attribute foldMinFloat(FloatAttr lhs, FloatAttr rhs) {
+  APFloat val = lhs.getValue();
+  APFloat::cmpResult c = val.compare(rhs.getValue());
+  // For demonstration: "minimum" in the IEEE sense:
+  if (c == APFloat::cmpGreaterThan)
+    val = rhs.getValue();
+  return FloatAttr::get(lhs.getType(), val);
+}
+
+static Attribute foldMaxFloat(FloatAttr lhs, FloatAttr rhs) {
+  APFloat val = lhs.getValue();
+  APFloat::cmpResult c = val.compare(rhs.getValue());
+  // For demonstration: "maximum" in the IEEE sense:
+  if (c == APFloat::cmpLessThan)
+    val = rhs.getValue();
+  return FloatAttr::get(lhs.getType(), val);
+}
+
+/// If both attributes are constants of the same type, apply `combineFn` to
+/// them. Return null if folding is impossible.
+static Attribute
+tryFoldBinaryOp(Attribute lhs, Attribute rhs,
+                function_ref<Attribute(Attribute, Attribute)> combineFn) {
+  if (!lhs || !rhs)
+    return {};
+  // The type must match for your dialect (assuming typed results).
+  if (lhs.getTypeID() != rhs.getTypeID())
+    return {};
+
+  // Attempt integer fold:
+  if (auto lhsInt = dyn_cast<IntegerAttr>(lhs)) {
+    if (auto rhsInt = dyn_cast<IntegerAttr>(rhs))
+      return combineFn(lhsInt, rhsInt);
+  }
+
+  // Attempt float fold:
+  if (auto lhsF = dyn_cast<FloatAttr>(lhs)) {
+    if (auto rhsF = dyn_cast<FloatAttr>(rhs))
+      return combineFn(lhsF, rhsF);
+  }
+
+  // If none matched, folding not possible
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// Folding for Each Op
+//===----------------------------------------------------------------------===//
+
+/// Example folder for `SsaWasm_ConstantOp`.
+OpFoldResult ConstantOp::fold(FoldAdaptor adaptor) {
+  // The `ConstantLike` trait will usually fold to the `value` attribute
+  // directly. For a custom dialect, it’s typical to just do:
+  return getValue();
+}
+
+/// SsaWasm_AddOp folding:
+OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
+  // add(x, 0) -> x
+  // For integer 0 or float +0.0
+  if (Attribute rhs = adaptor.getRhs()) {
+    // For integer zero:
+    if (isInt32Or64(rhs)) {
+      auto iAttr = cast<IntegerAttr>(rhs);
+      if (iAttr.getValue() == 0)
+        return getLhs();
+    }
+    // For float zero:
+    else if (isF32OrF64(rhs)) {
+      auto fAttr = cast<FloatAttr>(rhs);
+      if (fAttr.getValue().isZero())
+        return getLhs();
+    }
+  }
+
+  // If both operands constant, do a direct add:
+  Attribute folded = tryFoldBinaryOp(
+      adaptor.getLhs(), adaptor.getRhs(),
+      [&](Attribute a, Attribute b) -> Attribute {
+        if (isa<IntegerAttr>(a))
+          return foldAddInteger(cast<IntegerAttr>(a), cast<IntegerAttr>(b),
+                                getContext());
+        else
+          return foldAddFloat(cast<FloatAttr>(a), cast<FloatAttr>(b));
+      });
+  if (folded)
+    return folded;
+
+  // Couldn’t fold
+  return {};
+}
+
+/// SsaWasm_SubOp folding:
+OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
+  // sub(x, 0) -> x
+  if (Attribute rhs = adaptor.getRhs()) {
+    if (isInt32Or64(rhs)) {
+      if (cast<IntegerAttr>(rhs).getValue().isZero())
+        return getLhs();
+    } else if (isF32OrF64(rhs)) {
+      if (cast<FloatAttr>(rhs).getValue().isZero())
+        return getLhs();
+    }
+  }
+
+  // If both constant, do a direct sub
+  Attribute folded = tryFoldBinaryOp(
+      adaptor.getLhs(), adaptor.getRhs(),
+      [&](Attribute a, Attribute b) -> Attribute {
+        if (auto ia = dyn_cast<IntegerAttr>(a))
+          return foldSubInteger(ia, cast<IntegerAttr>(b), getContext());
+        else
+          return foldSubFloat(cast<FloatAttr>(a), cast<FloatAttr>(b));
+      });
+  if (folded)
+    return folded;
+
+  return {};
+}
+
+/// SsaWasm_MulOp folding:
+OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
+  // mul(x, 0) -> 0
+  // mul(x, 1) -> x
+  if (Attribute rhs = adaptor.getRhs()) {
+    // Check if it is integer 0 or 1:
+    if (auto iAttr = dyn_cast<IntegerAttr>(rhs)) {
+      const APInt &val = iAttr.getValue();
+      if (val == 0)
+        return rhs; // 0
+      if (val == 1)
+        return getLhs();
+    }
+    // Check if it is float 0.0 or 1.0:
+    if (auto fAttr = dyn_cast<FloatAttr>(rhs)) {
+      if (fAttr.getValue().isZero())
+        return rhs;
+      if (fAttr.getValue().compare(APFloat(1.0)) == APFloat::cmpEqual)
+        return getLhs();
+    }
+  }
+
+  // If both constant, do a direct mul
+  if (Attribute folded = tryFoldBinaryOp(
+          adaptor.getLhs(), adaptor.getRhs(),
+          [&](Attribute a, Attribute b) -> Attribute {
+            if (auto ia = dyn_cast<IntegerAttr>(a))
+              return foldMulInteger(ia, cast<IntegerAttr>(b), getContext());
+            else
+              return foldMulFloat(cast<FloatAttr>(a), cast<FloatAttr>(b));
+          }))
+    return folded;
+
+  return {};
+}
+
+/// SsaWasm_MinOp folding:
+OpFoldResult MinOp::fold(FoldAdaptor adaptor) {
+  // If both constant, do a direct min
+  if (Attribute folded = tryFoldBinaryOp(
+          adaptor.getLhs(), adaptor.getRhs(),
+          [&](Attribute a, Attribute b) -> Attribute {
+            // For demonstration, assume “min” is a *signed* min for int:
+            if (auto ia = dyn_cast<IntegerAttr>(a))
+              return foldMinInteger(ia, cast<IntegerAttr>(b));
+            else
+              return foldMinFloat(cast<FloatAttr>(a), cast<FloatAttr>(b));
+          }))
+    return folded;
+
+  return {};
+}
+
+/// SsaWasm_MaxOp folding:
+OpFoldResult MaxOp::fold(FoldAdaptor adaptor) {
+  // If both constant, do a direct max
+  if (Attribute folded = tryFoldBinaryOp(
+          adaptor.getLhs(), adaptor.getRhs(),
+          [&](Attribute a, Attribute b) -> Attribute {
+            // For demonstration, assume “max” is a *signed* max for int:
+            if (auto ia = dyn_cast<IntegerAttr>(a))
+              return foldMaxInteger(ia, cast<IntegerAttr>(b));
+            else
+              return foldMaxFloat(cast<FloatAttr>(a), cast<FloatAttr>(b));
+          }))
+    return folded;
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// FuncOp
+//===----------------------------------------------------------------------===//
+
 void FuncOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                    llvm::StringRef name, mlir::FunctionType type,
                    llvm::ArrayRef<mlir::NamedAttribute> attrs) {
