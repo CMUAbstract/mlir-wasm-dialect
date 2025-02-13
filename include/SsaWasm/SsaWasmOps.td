@@ -53,63 +53,73 @@ class SsaWasm_WasmNumericBinaryOp<string mnemonic, list<Trait> traits = []>
 // Addition Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative]> {
+def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative, AlwaysSpeculatableImplTrait]> {
   let summary = "SSA-based addition operation";
   let description = [{
     Adds the left-hand-side operand to the right-hand-side operand and
     produces an explicit result.
   }];
+
+  let hasFolder = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 // Subtraction Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub"> {
+def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub", [AlwaysSpeculatableImplTrait]> {
   let summary = "SSA-based subtraction operation";
   let description = [{
     Subtracts the right-hand-side operand from the left-hand-side operand
     and returns the result.
   }];
+
+  let hasFolder = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 // Multiplication Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative]> {
+def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative, AlwaysSpeculatableImplTrait]> {
   let summary = "SSA-based multiplication operation";
   let description = [{
     Multiplies two operands explicitly and yields the product.
   }];
+
+  let hasFolder = 1;
 }
 
-def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu"> {
+def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu", [AlwaysSpeculatableImplTrait]> {
   let summary = "SSA-based integer less than or equal to unsigned operation";
   let description = [{
     Compares two operands explicitly and yields the result of the comparison.
   }];
 }
 
-def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min"> {
+def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min", [AlwaysSpeculatableImplTrait]> {
   let summary = "SSA-based minimum operation";
   let description = [{
     Compares two operands explicitly and yields the minimum of the two.
   }];
+
+  let hasFolder = 1;
 }
 
-def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max"> {
+def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max", [AlwaysSpeculatableImplTrait]> {
   let summary = "SSA-based maximum operation";
   let description = [{
     Compares two operands explicitly and yields the maximum of the two.
   }];
+
+  let hasFolder = 1;
 }
 
 /////////////////////////////////////////////////////////////////////////// 
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure]> {
+def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure, ConstantLike, AlwaysSpeculatableImplTrait]> {
   let summary = "SSA-based constant operation";
   let description = [{
     The `ssawasm.constant` operation produces an SSA value equal to some
@@ -139,13 +149,15 @@ def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure]> {
       }
     }]>
   ];
+
+  let hasFolder = 1;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 // Function Operations
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_FuncOp : SsaWasm_Op<"func", [FunctionOpInterface]> {
+def SsaWasm_FuncOp : SsaWasm_Op<"func", [FunctionOpInterface, IsolatedFromAbove]> {
     let summary = "SSA-based function operation";
     let description = [{
         This is the base class for function operations in the SSA Wasm dialect.
@@ -330,7 +342,7 @@ def SsaWasm_AsMemRefOp : SsaWasm_Op<"as_memref"> {
 ///////////////////////////////////////////////////////////////////////////
 // Local Operations
 ///////////////////////////////////////////////////////////////////////////
-def SsaWasm_LocalOp : SsaWasm_Op<"local", [Pure, SameOperandsAndResultType]> {
+def SsaWasm_LocalOp : SsaWasm_Op<"local", [SameOperandsAndResultType]> {
     let summary = "SSA-based local variable operation";
     let description = [{
         This is the base class for local variable operations in the SSA Wasm dialect.
