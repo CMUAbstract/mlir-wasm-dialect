@@ -54,11 +54,11 @@ class IntroduceMainFunction
                            FlatSymbolRefAttr::get(context, initialTaskName))
             .getResult();
     auto nullCont = rewriter.create<NullContOp>(loc, contType).getResult();
-    rewriter.create<ResumeOp>(loc,
-                              /*return continuation type=*/contType,
-                              /*returned results*/ TypeRange{},
-                              /*continuation*/ handle,
-                              /*arguments*/ ValueRange{nullCont});
+    rewriter.create<ResumeSwitchOp>(loc,
+                                    /*return continuation type=*/contType,
+                                    /*returned results*/ TypeRange{},
+                                    /*continuation*/ handle,
+                                    /*arguments*/ ValueRange{nullCont});
     rewriter.create<func::ReturnOp>(loc, TypeRange{}, ValueRange{});
   }
 };
