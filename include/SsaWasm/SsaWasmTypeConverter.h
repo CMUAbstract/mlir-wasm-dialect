@@ -1,4 +1,5 @@
 
+#include "DCont/DContTypes.h"
 #include "SsaWasm/SsaWasmOps.h"
 #include "SsaWasm/SsaWasmTypes.h"
 
@@ -17,6 +18,9 @@ public:
     });
     addConversion([ctx](IndexType type) -> Type {
       return WasmIntegerType::get(ctx, 32);
+    });
+    addConversion([ctx](dcont::ContType type) -> Type {
+      return WasmContinuationType::get(ctx, type.getFunctionTypeName());
     });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,
