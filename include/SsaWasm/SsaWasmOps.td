@@ -491,7 +491,7 @@ def SsaWasm_RecContFuncDeclOp : SsaWasm_Op<"rec_cont_func_decl"> {
 
   TODO: Make this more general
   }];
-  let arguments = (ins StrAttr:$func_type_id, StrAttr:$cont_type_id);
+  let arguments = (ins SymbolNameAttr:$func_type_id, SymbolNameAttr:$cont_type_id);
   let assemblyFormat = "attr-dict $func_type_id `,` $cont_type_id";
 }
 
