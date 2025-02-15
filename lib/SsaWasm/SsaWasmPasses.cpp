@@ -583,13 +583,15 @@ private:
     // create locals
     Block &entryBlock = newFuncOp.getBody().front();
     rewriter.setInsertionPointToStart(&entryBlock);
-    vector<Attribute> typesAttr;
+    vector<Attribute> typeAttrs;
     for (auto type : localIndexAnalysis.getLocalTypes(funcOp)) {
-      typesAttr.push_back(TypeAttr::get(type));
+      typeAttrs.push_back(TypeAttr::get(type));
     }
-    ArrayRef<Attribute> types(typesAttr);
-    rewriter.create<wasm::LocalOp>(funcOp.getLoc(),
-                                   rewriter.getArrayAttr(types));
+    if (typeAttrs.size() > 0) {
+      ArrayRef<Attribute> types(typeAttrs);
+      rewriter.create<wasm::LocalOp>(funcOp.getLoc(),
+                                     rewriter.getArrayAttr(types));
+    }
 
     for (const auto &namedAttr : funcOp->getAttrs()) {
       if (namedAttr.getName() != funcOp.getFunctionTypeAttrName() &&
