@@ -82,6 +82,7 @@ struct IdempotentTaskOpLowering
     auto funcOp = rewriter.create<func::FuncOp>(
         op.getLoc(), op.getSymName(),
         rewriter.getFunctionType(/*inputs=*/{contType}, /*results=*/{}));
+    funcOp->setAttr("function_type_name", StringAttr::get(context, "ft"));
 
     // Create an continuation argument to the function entry block
     TypeConverter::SignatureConversion signatureConversion(1);
@@ -165,9 +166,14 @@ struct NewOpLowering : public OpConversionPattern<NewOp> {
   LogicalResult
   matchAndRewrite(NewOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    auto funcRef =
+        rewriter
+            .create<ssawasm::FuncRefOp>(
+                op->getLoc(), ssawasm::WasmRefType::get(op.getContext()),
+                adaptor.getFunctionTypeName())
+            .getResult();
     rewriter.replaceOpWithNewOp<ssawasm::ContNewOp>(
-        op, getTypeConverter()->convertType(op.getCont().getType()),
-        adaptor.getFunctionTypeName());
+        op, getTypeConverter()->convertType(op.getCont().getType()), funcRef);
     return success();
   }
 };
@@ -178,8 +184,14 @@ struct NullContOpLowering : public OpConversionPattern<NullContOp> {
   LogicalResult
   matchAndRewrite(NullContOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<ssawasm::ContNullOp>(
-        op, getTypeConverter()->convertType(op.getResult().getType()));
+    auto funcRef =
+        rewriter
+            .create<ssawasm::FuncRefNullOp>(
+                op->getLoc(), ssawasm::WasmRefType::get(op.getContext()))
+            .getResult();
+
+    rewriter.replaceOpWithNewOp<ssawasm::ContNewOp>(
+        op, getTypeConverter()->convertType(op.getResult().getType()), funcRef);
     return success();
   }
 };
@@ -238,12 +250,6 @@ class ConvertDContToSsaWasm
     rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
                                                 rewriter.getStringAttr("ft"),
                                                 rewriter.getStringAttr("ct"));
-    // TODO: Do not hardcode this
-    module.walk([&](func::FuncOp funcOp) {
-      if (funcOp.getName() != "main") {
-        funcOp->setAttr("function_type_name", StringAttr::get(context, "ft"));
-      }
-    });
 
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);

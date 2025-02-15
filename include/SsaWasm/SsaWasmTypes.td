@@ -63,6 +63,13 @@ def SsaWasm_WasmPointerLike : TypeConstraint<
         SsaWasm_WasmIntegerType.predicate]>,
     "ssawasm memref or integer type">;
 
+def SsaWasm_WasmRefType : SsaWasm_Type<"WasmRef", "ref"> {
+    let description = [{
+        Represents a reference type in the SSA Wasm dialect.
+    }];
+    // TODO: Add parameters
+}
+
 // stack switching related types
 
 

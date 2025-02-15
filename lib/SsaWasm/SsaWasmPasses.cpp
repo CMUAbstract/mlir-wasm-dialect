@@ -688,7 +688,9 @@ private:
                                       switchOp.getTag());
     } else if (isa<ContNewOp>(op)) {
       // TODO
-    } else if (isa<ContNullOp>(op)) {
+    } else if (isa<FuncRefOp>(op)) {
+      // TODO
+    } else if (isa<FuncRefNullOp>(op)) {
       // TODO
     } else if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op)) {
       // do nothing
