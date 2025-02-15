@@ -153,7 +153,8 @@ namespace {
 struct DContToSsaWasmTypeConverter : public TypeConverter {
   DContToSsaWasmTypeConverter(MLIRContext *ctx) {
     addConversion([ctx](ContType type) -> Type {
-      return ssawasm::WasmContinuationType::get(ctx, type.getFunctionName());
+      return ssawasm::WasmContinuationType::get(ctx,
+                                                type.getFunctionTypeName());
     });
   }
 };
@@ -166,7 +167,7 @@ struct NewOpLowering : public OpConversionPattern<NewOp> {
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<ssawasm::ContNewOp>(
         op, getTypeConverter()->convertType(op.getCont().getType()),
-        adaptor.getFunctionName());
+        adaptor.getFunctionTypeName());
     return success();
   }
 };
