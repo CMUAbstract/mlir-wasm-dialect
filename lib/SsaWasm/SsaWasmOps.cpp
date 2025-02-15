@@ -327,12 +327,11 @@ ParseResult FuncOp::parse(mlir::OpAsmParser &parser,
           getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name))) {
     return failure();
   }
-  if (succeeded(parser.parseOptionalKeyword("function_type_name"))) {
+  if (succeeded(parser.parseOptionalKeyword("type_id"))) {
     if (parser.parseEqual())
       return failure();
-    StringAttr functionTypeNameAttr;
-    if (parser.parseAttribute(functionTypeNameAttr, "function_type_name",
-                              result.attributes))
+    StringAttr typeIdAttr;
+    if (parser.parseAttribute(typeIdAttr, "type_id", result.attributes))
       return failure();
   }
   return success();
@@ -345,10 +344,10 @@ void FuncOp::print(mlir::OpAsmPrinter &p) {
       p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
       getArgAttrsAttrName(), getResAttrsAttrName());
 
-  auto fnTypeName = getFunctionTypeName();
-  if (fnTypeName.has_value()) {
-    p << " function_type_name = ";
-    p << fnTypeName.value();
+  auto typeId = getTypeId();
+  if (typeId.has_value()) {
+    p << " type_id = ";
+    p << typeId.value();
   }
 }
 

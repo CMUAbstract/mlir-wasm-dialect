@@ -394,6 +394,11 @@ public:
     addConversion([ctx](WasmMemRefType type) -> Type {
       return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
     });
+    addConversion([ctx](WasmContinuationType type) -> Type {
+      // FIXME: We should not hardcode this
+      assert(type.getId() == "ct");
+      return wasm::ContinuationType::get(ctx, "ct", "ft");
+    });
   }
 };
 
@@ -680,18 +685,19 @@ private:
               storeOp.getValue().getType(), storeOp.getContext())));
     } else if (auto resumeSwitchOp = dyn_cast<ResumeSwitchOp>(op)) {
       rewriter.create<wasm::ResumeSwitchOp>(
-          op->getLoc(), resumeSwitchOp.getCont().getType().getName(),
+          op->getLoc(), resumeSwitchOp.getCont().getType().getId(),
           resumeSwitchOp.getTag());
     } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
       rewriter.create<wasm::SwitchOp>(op->getLoc(),
-                                      switchOp.getCont().getType().getName(),
+                                      switchOp.getCont().getType().getId(),
                                       switchOp.getTag());
-    } else if (isa<ContNewOp>(op)) {
-      // TODO
-    } else if (isa<FuncRefOp>(op)) {
-      // TODO
+    } else if (auto contNewOp = dyn_cast<ContNewOp>(op)) {
+      rewriter.create<wasm::ContNewOp>(op->getLoc(),
+                                       contNewOp.getResult().getType().getId());
+    } else if (auto funcRefOp = dyn_cast<FuncRefOp>(op)) {
+      rewriter.create<wasm::FuncRefOp>(op->getLoc(), funcRefOp.getFunc());
     } else if (isa<FuncRefNullOp>(op)) {
-      // TODO
+      rewriter.create<wasm::RefNullOp>(op->getLoc());
     } else if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op)) {
       // do nothing
       // This is already handled by the SsaWasmDataToLocal pass

@@ -79,8 +79,8 @@ def SsaWasm_WasmContinuationType : SsaWasm_Type<"WasmContinuation", "cont"> {
     }];
     // TODO: Ideally we should use FunctionType here, but we use
     // StringAttr for now to allow recursive types.
-    let parameters = (ins "StringAttr":$name);
-    let assemblyFormat = "$name";
+    let parameters = (ins "StringAttr":$id);
+    let assemblyFormat = "$id";
 }
 
 #endif // SSAWASM_TYPES

@@ -118,8 +118,6 @@ def Wasm_RefNullOp : Wasm_Op<"ref.null", []> {
     let description = [{
         The `ref.null` operation creates a null reference.
     }];
-
-    let arguments = (ins RefType:$ref);
 }
 
 def Wasm_RefIsNullOp : Wasm_Op<"ref.is_null", []> {
