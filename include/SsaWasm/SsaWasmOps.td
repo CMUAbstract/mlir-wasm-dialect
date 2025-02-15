@@ -471,4 +471,18 @@ def SsaWasm_SwitchOp : SsaWasm_Op<"switch"> {
   let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
 }
 
+def SsaWasm_RecContFuncDeclOp : SsaWasm_Op<"rec_cont_func_decl"> {
+  let description = [{
+  This operation declares the following types:
+  (rec
+    (type $ft (func (param (ref null $ct))))
+    (type $ct (cont $ft))
+  )
+
+  TODO: Make this more general
+  }];
+  let arguments = (ins StrAttr:$function_type_name, StrAttr:$continuation_type_name);
+  let assemblyFormat = "attr-dict $function_type_name `,` $continuation_type_name";
+}
+
 #endif // SSAWASM_OPS

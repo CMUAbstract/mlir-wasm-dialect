@@ -232,6 +232,9 @@ class ConvertDContToSsaWasm
     rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
     rewriter.create<ssawasm::TagOp>(module.getLoc(),
                                     rewriter.getStringAttr("yield"));
+    rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
+                                                rewriter.getStringAttr("ft"),
+                                                rewriter.getStringAttr("ct"));
 
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);
