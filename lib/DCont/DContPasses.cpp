@@ -82,7 +82,6 @@ struct IdempotentTaskOpLowering
     auto funcOp = rewriter.create<func::FuncOp>(
         op.getLoc(), op.getSymName(),
         rewriter.getFunctionType(/*inputs=*/{contType}, /*results=*/{}));
-    funcOp->setAttr("function_type_name", StringAttr::get(context, "ft"));
 
     // Create an continuation argument to the function entry block
     TypeConverter::SignatureConversion signatureConversion(1);
@@ -154,8 +153,7 @@ namespace {
 struct DContToSsaWasmTypeConverter : public TypeConverter {
   DContToSsaWasmTypeConverter(MLIRContext *ctx) {
     addConversion([ctx](ContType type) -> Type {
-      return ssawasm::WasmContinuationType::get(ctx,
-                                                type.getFunctionTypeName());
+      return ssawasm::WasmContinuationType::get(ctx, type.getId());
     });
   }
 };
@@ -246,10 +244,21 @@ class ConvertDContToSsaWasm
     rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
     rewriter.create<ssawasm::TagOp>(module.getLoc(),
                                     rewriter.getStringAttr("yield"));
-    // TODO: Do not hardcode this
+
+    // FIXME: We should not hardcode this
+    // We assume that all functions except the main have type: "ct" -> ()
+    // and use "ft" to denote the type
     rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
                                                 rewriter.getStringAttr("ft"),
                                                 rewriter.getStringAttr("ct"));
+
+    // NOTE: func::FuncOp will be converted to ssawasm::FuncOp
+    // by the ConvertToSsaWasm pass
+    module.walk([&](func::FuncOp funcOp) {
+      if (funcOp.getName() != "main") {
+        funcOp->setAttr("type_id", StringAttr::get(context, "ft"));
+      }
+    });
 
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);
