@@ -467,7 +467,7 @@ def SsaWasm_SwitchOp : SsaWasm_Op<"switch"> {
   let description = [{
     This corresponds to the `switch` operation in Wasm.
   }];
-  let arguments = (ins SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
+  let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
   let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
 }
 
