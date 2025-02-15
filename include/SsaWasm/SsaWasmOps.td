@@ -438,22 +438,32 @@ def SsaWasm_TagOp : SsaWasm_Op<"tag", [Symbol]> {
   let assemblyFormat = "attr-dict $sym_name";
 }
 
+def SsaWasm_FuncRefOp : SsaWasm_Op<"func_ref"> {
+  let description = [{
+    This operation creates a function reference.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$func);
+  let results = (outs SsaWasm_WasmRefType:$result);
+  let assemblyFormat = "attr-dict $func `->` type($result)";
+}
+
+def SsaWasm_FuncRefNullOp : SsaWasm_Op<"func_ref_null"> {
+  let description = [{
+    This operation creates a null function reference.
+  }];
+  let results = (outs SsaWasm_WasmRefType:$result);
+  let assemblyFormat = "attr-dict `->` type($result)";
+}
+
 def SsaWasm_ContNewOp : SsaWasm_Op<"cont_new"> {
   let description = [{
     This operation creates a new continuation.
   }];
-  let arguments = (ins FlatSymbolRefAttr:$cont_type_name);
+  let arguments = (ins SsaWasm_WasmRefType:$func_ref);
   let results = (outs SsaWasm_WasmContinuationType:$result);
-  let assemblyFormat = "attr-dict $cont_type_name `->` type($result)";
+  let assemblyFormat = "attr-dict $func_ref `->` type($result)";
 }
 
-def SsaWasm_ContNullOp : SsaWasm_Op<"cont_null"> {
-  let description = [{
-    This operation creates a null continuation.
-  }];
-  let results = (outs SsaWasm_WasmContinuationType:$result);
-  let assemblyFormat = "attr-dict `->` type($result)";
-}
 
 def SsaWasm_ResumeSwitchOp : SsaWasm_Op<"resume_switch"> {
   let description = [{
