@@ -35,4 +35,15 @@ def ConvertIntermittentToDCont : Pass<"convert-intermittent-to-dcont", "ModuleOp
   ];
 }
 
+def ConvertDContToSsaWasm : Pass<"convert-dcont-to-ssawasm", "ModuleOp"> {
+  let summary = "Convert delimited continuations to SSA Wasm";
+  let description = [{
+    This pass converts delimited continuations to SSA Wasm.
+  }];
+  let dependentDialects = [
+    "dcont::DContDialect",
+    "ssawasm::SsaWasmDialect",
+  ];
+}
+
 #endif // DCONT_DCONT_PASS

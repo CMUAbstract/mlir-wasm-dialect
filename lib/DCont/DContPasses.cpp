@@ -14,12 +14,16 @@
 
 #include "DCont/DContPasses.h"
 #include "Intermittent/IntermittentOps.h"
+#include "SsaWasm/SsaWasmDialect.h"
+#include "SsaWasm/SsaWasmOps.h"
+#include "SsaWasm/SsaWasmTypes.h"
 
 using namespace std;
 
 namespace mlir::dcont {
 #define GEN_PASS_DEF_CONVERTINTERMITTENTTODCONT
 #define GEN_PASS_DEF_INTRODUCEMAINFUNCTION
+#define GEN_PASS_DEF_CONVERTDCONTTOSSAWASM
 #include "DCont/DContPasses.h.inc"
 
 // Intermittent to DCont passes
@@ -142,6 +146,105 @@ class ConvertIntermittentToDCont
     target.addLegalDialect<dcont::DContDialect>();
     target.addLegalDialect<func::FuncDialect>();
     target.addIllegalOp<intermittent::IdempotentTaskOp>();
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+namespace {
+
+struct DContToSsaWasmTypeConverter : public TypeConverter {
+  DContToSsaWasmTypeConverter(MLIRContext *ctx) {
+    addConversion([ctx](ContType type) -> Type {
+      return ssawasm::WasmContinuationType::get(ctx, type.getFunctionName());
+    });
+  }
+};
+
+struct NewOpLowering : public OpConversionPattern<NewOp> {
+  using OpConversionPattern<NewOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(NewOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ssawasm::ContNewOp>(
+        op, getTypeConverter()->convertType(op.getCont().getType()),
+        adaptor.getFunctionName());
+    return success();
+  }
+};
+
+struct NullContOpLowering : public OpConversionPattern<NullContOp> {
+  using OpConversionPattern<NullContOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(NullContOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ssawasm::ContNullOp>(
+        op, getTypeConverter()->convertType(op.getResult().getType()));
+    return success();
+  }
+};
+
+struct ResumeSwitchOpLowering : public OpConversionPattern<ResumeSwitchOp> {
+  using OpConversionPattern<ResumeSwitchOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ResumeSwitchOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ssawasm::ResumeSwitchOp>(
+        op,
+        /*returnedCont=*/
+        getTypeConverter()->convertType(op.getReturnedCont().getType()),
+        /*results=*/op.getResults().getType(),
+        /*tag=*/"yield",
+        /*cont=*/adaptor.getCont(),
+        /*args=*/adaptor.getArgs());
+    return success();
+  }
+};
+
+struct SwitchOpLowering : public OpConversionPattern<SwitchOp> {
+  using OpConversionPattern<SwitchOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(SwitchOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ssawasm::SwitchOp>(
+        op,
+        /*returnedCont=*/
+        getTypeConverter()->convertType(op.getReturnedCont().getType()),
+        /*results=*/op.getResults().getType(),
+        /*cont=*/adaptor.getCont(),
+        /*args=*/adaptor.getArgs());
+    return success();
+  }
+};
+} // namespace
+
+class ConvertDContToSsaWasm
+    : public impl::ConvertDContToSsaWasmBase<ConvertDContToSsaWasm> {
+  using impl::ConvertDContToSsaWasmBase<
+      ConvertDContToSsaWasm>::ConvertDContToSsaWasmBase;
+
+  void runOnOperation() override {
+    ModuleOp module = getOperation();
+    MLIRContext *context = &getContext();
+
+    // TODO: Add yield tag to the module
+    IRRewriter rewriter(context);
+    rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
+
+    RewritePatternSet patterns(context);
+    DContToSsaWasmTypeConverter typeConverter(context);
+    patterns.add<NewOpLowering, NullContOpLowering, ResumeSwitchOpLowering,
+                 SwitchOpLowering>(typeConverter, context);
+    // TODO: Support ResumeOp
+
+    ConversionTarget target(getContext());
+    target.addLegalDialect<ssawasm::SsaWasmDialect>();
+    target.addIllegalDialect<DContDialect>();
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
