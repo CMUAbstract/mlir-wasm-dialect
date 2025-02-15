@@ -678,6 +678,18 @@ private:
           op->getLoc(),
           TypeAttr::get(convertSsaWasmTypeToWasmType(
               storeOp.getValue().getType(), storeOp.getContext())));
+    } else if (auto resumeSwitchOp = dyn_cast<ResumeSwitchOp>(op)) {
+      rewriter.create<wasm::ResumeSwitchOp>(
+          op->getLoc(), resumeSwitchOp.getCont().getType().getName(),
+          resumeSwitchOp.getTag());
+    } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
+      rewriter.create<wasm::SwitchOp>(op->getLoc(),
+                                      switchOp.getCont().getType().getName(),
+                                      switchOp.getTag());
+    } else if (isa<ContNewOp>(op)) {
+      // TODO
+    } else if (isa<ContNullOp>(op)) {
+      // TODO
     } else if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op)) {
       // do nothing
       // This is already handled by the SsaWasmDataToLocal pass

@@ -213,6 +213,7 @@ struct SwitchOpLowering : public OpConversionPattern<SwitchOp> {
         /*returnedCont=*/
         getTypeConverter()->convertType(op.getReturnedCont().getType()),
         /*results=*/op.getResults().getType(),
+        /*tag=*/rewriter.getStringAttr("yield"),
         /*cont=*/adaptor.getCont(),
         /*args=*/adaptor.getArgs());
     return success();
