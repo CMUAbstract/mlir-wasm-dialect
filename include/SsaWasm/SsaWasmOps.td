@@ -167,7 +167,8 @@ def SsaWasm_FuncOp : SsaWasm_Op<"func", [FunctionOpInterface, IsolatedFromAbove]
         SymbolNameAttr:$sym_name,
         TypeAttrOf<FunctionType>:$function_type,
         OptionalAttr<DictArrayAttr>:$arg_attrs,
-        OptionalAttr<DictArrayAttr>:$res_attrs
+        OptionalAttr<DictArrayAttr>:$res_attrs,
+        OptionalAttr<StrAttr>:$function_type_name
     );
     let regions = (region AnyRegion:$body);
 
