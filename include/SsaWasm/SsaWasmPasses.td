@@ -33,8 +33,8 @@ def IntroduceLocals : Pass<"introduce-locals", "ModuleOp"> {
   ];
 }
 
-def SsaWasmDataToLocal : Pass<"ssawasm-data-to-local", "ModuleOp"> {
-  let summary = "Converts Data and GetData operations";
+def ConvertSsaWasmGlobalToWasm : Pass<"convert-ssawasm-global-to-wasm", "ModuleOp"> {
+  let summary = "Converts module-level operations such as Data and GetData to the wasm dialect";
   let dependentDialects = [
     "ssawasm::SsaWasmDialect",
     "wasm::WasmDialect",

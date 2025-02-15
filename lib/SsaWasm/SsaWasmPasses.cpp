@@ -26,7 +26,7 @@ namespace mlir::ssawasm {
 #define GEN_PASS_DEF_CONVERTTOSSAWASM
 #define GEN_PASS_DEF_INTRODUCELOCALS
 #define GEN_PASS_DEF_CONVERTSSAWASMTOWASM
-#define GEN_PASS_DEF_SSAWASMDATATOLOCAL
+#define GEN_PASS_DEF_CONVERTSSAWASMGLOBALTOWASM
 #include "SsaWasm/SsaWasmPasses.h.inc"
 
 class ConvertToSsaWasm : public impl::ConvertToSsaWasmBase<ConvertToSsaWasm> {
@@ -482,11 +482,11 @@ public:
   }
 };
 
-class SsaWasmDataToLocal
-    : public impl::SsaWasmDataToLocalBase<SsaWasmDataToLocal> {
+class ConvertSsaWasmGlobalToWasm
+    : public impl::ConvertSsaWasmGlobalToWasmBase<ConvertSsaWasmGlobalToWasm> {
 public:
-  using impl::SsaWasmDataToLocalBase<
-      SsaWasmDataToLocal>::SsaWasmDataToLocalBase;
+  using impl::ConvertSsaWasmGlobalToWasmBase<
+      ConvertSsaWasmGlobalToWasm>::ConvertSsaWasmGlobalToWasmBase;
 
   void runOnOperation() final {
     auto module = getOperation();
