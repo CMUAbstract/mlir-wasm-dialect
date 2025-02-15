@@ -20,7 +20,7 @@ public:
       return WasmIntegerType::get(ctx, 32);
     });
     addConversion([ctx](dcont::ContType type) -> Type {
-      return WasmContinuationType::get(ctx, type.getFunctionTypeName());
+      return WasmContinuationType::get(ctx, type.getId());
     });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,

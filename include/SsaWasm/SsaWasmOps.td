@@ -168,7 +168,7 @@ def SsaWasm_FuncOp : SsaWasm_Op<"func", [FunctionOpInterface, IsolatedFromAbove]
         TypeAttrOf<FunctionType>:$function_type,
         OptionalAttr<DictArrayAttr>:$arg_attrs,
         OptionalAttr<DictArrayAttr>:$res_attrs,
-        OptionalAttr<StrAttr>:$function_type_name
+        OptionalAttr<StrAttr>:$type_id
     );
     let regions = (region AnyRegion:$body);
 
@@ -491,8 +491,8 @@ def SsaWasm_RecContFuncDeclOp : SsaWasm_Op<"rec_cont_func_decl"> {
 
   TODO: Make this more general
   }];
-  let arguments = (ins StrAttr:$function_type_name, StrAttr:$continuation_type_name);
-  let assemblyFormat = "attr-dict $function_type_name `,` $continuation_type_name";
+  let arguments = (ins StrAttr:$func_type_id, StrAttr:$cont_type_id);
+  let assemblyFormat = "attr-dict $func_type_id `,` $cont_type_id";
 }
 
 #endif // SSAWASM_OPS
