@@ -65,13 +65,6 @@ def SsaWasm_WasmPointerLike : TypeConstraint<
 
 // stack switching related types
 
-def SsaWasm_WasmTagType : SsaWasm_Type<"WasmTag", "tag"> {
-    let description = [{
-        Represents a tag type in the SSA Wasm dialect.
-    }];
-    let parameters = (ins "StringAttr":$name);
-    let assemblyFormat = "$name";
-}
 
 def SsaWasm_WasmContinuationType : SsaWasm_Type<"WasmContinuation", "cont"> {
     let description = [{
