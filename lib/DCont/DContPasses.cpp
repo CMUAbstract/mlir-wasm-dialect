@@ -234,9 +234,16 @@ class ConvertDContToSsaWasm
     rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
     rewriter.create<ssawasm::TagOp>(module.getLoc(),
                                     rewriter.getStringAttr("yield"));
+    // TODO: Do not hardcode this
     rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
                                                 rewriter.getStringAttr("ft"),
                                                 rewriter.getStringAttr("ct"));
+    // TODO: Do not hardcode this
+    module.walk([&](func::FuncOp funcOp) {
+      if (funcOp.getName() != "main") {
+        funcOp->setAttr("function_type_name", StringAttr::get(context, "ft"));
+      }
+    });
 
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);
