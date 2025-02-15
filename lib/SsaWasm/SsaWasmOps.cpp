@@ -321,10 +321,21 @@ ParseResult FuncOp::parse(mlir::OpAsmParser &parser,
          mlir::function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(argTypes, results); };
 
-  return mlir::function_interface_impl::parseFunctionOp(
-      parser, result, /*allowVariadic=*/false,
-      getFunctionTypeAttrName(result.name), buildFuncType,
-      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+  if (mlir::function_interface_impl::parseFunctionOp(
+          parser, result, /*allowVariadic=*/false,
+          getFunctionTypeAttrName(result.name), buildFuncType,
+          getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name))) {
+    return failure();
+  }
+  if (succeeded(parser.parseOptionalKeyword("function_type_name"))) {
+    if (parser.parseEqual())
+      return failure();
+    StringAttr functionTypeNameAttr;
+    if (parser.parseAttribute(functionTypeNameAttr, "function_type_name",
+                              result.attributes))
+      return failure();
+  }
+  return success();
 }
 
 void FuncOp::print(mlir::OpAsmPrinter &p) {
@@ -333,6 +344,12 @@ void FuncOp::print(mlir::OpAsmPrinter &p) {
   mlir::function_interface_impl::printFunctionOp(
       p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
       getArgAttrsAttrName(), getResAttrsAttrName());
+
+  auto fnTypeName = getFunctionTypeName();
+  if (fnTypeName.has_value()) {
+    p << " function_type_name = ";
+    p << fnTypeName.value();
+  }
 }
 
 FunctionType CallOp::getCalleeType() {
