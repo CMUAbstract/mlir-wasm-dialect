@@ -194,7 +194,7 @@ struct ResumeSwitchOpLowering : public OpConversionPattern<ResumeSwitchOp> {
         /*returnedCont=*/
         getTypeConverter()->convertType(op.getReturnedCont().getType()),
         /*results=*/op.getResults().getType(),
-        /*tag=*/"yield",
+        /*tag=*/rewriter.getStringAttr("yield"),
         /*cont=*/adaptor.getCont(),
         /*args=*/adaptor.getArgs());
     return success();
@@ -228,9 +228,10 @@ class ConvertDContToSsaWasm
     ModuleOp module = getOperation();
     MLIRContext *context = &getContext();
 
-    // TODO: Add yield tag to the module
     IRRewriter rewriter(context);
     rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
+    rewriter.create<ssawasm::TagOp>(module.getLoc(),
+                                    rewriter.getStringAttr("yield"));
 
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);

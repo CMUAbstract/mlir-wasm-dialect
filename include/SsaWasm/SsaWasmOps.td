@@ -429,6 +429,14 @@ def SsaWasm_TempBranchOp : SsaWasm_Op<"temp_branch", [Terminator]> {
 
 // stack switching related ops
 
+def SsaWasm_TagOp : SsaWasm_Op<"tag", [Symbol]> {
+  let description = [{
+    This operation declares a tag.
+  }];
+  let arguments = (ins SymbolNameAttr:$sym_name);
+  let assemblyFormat = "attr-dict $sym_name";
+}
+
 def SsaWasm_ContNewOp : SsaWasm_Op<"cont_new"> {
   let description = [{
     This operation creates a new continuation.
@@ -450,7 +458,7 @@ def SsaWasm_ResumeSwitchOp : SsaWasm_Op<"resume_switch"> {
   let description = [{
     This corresponds to the `resume` operation in Wasm with a switch handler.
   }];
-  let arguments = (ins StrAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
+  let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
   let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
 }
 
