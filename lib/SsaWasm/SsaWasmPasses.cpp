@@ -482,6 +482,30 @@ public:
   }
 };
 
+class TagOpLowering : public OpConversionPattern<TagOp> {
+public:
+  using OpConversionPattern<TagOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(TagOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<wasm::TagOp>(op, op.getSymName());
+    return success();
+  }
+};
+
+class RecContFuncDeclOpLowering
+    : public OpConversionPattern<RecContFuncDeclOp> {
+public:
+  using OpConversionPattern<RecContFuncDeclOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(RecContFuncDeclOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<wasm::RecContFuncDeclOp>(op, op.getFuncTypeId(),
+                                                         op.getContTypeId());
+    return success();
+  }
+};
+
 class ConvertSsaWasmGlobalToWasm
     : public impl::ConvertSsaWasmGlobalToWasmBase<ConvertSsaWasmGlobalToWasm> {
 public:
@@ -491,24 +515,27 @@ public:
   void runOnOperation() final {
     auto module = getOperation();
     MLIRContext *context = module.getContext();
-    RewritePatternSet getDataOpLoweringPattern(context);
-    getDataOpLoweringPattern.add<GetDataOpLowering>(context);
+    RewritePatternSet globalDependencyLoweringPattern(context);
+    globalDependencyLoweringPattern.add<GetDataOpLowering>(context);
 
     ConversionTarget target(*context);
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
     target.addLegalDialect<wasm::WasmDialect>();
     target.addIllegalOp<GetDataOp>();
 
-    if (failed(applyPartialConversion(module, target,
-                                      std::move(getDataOpLoweringPattern)))) {
+    if (failed(applyPartialConversion(
+            module, target, std::move(globalDependencyLoweringPattern)))) {
       signalPassFailure();
     }
 
-    RewritePatternSet dataOpLoweringPattern(context);
-    dataOpLoweringPattern.add<DataOpLowering>(context);
+    RewritePatternSet globalLoweringPattern(context);
+    globalLoweringPattern
+        .add<DataOpLowering, TagOpLowering, RecContFuncDeclOpLowering>(context);
     target.addIllegalOp<DataOp>();
+    target.addIllegalOp<TagOp>();
+    target.addIllegalOp<RecContFuncDeclOp>();
     if (failed(applyPartialConversion(module, target,
-                                      std::move(dataOpLoweringPattern)))) {
+                                      std::move(globalLoweringPattern)))) {
       signalPassFailure();
     }
   }
