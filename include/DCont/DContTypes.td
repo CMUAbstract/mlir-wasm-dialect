@@ -22,8 +22,8 @@ class DCont_Type<string name, string typeMnemonic, list<Trait> traits = []>
 def DCont_ContType : DCont_Type<"Cont", "cont"> {
     // Ideally, we should use FunctionType as the parameter, but then we cannot
     // define types recursively
-    let parameters = (ins "StringAttr":$functionName);
-    let assemblyFormat = "`<` $functionName `>`";
+    let parameters = (ins "StringAttr":$function_type_name);
+    let assemblyFormat = "`<` $function_type_name `>`";
 }
 
 

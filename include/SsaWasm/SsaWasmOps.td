@@ -442,9 +442,9 @@ def SsaWasm_ContNewOp : SsaWasm_Op<"cont_new"> {
   let description = [{
     This operation creates a new continuation.
   }];
-  let arguments = (ins FlatSymbolRefAttr:$function_name);
+  let arguments = (ins FlatSymbolRefAttr:$cont_type_name);
   let results = (outs SsaWasm_WasmContinuationType:$result);
-  let assemblyFormat = "attr-dict $function_name `->` type($result)";
+  let assemblyFormat = "attr-dict $cont_type_name `->` type($result)";
 }
 
 def SsaWasm_ContNullOp : SsaWasm_Op<"cont_null"> {
