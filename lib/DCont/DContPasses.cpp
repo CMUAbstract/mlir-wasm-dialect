@@ -48,8 +48,7 @@ class IntroduceMainFunction
 
     // run the initial task
     StringRef initialTaskName = "task1";
-    std::string contName = (initialTaskName + "_cont").str();
-    auto contType = ContType::get(context, StringAttr::get(context, contName));
+    auto contType = ContType::get(context, StringAttr::get(context, "ct"));
     // each task will be converted to a function
     // that takes a continuation as an argument
     auto handle =
@@ -79,8 +78,7 @@ struct IdempotentTaskOpLowering
     // IdempotentTaskOp is lowered to a function that takes a continuation as an
     // argument
     MLIRContext *context = op.getContext();
-    auto contName = op.getSymName().str() + "_cont";
-    auto contType = ContType::get(context, StringAttr::get(context, contName));
+    auto contType = ContType::get(context, StringAttr::get(context, "ct"));
     auto funcOp = rewriter.create<func::FuncOp>(
         op.getLoc(), op.getSymName(),
         rewriter.getFunctionType(/*inputs=*/{contType}, /*results=*/{}));
@@ -114,9 +112,7 @@ struct TransitionToOpLowering
     Location loc = op.getLoc();
     MLIRContext *context = op.getContext();
     auto nextTaskName = op.getNextTask().str();
-    auto nextTaskContName = nextTaskName + "_cont";
-    auto contType =
-        ContType::get(context, StringAttr::get(context, nextTaskContName));
+    auto contType = ContType::get(context, StringAttr::get(context, "ct"));
     auto handle = rewriter.create<NewOp>(
         loc, contType, FlatSymbolRefAttr::get(context, nextTaskName));
     rewriter.create<SwitchOp>(loc,
