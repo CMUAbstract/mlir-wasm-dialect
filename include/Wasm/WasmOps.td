@@ -680,7 +680,7 @@ def Wasm_SwitchOp : Wasm_Op<"switch"> {
     Assumes that a continuation is on the top of the stack.
   }];
   let arguments = (ins FlatSymbolRefAttr:$ct, FlatSymbolRefAttr:$tag); 
-  let assemblyFormat = "$ct `(` `on` $tag `)` attr-dict";
+  let assemblyFormat = "$ct `(` `tag` `:` $tag `)` attr-dict";
 }
 
 def Wasm_ImportFuncOp : Wasm_Op<"import"> {
