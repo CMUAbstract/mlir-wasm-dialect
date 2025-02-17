@@ -702,8 +702,14 @@ llvm::LogicalResult translateFunction(FuncSignatureList &funcSignatureList,
 
   // function type
   FuncSignature funcSignature(funcOp);
-  output << "(type "
-         << funcSignatureList.getFunctionTypeNameOrIndex(funcSignature) << ")";
+  output << "(type ";
+  if (funcOp->hasAttr("type_id")) {
+    output << "$" << cast<StringAttr>(funcOp->getAttr("type_id")).getValue()
+           << ")";
+  } else {
+    output << funcSignatureList.getFunctionTypeNameOrIndex(funcSignature)
+           << ")";
+  }
 
   // Translate function body
   if (failed(translateFunctionBody(funcOp, output))) {
@@ -760,6 +766,11 @@ FuncSignatureList initializeFuncSignatureList(ModuleOp &moduleOp,
     funcSignatureList.push_back(funcSignature);
   }
   for (auto funcOp : moduleOp.getOps<WasmFuncOp>()) {
+    if (funcOp->hasAttr("type_id")) {
+      // If a function has a type_id attribute,
+      // its type declaration is already handled separately
+      continue;
+    }
     FuncSignature funcSignature(funcOp);
     funcSignatureList.push_back(funcSignature);
   }
