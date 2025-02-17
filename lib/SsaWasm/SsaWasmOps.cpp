@@ -297,6 +297,66 @@ OpFoldResult MaxOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+/// SsaWasm_EqOp folding:
+OpFoldResult EqOp::fold(FoldAdaptor adaptor) {
+  // eq(x, x) -> 1
+  if (adaptor.getLhs() == adaptor.getRhs()) {
+    // Need to cast to TypedAttr to access getType()
+    auto typedAttr = cast<TypedAttr>(adaptor.getLhs());
+    return IntegerAttr::get(typedAttr.getType(), 1);
+  }
+  // if both are constants, return the result of the comparison
+  if (auto lhs = dyn_cast<IntegerAttr>(adaptor.getLhs())) {
+    if (auto rhs = dyn_cast<IntegerAttr>(adaptor.getRhs())) {
+      return IntegerAttr::get(lhs.getType(), lhs.getValue() == rhs.getValue());
+    }
+  }
+  // TODO: handle float comparison
+  return {};
+}
+
+/// SsaWasm_RemUOp folding:
+OpFoldResult RemUOp::fold(FoldAdaptor adaptor) {
+  // remu(x, 1) -> 0
+  if (Attribute rhs = adaptor.getRhs()) {
+    if (isInt32Or64(rhs)) {
+      auto iAttr = cast<IntegerAttr>(rhs);
+      if (iAttr.getValue() == 1)
+        return IntegerAttr::get(iAttr.getType(),
+                                APInt(iAttr.getValue().getBitWidth(), 0));
+    }
+  }
+
+  // remu(0, x) -> 0 (when x != 0)
+  if (Attribute lhs = adaptor.getLhs()) {
+    if (isInt32Or64(lhs)) {
+      auto iAttr = cast<IntegerAttr>(lhs);
+      if (iAttr.getValue() == 0)
+        return lhs; // 0 % x = 0 (if x != 0)
+    }
+  }
+
+  // If both constant, compute remu
+  Attribute folded =
+      tryFoldBinaryOp(adaptor.getLhs(), adaptor.getRhs(),
+                      [&](Attribute a, Attribute b) -> Attribute {
+                        auto lhsInt = cast<IntegerAttr>(a);
+                        auto rhsInt = cast<IntegerAttr>(b);
+
+                        // Don't fold division by zero
+                        if (rhsInt.getValue().isZero())
+                          return {};
+
+                        APInt result =
+                            lhsInt.getValue().urem(rhsInt.getValue());
+                        return IntegerAttr::get(lhsInt.getType(), result);
+                      });
+  if (folded)
+    return folded;
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // FuncOp
 //===----------------------------------------------------------------------===//

@@ -29,6 +29,22 @@ using MulIOpLowering = NumericBinaryOpLowering<arith::MulIOp, MulOp>;
 using MulFOpLowering = NumericBinaryOpLowering<arith::MulFOp, MulOp>;
 using MinFOpLowering = NumericBinaryOpLowering<arith::MinimumFOp, MinOp>;
 using MaxFOpLowering = NumericBinaryOpLowering<arith::MaximumFOp, MaxOp>;
+using RemUIOpLowering = NumericBinaryOpLowering<arith::RemUIOp, RemUOp>;
+
+struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
+  using OpConversionPattern<arith::CmpIOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::CmpIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (op.getPredicate() == arith::CmpIPredicate::eq) {
+      rewriter.replaceOpWithNewOp<EqOp>(op, adaptor.getLhs(), adaptor.getRhs());
+    } else {
+      return rewriter.notifyMatchFailure(op,
+                                         "unsupported comparison predicate");
+    }
+    return success();
+  }
+};
 
 struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
@@ -52,6 +68,17 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
     return success();
   }
 };
+
+struct IndexCastOpLowering : public OpConversionPattern<arith::IndexCastOp> {
+  using OpConversionPattern<arith::IndexCastOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::IndexCastOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Replace the index cast with its operand directly
+    rewriter.replaceOp(op, adaptor.getIn());
+    return success();
+  }
+};
 } // namespace
 
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
@@ -59,6 +86,7 @@ void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
   MLIRContext *context = patterns.getContext();
   patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
                MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
-               ConstantOpLowering>(typeConverter, context);
+               CmpIOpLowering, RemUIOpLowering, ConstantOpLowering,
+               IndexCastOpLowering>(typeConverter, context);
 }
 } // namespace mlir::ssawasm
