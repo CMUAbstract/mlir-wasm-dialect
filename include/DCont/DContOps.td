@@ -34,7 +34,7 @@ def DCont_NewOp : DCont_Op<"new"> {
     }];
     let arguments = (ins FlatSymbolRefAttr:$function_type_name);
     let results = (outs DCont_ContType:$cont);
-    let assemblyFormat = "attr-dict $function_type_name `->` type($cont)";
+    let assemblyFormat = "attr-dict $function_type_name `:` type($cont)";
 }
 
 def DCont_NullContOp : DCont_Op<"null_cont"> {
@@ -53,7 +53,14 @@ def DCont_ResumeOp : DCont_Op<"resume"> {
     }];
     let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
     let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
-    // TODO: add assembly format
+    let assemblyFormat = [{
+    `(` $cont `:` type($cont)
+    (`,` $args^)?  
+    `)`               
+    attr-dict        
+    `:` functional-type($args, $results)
+    `,` type($returned_cont)
+    }];
 }
 
 def DCont_ResumeSwitchOp : DCont_Op<"resume_switch"> {
@@ -74,7 +81,10 @@ def DCont_SuspendOp : DCont_Op<"suspend"> {
     }];
     let arguments = (ins Variadic<AnyType>:$args);
     let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
-    // TODO: add assembly format
+    let assemblyFormat = [{
+        `(` $args `)` attr-dict `:` functional-type($args, $results) `,` type($returned_cont)
+  }];
+  
 }
 
 def DCont_SwitchOp : DCont_Op<"switch"> {
