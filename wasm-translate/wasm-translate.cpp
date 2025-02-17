@@ -180,6 +180,7 @@ std::string getUniqueLoopName() { return "$loop" + std::to_string(counter++); }
 // TODO: move this to header file?
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output);
 
+// DEPRECATED. TODO: remove
 llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
                                                    raw_ostream &output) {
   // FIXME: This translation logic should be all handled by lowering passes
@@ -326,6 +327,7 @@ llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
   return success();
 }
 
+// DEPRECATED. TODO: remove
 LogicalResult translateLoopOpDeprecated(LoopOpDeprecated loopOp,
                                         raw_ostream &output) {
   output << "(loop $" << loopOp.getName() << "\n";
@@ -347,6 +349,7 @@ LogicalResult translateLoopOpDeprecated(LoopOpDeprecated loopOp,
   return success();
 }
 
+// DEPRECATED. TODO: remove
 LogicalResult translateBranchOpDeprecated(BranchOpDeprecated branchOp,
                                           raw_ostream &output) {
   // For now, we assume that the branch destination is a LoopOp
@@ -481,10 +484,13 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFMaxOp(fMaxOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
     return translateReturnOp(returnOp, output);
+    // DEPRECATED. TODO: remove
   } else if (auto loopOp = dyn_cast<LoopOpDeprecated>(op)) {
     return translateLoopOpDeprecated(loopOp, output);
+    // DEPRECATED. TODO: remove
   } else if (auto branchOp = dyn_cast<BranchOpDeprecated>(op)) {
     return translateBranchOpDeprecated(branchOp, output);
+    // DEPRECATED. TODO: remove
   } else if (auto blockLoopOp = dyn_cast<BlockLoopOpDeprecated>(op)) {
     return translateBlockLoopOpDeprecated(blockLoopOp, output);
   } else if (auto globalGetOp = dyn_cast<GlobalGetOp>(op)) {
@@ -839,6 +845,7 @@ LogicalResult translateTagOps(ModuleOp &moduleOp, raw_ostream &output) {
   return success();
 }
 
+// DEPRECATED. TODO: remove
 LogicalResult translateContinuationTypeDeclOps(ModuleOp &moduleOp,
                                                raw_ostream &output) {
   moduleOp.walk([&](ContinuationTypeDeclOp op) {
@@ -919,6 +926,7 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
     return failure();
   }
 
+  // DEPRECATED. TODO: remove
   if (failed(translateContinuationTypeDeclOps(module, output))) {
     module.emitError("failed to translate continuation types");
     return failure();
