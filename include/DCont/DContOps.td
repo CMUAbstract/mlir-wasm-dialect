@@ -80,9 +80,9 @@ def DCont_SuspendOp : DCont_Op<"suspend"> {
         The `suspend` operation suspends a delimited continuation.
     }];
     let arguments = (ins Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
+    let results = (outs Variadic<AnyType>:$results);
     let assemblyFormat = [{
-        `(` $args `)` attr-dict `:` functional-type($args, $results) `,` type($returned_cont)
+        `(` $args `)` attr-dict `:` functional-type($args, $results)
   }];
   
 }

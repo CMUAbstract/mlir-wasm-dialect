@@ -29,7 +29,7 @@ module {
       memref.store %incremented, %0[] : memref<i32>
 
       // Suspend continuation
-      %out = dcont.suspend () : () -> () , !dcont.cont<"ct">
+      dcont.suspend () : () -> ()
     }
 
     // Return from task1
@@ -56,7 +56,7 @@ module {
       memref.store %incremented, %0[] : memref<i32>
 
       // Suspend continuation
-      %out = dcont.suspend () : () -> () , !dcont.cont<"ct">
+      dcont.suspend () : () -> ()
     }
 
     // Return from task2
