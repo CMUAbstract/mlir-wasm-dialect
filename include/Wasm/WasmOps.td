@@ -111,31 +111,6 @@ def Wasm_FMinOp : Wasm_FloatBinaryOp<"min">;
 def Wasm_FMaxOp : Wasm_FloatBinaryOp<"max">;
 def Wasm_FCopysignOp : Wasm_FloatBinaryOp<"copysign">;
 
-// reference instructions
-
-def Wasm_RefNullOp : Wasm_Op<"ref.null", []> {
-    let summary = "Reference null operation";
-    let description = [{
-        The `ref.null` operation creates a null reference.
-    }];
-}
-
-def Wasm_RefIsNullOp : Wasm_Op<"ref.is_null", []> {
-    let summary = "Reference is null operation";
-    let description = [{
-        The `ref.is_null` operation checks if a reference is null.
-    }];
-}
-
-def Wasm_RefFuncOp : Wasm_Op<"ref.func", []> {
-    let summary = "Reference function operation";
-    let description = [{
-        The `ref.func` operation creates a reference to a function.
-    }];
-    let arguments = (ins I32Attr:$idx);
-    let assemblyFormat = [{ $idx attr-dict }];
-}
-
 // parametric instructions
 
 def Wasm_DropOp : Wasm_Op<"drop", []> {
