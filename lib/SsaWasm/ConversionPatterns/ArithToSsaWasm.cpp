@@ -49,6 +49,18 @@ struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
   }
 };
 
+struct SelectOpLowering : public OpConversionPattern<arith::SelectOp> {
+  using OpConversionPattern<arith::SelectOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::SelectOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<SelectOp>(op, adaptor.getCondition(),
+                                          adaptor.getTrueValue(),
+                                          adaptor.getFalseValue());
+    return success();
+  }
+};
+
 struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
   LogicalResult
@@ -89,7 +101,7 @@ void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
   MLIRContext *context = patterns.getContext();
   patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
                MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
-               CmpIOpLowering, RemUIOpLowering, ConstantOpLowering,
-               IndexCastOpLowering>(typeConverter, context);
+               CmpIOpLowering, SelectOpLowering, RemUIOpLowering,
+               ConstantOpLowering, IndexCastOpLowering>(typeConverter, context);
 }
 } // namespace mlir::ssawasm
