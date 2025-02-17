@@ -397,7 +397,8 @@ public:
     addConversion([ctx](WasmContinuationType type) -> Type {
       // FIXME: We should not hardcode this
       assert(type.getId() == "ct");
-      return wasm::ContinuationType::get(ctx, "ct", "ft");
+      return wasm::LocalType::get(ctx,
+                                  wasm::ContinuationType::get(ctx, "ft", "ct"));
     });
   }
 };

@@ -742,7 +742,7 @@ llvm::LogicalResult translateFunction(FuncSignatureList &funcSignatureList,
 FuncSignatureList initializeFuncSignatureList(ModuleOp &moduleOp,
                                               bool addDebugFunctions) {
   FuncSignatureList funcSignatureList;
-  // we always import malloc/free
+  // Type 0, 1, 2 and 3 are reserved for malloc/free related functions.
   FuncSignature mallocSignature; // type 0
   mallocSignature.paramTypes.push_back("i32");
   mallocSignature.resultTypes.push_back("i32");
@@ -814,6 +814,16 @@ LogicalResult translateFunctionSignatures(FuncSignatureList &funcSignatureList,
     }
     output << "))\n";
   }
+  return success();
+}
+
+LogicalResult translateRecContFuncDeclOps(ModuleOp &moduleOp,
+                                          raw_ostream &output) {
+  output << "(rec\n";
+  output << "    (type $ft (func (param (ref null $ct))))\n";
+  output << "    (type $ct (cont $ft))\n";
+  output << ")\n";
+
   return success();
 }
 
@@ -917,6 +927,12 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
   output << "(module\n";
 
   if (failed(translateFunctionSignatures(funcSignatureList, output))) {
+    return failure();
+  }
+
+  if (failed(translateRecContFuncDeclOps(module, output))) {
+    module.emitError(
+        "failed to translate recursive continuation function declarations");
     return failure();
   }
 
