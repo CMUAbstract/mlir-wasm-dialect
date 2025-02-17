@@ -73,8 +73,7 @@ module {
     %c100_index = arith.constant 100 : index
     %c1_index  = arith.constant 1 : index
 
-    %c2_i32 = arith.constant 2 : i32
-    %c0_i32 = arith.constant 0 : i32
+    %c2_i32 = arith.constant 2 : i32 %c0_i32 = arith.constant 0 : i32
 
     // scf.for i = 0 to 100
     scf.for %i = %c0_index to %c100_index step %c1_index {
@@ -88,11 +87,8 @@ module {
       %cond = arith.cmpi eq, %mod, %c0_i32 : i32
 
       // if true, resume task1; else, resume task2
-      scf.if %cond {
-        %out1 = dcont.resume (%task1_handle : !dcont.cont<"ct">) : () -> (), !dcont.cont<"ct">
-      } else {
-        %out2 = dcont.resume (%task2_handle : !dcont.cont<"ct">) : () -> (), !dcont.cont<"ct">
-      }
+      %task_handle = arith.select %cond, %task1_handle, %task2_handle : !dcont.cont<"ct">
+      %out = dcont.resume (%task_handle : !dcont.cont<"ct">) : () -> (), !dcont.cont<"ct">
     }
 
     // Return from main
