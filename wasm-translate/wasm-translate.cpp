@@ -386,6 +386,12 @@ LogicalResult translateSwitchOp(SwitchOp switchOp, raw_ostream &output) {
   return success();
 }
 
+LogicalResult translateNullContRefOp(NullContRefOp nullContRefOp,
+                                     raw_ostream &output) {
+  output << "(ref.null $" << nullContRefOp.getCt() << ")";
+  return success();
+}
+
 LogicalResult translateTableGetOp(TableGetOp tableGetOp, raw_ostream &output) {
   output << "(table.get $" << tableGetOp.getTableName() << ")";
   return success();
@@ -501,6 +507,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateResumeSwitchOp(resumeSwitchOp, output);
   } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
     return translateSwitchOp(switchOp, output);
+  } else if (auto nullContRefOp = dyn_cast<NullContRefOp>(op)) {
+    return translateNullContRefOp(nullContRefOp, output);
   } else if (auto tableGetOp = dyn_cast<TableGetOp>(op)) {
     return translateTableGetOp(tableGetOp, output);
   } else if (auto tableSetOp = dyn_cast<TableSetOp>(op)) {
