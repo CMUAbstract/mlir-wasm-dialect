@@ -447,11 +447,11 @@ def SsaWasm_FuncRefOp : SsaWasm_Op<"func_ref"> {
   let assemblyFormat = "attr-dict $func `->` type($result)";
 }
 
-def SsaWasm_FuncRefNullOp : SsaWasm_Op<"func_ref_null"> {
+def SsaWasm_NullContRefOp : SsaWasm_Op<"null_cont_ref"> {
   let description = [{
-    This operation creates a null function reference.
+    This operation creates a null continuation reference.
   }];
-  let results = (outs SsaWasm_WasmRefType:$result);
+  let results = (outs SsaWasm_WasmContinuationType:$result);
   let assemblyFormat = "attr-dict `->` type($result)";
 }
 
@@ -478,6 +478,7 @@ def SsaWasm_SwitchOp : SsaWasm_Op<"switch"> {
     This corresponds to the `switch` operation in Wasm.
   }];
   let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
+
   let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
 }
 

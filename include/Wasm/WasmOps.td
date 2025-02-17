@@ -709,6 +709,15 @@ def Wasm_RecContFuncDeclOp : Wasm_Op<"rec_cont_func_decl"> {
   let assemblyFormat = "attr-dict $func_type_id `,` $cont_type_id";
 }
 
+def Wasm_NullContRefOp : Wasm_Op<"ref.null_cont"> {
+  let summary = "Creates a null continuation reference";
+  let description = [{
+    Creates a null continuation reference and pushes it onto the stack.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$ct);
+  let assemblyFormat = "$ct attr-dict";
+}
+
 def Wasm_ContinuationElemSegmentOp : Wasm_Op<"elem.declare.cont"> {
     let arguments = (ins FlatSymbolRefAttr:$table_name, I32Attr:$offset, ArrayAttr:$funcs);
     let assemblyFormat = [{ $table_name `(` `i32.const` $offset `)` `(` `cont.new` `(` `ref.func` $funcs  `)` `)` attr-dict }];

@@ -182,14 +182,8 @@ struct NullContOpLowering : public OpConversionPattern<NullContOp> {
   LogicalResult
   matchAndRewrite(NullContOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto funcRef =
-        rewriter
-            .create<ssawasm::FuncRefNullOp>(
-                op->getLoc(), ssawasm::WasmRefType::get(op.getContext()))
-            .getResult();
-
-    rewriter.replaceOpWithNewOp<ssawasm::ContNewOp>(
-        op, getTypeConverter()->convertType(op.getResult().getType()), funcRef);
+    rewriter.replaceOpWithNewOp<ssawasm::NullContRefOp>(
+        op, getTypeConverter()->convertType(op.getResult().getType()));
     return success();
   }
 };
