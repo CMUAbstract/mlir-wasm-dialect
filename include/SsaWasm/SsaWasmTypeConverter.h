@@ -8,7 +8,11 @@ class SsaWasmTypeConverter : public TypeConverter {
 public:
   SsaWasmTypeConverter(MLIRContext *ctx) {
     addConversion([ctx](IntegerType type) -> Type {
-      return WasmIntegerType::get(ctx, type.getWidth());
+      auto width = type.getWidth();
+      if (width == 1) {
+        return WasmIntegerType::get(ctx, 32);
+      }
+      return WasmIntegerType::get(ctx, width);
     });
     addConversion([ctx](FloatType type) -> Type {
       return WasmFloatType::get(ctx, type.getWidth());

@@ -155,6 +155,27 @@ struct DContToSsaWasmTypeConverter : public TypeConverter {
     addConversion([ctx](ContType type) -> Type {
       return ssawasm::WasmContinuationType::get(ctx, type.getId());
     });
+    addConversion([ctx](IntegerType type) -> Type {
+      auto width = type.getWidth();
+      if (width == 1) {
+        return ssawasm::WasmIntegerType::get(ctx, 32);
+      }
+      return ssawasm::WasmIntegerType::get(ctx, width);
+    });
+    addConversion([ctx](IndexType type) -> Type {
+      return ssawasm::WasmIntegerType::get(ctx, 32);
+    });
+    addSourceMaterialization([](OpBuilder &builder, Type type,
+                                ValueRange inputs, Location loc) -> Value {
+      return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+          .getResult(0);
+    });
+
+    addTargetMaterialization([](OpBuilder &builder, Type type,
+                                ValueRange inputs, Location loc) -> Value {
+      return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+          .getResult(0);
+    });
   }
 };
 
