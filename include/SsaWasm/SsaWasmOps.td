@@ -488,6 +488,21 @@ def SsaWasm_ContNewOp : SsaWasm_Op<"cont_new"> {
   let assemblyFormat = "attr-dict $func_ref `->` type($result)";
 }
 
+def SsaWasm_ResumeOp : SsaWasm_Op<"resume"> {
+  let description = [{
+    This operation resumes a continuation.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
+  let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
+}
+
+def SsaWasm_SuspendOp : SsaWasm_Op<"suspend"> {
+  let description = [{
+    This operation suspends a continuation.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$tag, Variadic<AnyType>:$args);
+  let results = (outs Variadic<AnyType>:$results);
+}
 
 def SsaWasm_ResumeSwitchOp : SsaWasm_Op<"resume_switch"> {
   let description = [{

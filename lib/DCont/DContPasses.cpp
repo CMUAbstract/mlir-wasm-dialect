@@ -223,6 +223,39 @@ struct SwitchOpLowering : public OpConversionPattern<SwitchOp> {
     return success();
   }
 };
+
+struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
+  using OpConversionPattern<ResumeOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ResumeOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ssawasm::ResumeOp>(
+        op,
+        /*returnedCont=*/
+        getTypeConverter()->convertType(op.getReturnedCont().getType()),
+        /*results=*/op.getResults().getType(),
+        /*tag=*/rewriter.getStringAttr("yield"),
+        /*cont=*/adaptor.getCont(),
+        /*args=*/adaptor.getArgs());
+    return success();
+  }
+};
+
+struct SuspendOpLowering : public OpConversionPattern<SuspendOp> {
+  using OpConversionPattern<SuspendOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(SuspendOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ssawasm::SuspendOp>(
+        op,
+        /*results=*/op.getResults().getType(),
+        /*tag=*/rewriter.getStringAttr("yield"),
+        /*args=*/adaptor.getArgs());
+    return success();
+  }
+};
 } // namespace
 
 class ConvertDContToSsaWasm
@@ -257,8 +290,8 @@ class ConvertDContToSsaWasm
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);
     patterns.add<NewOpLowering, NullContOpLowering, ResumeSwitchOpLowering,
-                 SwitchOpLowering>(typeConverter, context);
-    // TODO: Support ResumeOp
+                 SwitchOpLowering, ResumeOpLowering, SuspendOpLowering>(
+        typeConverter, context);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
