@@ -128,8 +128,8 @@ def Wasm_SelectOp : Wasm_Op<"select", []> {
     let description = [{
         The `select` operation selects between two values based on a condition.
     }];
-
-    let arguments = (ins AnyType:$arg); // TODO
+    let arguments = (ins TypeAttr:$type);
+    let assemblyFormat = [{ attr-dict `:` $type }];
 }
 
 // temporary instructions
