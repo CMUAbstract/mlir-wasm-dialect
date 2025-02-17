@@ -115,6 +115,23 @@ def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max"> {
   let hasFolder = 1;
 }
 
+def SsaWasm_RemUOp : SsaWasm_WasmNumericBinaryOp<"remu", [AlwaysSpeculatableImplTrait]> {
+  let description = [{
+    Computes the remainder of the division of the left-hand-side operand by the right-hand-side operand.
+  }];
+
+  let hasFolder = 1;
+}
+
+def SsaWasm_EqOp : SsaWasm_WasmNumericBinaryOp<"eq", [AlwaysSpeculatableImplTrait]> {
+  let summary = "SSA-based equality operation";
+  let description = [{
+    Compares two operands explicitly and yields the result of the comparison.
+  }];
+
+  let hasFolder = 1;
+}
+
 /////////////////////////////////////////////////////////////////////////// 
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
