@@ -398,7 +398,7 @@ public:
       // FIXME: We should not hardcode this
       assert(type.getId() == "ct");
       return wasm::LocalType::get(ctx,
-                                  wasm::ContinuationType::get(ctx, "ft", "ct"));
+                                  wasm::ContinuationType::get(ctx, "ct", "ft"));
     });
   }
 };
