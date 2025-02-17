@@ -726,8 +726,9 @@ private:
                                        contNewOp.getResult().getType().getId());
     } else if (auto funcRefOp = dyn_cast<FuncRefOp>(op)) {
       rewriter.create<wasm::FuncRefOp>(op->getLoc(), funcRefOp.getFunc());
-    } else if (isa<FuncRefNullOp>(op)) {
-      rewriter.create<wasm::RefNullOp>(op->getLoc());
+    } else if (auto nullContRefOp = dyn_cast<NullContRefOp>(op)) {
+      rewriter.create<wasm::NullContRefOp>(
+          op->getLoc(), nullContRefOp.getResult().getType().getId());
     } else if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op)) {
       // do nothing
       // This is already handled by the SsaWasmDataToLocal pass
