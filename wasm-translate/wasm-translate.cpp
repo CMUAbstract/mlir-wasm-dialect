@@ -705,36 +705,6 @@ llvm::LogicalResult translateFunction(FuncSignatureList &funcSignatureList,
   output << "(type "
          << funcSignatureList.getFunctionTypeNameOrIndex(funcSignature) << ")";
 
-  // function params
-  if (!funcSignature.paramTypes.empty()) {
-    output << " (param ";
-    bool isFirst = true;
-    for (auto paramType : funcSignature.paramTypes) {
-      if (!isFirst) {
-        output << " ";
-      } else {
-        isFirst = false;
-      }
-      output << paramType;
-    }
-    output << ")";
-  }
-
-  // function results
-  if (!funcSignature.resultTypes.empty()) {
-    output << " (result ";
-    bool isFirst = true;
-    for (auto resultType : funcSignature.resultTypes) {
-      output << resultType;
-      if (!isFirst) {
-        output << " ";
-      } else {
-        isFirst = false;
-      }
-    }
-    output << ")";
-  }
-
   // Translate function body
   if (failed(translateFunctionBody(funcOp, output))) {
     funcOp.emitError("translating function body failed");
