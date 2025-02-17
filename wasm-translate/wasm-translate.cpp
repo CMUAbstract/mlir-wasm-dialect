@@ -41,8 +41,7 @@ llvm::LogicalResult getWatType(Type mlirType, std::string &watType) {
     watType = "f32";
   } else if (mlirType.isF64()) {
     watType = "f64";
-  } else if (isa<ContinuationType>(mlirType)) {
-    auto continuationType = cast<ContinuationType>(mlirType);
+  } else if (auto continuationType = dyn_cast<ContinuationType>(mlirType)) {
     watType = "$" + continuationType.getName().str();
     return success();
   } else {
