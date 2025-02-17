@@ -39,7 +39,7 @@ def Continuation : Wasm_Type<"Continuation", "continuation"> {
   let parameters = (ins "StringAttr":$name,
                            "StringAttr":$funcId);
   let assemblyFormat = [{
-   $name `(` `cont` $funcId `)`
+   $name `(` `cont` `of` `func` $funcId `)`
   }];
 
   let builders = [
