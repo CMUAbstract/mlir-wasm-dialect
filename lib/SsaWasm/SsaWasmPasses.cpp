@@ -831,6 +831,10 @@ private:
     } else if (auto nullContRefOp = dyn_cast<NullContRefOp>(op)) {
       rewriter.create<wasm::NullContRefOp>(
           op->getLoc(), nullContRefOp.getResult().getType().getId());
+    } else if (auto selectOp = dyn_cast<SelectOp>(op)) {
+      rewriter.create<wasm::SelectOp>(
+          op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
+                            selectOp.getResult().getType(), op->getContext())));
     } else if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op)) {
       // do nothing
       // This is already handled by the SsaWasmDataToLocal pass
