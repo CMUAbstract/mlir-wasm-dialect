@@ -94,7 +94,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     // Condition Block: evaluate loop condition
     rewriter.setInsertionPointToStart(conditionBlock);
     auto comparisonOp =
-        rewriter.create<ILeUOp>(loc, inductionLocal, upperBound);
+        rewriter.create<ILeUOp>(loc, upperBound, inductionLocal);
 
     rewriter.create<BlockLoopCondBranchOp>(loc, comparisonOp.getResult(),
                                            blockEndLabel, bodyBlock);
