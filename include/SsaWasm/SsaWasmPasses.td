@@ -11,12 +11,35 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertToSsaWasm : Pass<"convert-to-ssawasm", "ModuleOp"> {
-  let summary = "Converts to SsaWasm dialect";
+def ConvertArithToSsaWasm : Pass<"convert-arith-to-ssawasm", "ModuleOp"> {
+  let summary = "Convert Arith dialect to SsaWasm dialect";
   let dependentDialects = [
     "ssawasm::SsaWasmDialect",
-    "arith::ArithDialect",
-    "func::FuncDialect",
+    "arith::ArithDialect"
+  ];
+}
+
+def ConvertFuncToSsaWasm : Pass<"convert-func-to-ssawasm", "ModuleOp"> {
+  let summary = "Convert Func dialect to SsaWasm dialect";
+  let dependentDialects = [
+    "ssawasm::SsaWasmDialect",
+    "func::FuncDialect"
+  ];
+}
+
+def ConvertMemRefToSsaWasm : Pass<"convert-memref-to-ssawasm", "ModuleOp"> {
+  let summary = "Convert MemRef dialect to SsaWasm dialect";
+  let dependentDialects = [
+    "ssawasm::SsaWasmDialect",
+    "memref::MemRefDialect"
+  ];
+}
+
+def ConvertScfToSsaWasm : Pass<"convert-scf-to-ssawasm", "ModuleOp"> {
+  let summary = "Convert SCF dialect to SsaWasm dialect";
+  let dependentDialects = [
+    "ssawasm::SsaWasmDialect",
+    "scf::SCFDialect"
   ];
 }
 
