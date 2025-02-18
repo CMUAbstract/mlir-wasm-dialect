@@ -380,6 +380,7 @@ struct IntroduceLocalGetPattern : public RewritePattern {
                          .getResult();
         // replace the operand with the local
         op->setOperand(operandIdx, local);
+        offset += 1;
 
       } else {
         offset += computeOffset(op, operandIdx);
