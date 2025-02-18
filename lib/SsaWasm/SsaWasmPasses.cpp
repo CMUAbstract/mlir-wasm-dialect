@@ -217,7 +217,12 @@ public:
     return std::find(localRequiredOps.begin(), localRequiredOps.end(), op) !=
            localRequiredOps.end();
   }
-  vector<int> getLocalRequiredOperandIndices(Operation *op) {
+  bool isLocalGetRequired(Operation *op, int operandIdx) {
+    return std::find(localGetRequiredOps[op].begin(),
+                     localGetRequiredOps[op].end(),
+                     operandIdx) != localGetRequiredOps[op].end();
+  }
+  vector<int> getLocalGetRequiredOperandIndices(Operation *op) {
     return localGetRequiredOps[op];
   }
 
@@ -229,41 +234,39 @@ private:
       ops.push_back(&op);
     }
 
-    int index = ops.size() - 1;
-
-    while (index >= 0) {
-      index = traverseTree(index, ops, useCount);
+    for (int index = ops.size() - 1; index >= 0; index--) {
+      traverseTree(ops, index, useCount);
     }
   }
-  int traverseTree(int index, vector<Operation *> &ops,
-                   UseCountAnalysis &useCount) {
-    Operation *currentOp = ops[index];
-    int newIndex = index - 1;
+  void traverseTree(vector<Operation *> ops, int index,
+                    UseCountAnalysis &useCount) {
+    Operation *op = ops[index];
 
     // skip as_pointer operations
     // we should not introduce locals for these operations
-    if (isa<AsPointerOp>(currentOp) || isa<AsMemRefOp>(currentOp)) {
-      return newIndex;
+    if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op)) {
+      return;
     }
 
-    for (int operandIdx = currentOp->getNumOperands() - 1; operandIdx >= 0;
+    for (int operandIdx = op->getNumOperands() - 1; operandIdx >= 0;
          operandIdx--) {
-      Value operand = currentOp->getOperand(operandIdx);
+      Value operand = op->getOperand(operandIdx);
       Operation *definingOp = getUnderlyingDefiningOp(operand);
       if (!definingOp) {
         assert((isa<BlockArgument>(operand) ||
                 isa<AsPointerOp>(operand.getDefiningOp()) ||
                 isa<AsMemRefOp>(operand.getDefiningOp())) &&
                "Expected a block argument or an AsPointerOp or AsMemRefOp");
-        localGetRequiredOps[currentOp].push_back(operandIdx);
+        localGetRequiredOps[op].push_back(operandIdx);
       } else if (isa<LocalOp>(definingOp)) {
         // if the defining operation is already a local, we do not need to
         // introduce a new local
-        if (!isa<LocalSetOp>(currentOp) || operandIdx != 0) {
-          localGetRequiredOps[currentOp].push_back(operandIdx);
+        // let's introduce a local_get for the operand only
+        if (!isa<LocalSetOp>(op) || operandIdx != 0) {
+          localGetRequiredOps[op].push_back(operandIdx);
         }
-      } else if (useCount.getUseCount(definingOp) == 1 && newIndex >= 0 &&
-                 ops[newIndex] == definingOp) {
+      } else if (useCount.getUseCount(definingOp) == 1 && index > 0 &&
+                 ops[index - 1] == definingOp) {
         // This is a value defined by an operation that is used only once
         // and the operation is the previous operation in the block.
       } else {
@@ -273,17 +276,15 @@ private:
             !isa<LocalOp>(definingOp)) {
           localRequiredOps.push_back(definingOp);
         }
-        localGetRequiredOps[currentOp].push_back(operandIdx);
+        localGetRequiredOps[op].push_back(operandIdx);
       }
     }
 
-    for (auto &region : currentOp->getRegions()) {
+    for (auto &region : op->getRegions()) {
       for (auto &block : region.getBlocks()) {
         analyzeBlock(&block, useCount);
       }
     }
-
-    return newIndex;
   }
   vector<Operation *> localRequiredOps;
   map<Operation *, vector<int>> localGetRequiredOps;
@@ -319,6 +320,22 @@ private:
   IntroduceLocalAnalysis &introduceLocal;
 };
 
+unsigned computeOffset(Operation *op, int operandIdx) {
+  auto definingOp = getUnderlyingDefiningOp(op->getOperand(operandIdx));
+  if (!definingOp) {
+    return 0;
+  }
+  if (isa<LocalGetOp>(definingOp) || isa<AsPointerOp>(definingOp) ||
+      isa<AsMemRefOp>(definingOp)) {
+    return 1;
+  }
+  int offset = 1;
+  for (unsigned i = 0; i < definingOp->getNumOperands(); i++) {
+    offset += computeOffset(definingOp, i);
+  }
+  return offset;
+}
+
 struct IntroduceLocalGetPattern : public RewritePattern {
   IntroduceLocalGetPattern(MLIRContext *context,
                            IntroduceLocalAnalysis &introduceLocal)
@@ -331,7 +348,7 @@ struct IntroduceLocalGetPattern : public RewritePattern {
            op->getDialect() ==
                op->getContext()->getLoadedDialect<wasm::WasmDialect>());
 
-    if (introduceLocal.getLocalRequiredOperandIndices(op).size() > 0) {
+    if (introduceLocal.getLocalGetRequiredOperandIndices(op).size() > 0) {
       return success();
     }
     return failure();
@@ -339,22 +356,34 @@ struct IntroduceLocalGetPattern : public RewritePattern {
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     rewriter.setInsertionPoint(op);
-    for (int operandIdx : introduceLocal.getLocalRequiredOperandIndices(op)) {
-      auto underlyingValue = getUnderlyingValue(op->getOperand(operandIdx));
+    unsigned offset = 0;
+    for (int operandIdx = op->getNumOperands() - 1; operandIdx >= 0;
+         operandIdx--) {
+      if (introduceLocal.isLocalGetRequired(op, operandIdx)) {
+        auto underlyingValue = getUnderlyingValue(op->getOperand(operandIdx));
+        Type localType = underlyingValue.getType();
+        // if the underlying value is of sswawasm<memref> type,
+        // we convert it to ssawasm<integer> type to make operations
+        // on it legal
+        if (isa<WasmMemRefType>(localType)) {
+          localType = ssawasm::WasmIntegerType::get(op->getContext(), 32);
+        }
 
-      // if the underlying value is of sswawasm<memref> type,
-      // we convert it to ssawasm<integer> type to make operations
-      // on it legal
-      Type localType = underlyingValue.getType();
-      if (isa<WasmMemRefType>(localType)) {
-        localType = ssawasm::WasmIntegerType::get(op->getContext(), 32);
+        rewriter.setInsertionPoint(op);
+        auto ip = rewriter.getInsertionPoint();
+        for (unsigned i = 0; i < offset; i++) {
+          rewriter.setInsertionPoint(rewriter.getInsertionBlock(), --ip);
+        }
+        auto local = rewriter
+                         .create<ssawasm::LocalGetOp>(op->getLoc(), localType,
+                                                      underlyingValue)
+                         .getResult();
+        // replace the operand with the local
+        op->setOperand(operandIdx, local);
+
+      } else {
+        offset += computeOffset(op, operandIdx);
       }
-      auto local = rewriter
-                       .create<ssawasm::LocalGetOp>(op->getLoc(), localType,
-                                                    underlyingValue)
-                       .getResult();
-      // replace the operand with the local
-      op->setOperand(operandIdx, local);
     }
   }
 
@@ -703,8 +732,9 @@ private:
     // we need to convert the operations in reverse order to avoid
     // Assertion failed: (op->use_empty() && "expected 'op' to have no uses"),
     // function eraseOp
-    for (auto &op : llvm::reverse(ops)) {
-      convertOperation(funcOp, op, localIndexAnalysis, rewriter, newLabelIndex);
+    for (auto op = ops.rbegin(); op != ops.rend(); ++op) {
+      convertOperation(funcOp, *op, localIndexAnalysis, rewriter,
+                       newLabelIndex);
     }
   }
 
