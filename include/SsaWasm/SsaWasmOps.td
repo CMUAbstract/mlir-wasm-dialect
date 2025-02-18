@@ -53,7 +53,7 @@ class SsaWasm_WasmNumericBinaryOp<string mnemonic, list<Trait> traits = []>
 // Addition Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative, Pure]> {
+def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative]> {
   let summary = "SSA-based addition operation";
   let description = [{
     Adds the left-hand-side operand to the right-hand-side operand and
@@ -67,7 +67,7 @@ def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative, Pure]> {
 // Subtraction Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub", [Pure]> {
+def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub"> {
   let summary = "SSA-based subtraction operation";
   let description = [{
     Subtracts the right-hand-side operand from the left-hand-side operand
@@ -81,7 +81,7 @@ def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub", [Pure]> {
 // Multiplication Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative, Pure]> {
+def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative]> {
   let summary = "SSA-based multiplication operation";
   let description = [{
     Multiplies two operands explicitly and yields the product.
@@ -90,14 +90,14 @@ def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative, Pure]> {
   let hasFolder = 1;
 }
 
-def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu", [Pure]> {
+def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu"> {
   let summary = "SSA-based integer less than or equal to unsigned operation";
   let description = [{
     Compares two operands explicitly and yields the result of the comparison.
   }];
 }
 
-def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min", [Pure]> {
+def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min"> {
   let summary = "SSA-based minimum operation";
   let description = [{
     Compares two operands explicitly and yields the minimum of the two.
@@ -106,7 +106,7 @@ def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min", [Pure]> {
   let hasFolder = 1;
 }
 
-def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max", [Pure]> {
+def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max"> {
   let summary = "SSA-based maximum operation";
   let description = [{
     Compares two operands explicitly and yields the maximum of the two.
