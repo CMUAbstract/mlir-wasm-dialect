@@ -53,7 +53,7 @@ class SsaWasm_WasmNumericBinaryOp<string mnemonic, list<Trait> traits = []>
 // Addition Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative, AlwaysSpeculatableImplTrait]> {
+def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative, Pure]> {
   let summary = "SSA-based addition operation";
   let description = [{
     Adds the left-hand-side operand to the right-hand-side operand and
@@ -67,7 +67,7 @@ def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative, AlwaysSpecu
 // Subtraction Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub", [Pure]> {
   let summary = "SSA-based subtraction operation";
   let description = [{
     Subtracts the right-hand-side operand from the left-hand-side operand
@@ -81,7 +81,7 @@ def SsaWasm_SubOp : SsaWasm_WasmNumericBinaryOp<"sub", [AlwaysSpeculatableImplTr
 // Multiplication Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative, AlwaysSpeculatableImplTrait]> {
+def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative, Pure]> {
   let summary = "SSA-based multiplication operation";
   let description = [{
     Multiplies two operands explicitly and yields the product.
@@ -90,14 +90,14 @@ def SsaWasm_MulOp : SsaWasm_WasmNumericBinaryOp<"mul", [Commutative, AlwaysSpecu
   let hasFolder = 1;
 }
 
-def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu", [Pure]> {
   let summary = "SSA-based integer less than or equal to unsigned operation";
   let description = [{
     Compares two operands explicitly and yields the result of the comparison.
   }];
 }
 
-def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min", [Pure]> {
   let summary = "SSA-based minimum operation";
   let description = [{
     Compares two operands explicitly and yields the minimum of the two.
@@ -106,7 +106,7 @@ def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min", [AlwaysSpeculatableImplTr
   let hasFolder = 1;
 }
 
-def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max", [Pure]> {
   let summary = "SSA-based maximum operation";
   let description = [{
     Compares two operands explicitly and yields the maximum of the two.
@@ -119,7 +119,7 @@ def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max", [AlwaysSpeculatableImplTr
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure, ConstantLike, AlwaysSpeculatableImplTrait]> {
+def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure, ConstantLike]> {
   let summary = "SSA-based constant operation";
   let description = [{
     The `ssawasm.constant` operation produces an SSA value equal to some
@@ -323,7 +323,7 @@ def SsaWasm_StoreOp : SsaWasm_Op<"store"> {
   let hasCustomAssemblyFormat = 1;
 }
 
-def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer"> {
+def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer", [Pure]> {
   let arguments = (ins SsaWasm_WasmPointerLike:$value);
   let results = (outs SsaWasm_WasmIntegerType:$result);
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
@@ -334,7 +334,7 @@ def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer"> {
   }]>];
 }
 
-def SsaWasm_AsMemRefOp : SsaWasm_Op<"as_memref"> {
+def SsaWasm_AsMemRefOp : SsaWasm_Op<"as_memref", [Pure]> {
   let arguments = (ins SsaWasm_WasmPointerLike:$value);
   let results = (outs SsaWasm_WasmMemRefType:$result);
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
