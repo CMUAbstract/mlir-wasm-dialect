@@ -320,7 +320,6 @@ def SsaWasm_LoadOp : SsaWasm_Op<"load"> {
 
 def SsaWasm_StoreOp : SsaWasm_Op<"store"> {
   let arguments = (ins SsaWasm_WasmIntegerType:$addr, AnyType:$value);
-  let hasCustomAssemblyFormat = 1;
 }
 
 def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer", [Pure]> {
