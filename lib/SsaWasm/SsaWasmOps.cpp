@@ -379,32 +379,6 @@ ParseResult LoadOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void StoreOp::print(OpAsmPrinter &p) {
-  p << " ";
-  p.printOperand(getAddr());
-  p << ", ";
-  p.printOperand(getValue());
-}
-
-ParseResult StoreOp::parse(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::UnresolvedOperand addr;
-  OpAsmParser::UnresolvedOperand value;
-  if (parser.parseOperand(addr) || parser.parseComma() ||
-      parser.parseOperand(value))
-    return failure();
-
-  Type addrType = WasmIntegerType::get(parser.getContext(), 32);
-  if (parser.resolveOperand(addr, addrType, result.operands))
-    return failure();
-
-  Type resultType;
-  if (parser.parseColonType(resultType))
-    return failure();
-  result.addTypes(resultType);
-
-  return success();
-}
-
 // BlockLoopOp
 std::tuple<Block *, Block *, Block *>
 BlockLoopOp::initialize(OpBuilder &builder) {
