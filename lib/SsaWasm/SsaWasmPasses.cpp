@@ -46,6 +46,7 @@ public:
 
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
     target.addIllegalDialect<arith::ArithDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateArithToSsaWasmPatterns(typeConverter, patterns);
@@ -70,6 +71,7 @@ public:
 
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
     target.addIllegalDialect<func::FuncDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateFuncToSsaWasmPatterns(typeConverter, patterns);
@@ -95,6 +97,7 @@ public:
 
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
     target.addIllegalDialect<memref::MemRefDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateMemRefToSsaWasmPatterns(typeConverter, patterns,
@@ -120,6 +123,7 @@ public:
 
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
     target.addIllegalDialect<scf::SCFDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateScfToSsaWasmPatterns(typeConverter, patterns);
