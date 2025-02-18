@@ -35,7 +35,20 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
   LogicalResult
   matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<ConstantOp>(op, adaptor.getValue());
+    Attribute value = adaptor.getValue();
+
+    // If the constant is of index type, convert it to i32
+    if (auto intAttr = dyn_cast<IntegerAttr>(value)) {
+      if (intAttr.getType().isIndex()) {
+        auto i32Type = IntegerType::get(op.getContext(), 32);
+        // FIXME: Warn if the value is too large to fit in 32 bits
+        APInt truncated = intAttr.getValue().trunc(32);
+        value = IntegerAttr::get(i32Type, truncated);
+      }
+    }
+
+    auto typedAttr = cast<TypedAttr>(value);
+    rewriter.replaceOpWithNewOp<ConstantOp>(op, typedAttr);
     return success();
   }
 };
