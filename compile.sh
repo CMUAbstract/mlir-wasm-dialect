@@ -96,20 +96,20 @@ if [[ "$COMPILER" == "mlir" ]]; then
     # Convert MLIR file to the Wasm dialect
     echo "Converting $INPUT_MLIR to Wasm dialect..."
     build/bin/wasm-opt \
-        --convert-to-ssawasm \
-        --reconcile-unrealized-casts \
-        --canonicalize \
-        --control-flow-sink \
-        --cse \
-        --loop-invariant-code-motion \
-        --loop-invariant-subset-hoisting \
-        --remove-dead-values \
-        --sccp \
-        --sroa \
-        --symbol-dce \
-        --ssawasm-data-to-local \
-        --introduce-locals \
-        --convert-ssawasm-to-wasm \
+    --convert-arith-to-ssawasm \
+    --convert-func-to-ssawasm \
+    --convert-memref-to-ssawasm \
+    --reconcile-unrealized-casts \
+    --canonicalize \
+    --cse \
+    --loop-invariant-code-motion \
+    --loop-invariant-subset-hoisting \
+    --convert-scf-to-ssawasm \
+    --reconcile-unrealized-casts \
+    --sccp \
+    --convert-ssawasm-global-to-wasm \
+    --introduce-locals \
+    --convert-ssawasm-to-wasm \
         "$INPUT_MLIR" \
         -o "${OUTPUT_MLIR}"
 
