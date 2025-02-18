@@ -807,6 +807,9 @@ LogicalResult translateFunctionSignatures(FuncSignatureList &funcSignatureList,
 
 LogicalResult translateRecContFuncDeclOps(ModuleOp &moduleOp,
                                           raw_ostream &output) {
+  if (moduleOp.getOps<RecContFuncDeclOp>().empty()) {
+    return success();
+  }
   output << "(rec\n";
   output << "    (type $ft (func (param (ref null $ct))))\n";
   output << "    (type $ct (cont $ft))\n";
