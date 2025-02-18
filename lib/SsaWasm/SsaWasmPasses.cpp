@@ -23,49 +23,108 @@
 using namespace std;
 
 namespace mlir::ssawasm {
-#define GEN_PASS_DEF_CONVERTTOSSAWASM
+#define GEN_PASS_DEF_CONVERTARITHTOSSAWASM
+#define GEN_PASS_DEF_CONVERTFUNCTOSSAWASM
+#define GEN_PASS_DEF_CONVERTMEMREFTOSSAWASM
+#define GEN_PASS_DEF_CONVERTSCFTOSSAWASM
 #define GEN_PASS_DEF_INTRODUCELOCALS
 #define GEN_PASS_DEF_CONVERTSSAWASMTOWASM
 #define GEN_PASS_DEF_CONVERTSSAWASMGLOBALTOWASM
 #include "SsaWasm/SsaWasmPasses.h.inc"
 
-class ConvertToSsaWasm : public impl::ConvertToSsaWasmBase<ConvertToSsaWasm> {
+class ConvertArithToSsaWasm
+    : public impl::ConvertArithToSsaWasmBase<ConvertArithToSsaWasm> {
 public:
-  using impl::ConvertToSsaWasmBase<ConvertToSsaWasm>::ConvertToSsaWasmBase;
+  using impl::ConvertArithToSsaWasmBase<
+      ConvertArithToSsaWasm>::ConvertArithToSsaWasmBase;
 
   void runOnOperation() final {
     auto module = getOperation();
     MLIRContext *context = module.getContext();
-
+    SsaWasmTypeConverter typeConverter(context);
     ConversionTarget target(*context);
+
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
     target.addIllegalDialect<arith::ArithDialect>();
-    target.addIllegalDialect<func::FuncDialect>();
-    target.addIllegalDialect<memref::MemRefDialect>();
-    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
-    SsaWasmTypeConverter typeConverter(context);
     populateArithToSsaWasmPatterns(typeConverter, patterns);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+class ConvertFuncToSsaWasm
+    : public impl::ConvertFuncToSsaWasmBase<ConvertFuncToSsaWasm> {
+public:
+  using impl::ConvertFuncToSsaWasmBase<
+      ConvertFuncToSsaWasm>::ConvertFuncToSsaWasmBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    SsaWasmTypeConverter typeConverter(context);
+    ConversionTarget target(*context);
+
+    target.addLegalDialect<ssawasm::SsaWasmDialect>();
+    target.addIllegalDialect<func::FuncDialect>();
+
+    RewritePatternSet patterns(context);
     populateFuncToSsaWasmPatterns(typeConverter, patterns);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+class ConvertMemRefToSsaWasm
+    : public impl::ConvertMemRefToSsaWasmBase<ConvertMemRefToSsaWasm> {
+public:
+  using impl::ConvertMemRefToSsaWasmBase<
+      ConvertMemRefToSsaWasm>::ConvertMemRefToSsaWasmBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    SsaWasmTypeConverter typeConverter(context);
+    ConversionTarget target(*context);
     BaseAddressAnalysis baseAddressAnalysis(module);
+
+    target.addLegalDialect<ssawasm::SsaWasmDialect>();
+    target.addIllegalDialect<memref::MemRefDialect>();
+
+    RewritePatternSet patterns(context);
     populateMemRefToSsaWasmPatterns(typeConverter, patterns,
                                     baseAddressAnalysis);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
     }
+  }
+};
 
-    // we need to apply scf conversion separately because calling
-    // `replaceAllUsesWith()` on induction variable will cause the conversion to
-    // fail with the error message "Assertion failed: (!impl->wasOpReplaced(op)
-    // && "attempting to modify a replaced/erased op")"
-    RewritePatternSet nextPatterns(context);
+class ConvertScfToSsaWasm
+    : public impl::ConvertScfToSsaWasmBase<ConvertScfToSsaWasm> {
+public:
+  using impl::ConvertScfToSsaWasmBase<
+      ConvertScfToSsaWasm>::ConvertScfToSsaWasmBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    SsaWasmTypeConverter typeConverter(context);
+    ConversionTarget target(*context);
+
+    target.addLegalDialect<ssawasm::SsaWasmDialect>();
     target.addIllegalDialect<scf::SCFDialect>();
-    populateScfToSsaWasmPatterns(typeConverter, nextPatterns);
 
-    if (failed(
-            applyPartialConversion(module, target, std::move(nextPatterns)))) {
+    RewritePatternSet patterns(context);
+    populateScfToSsaWasmPatterns(typeConverter, patterns);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -103,8 +162,8 @@ private:
 // Returns the operation that effectively defines a value by looking through
 // AsPointerOp and AsMemRefOp wrappers. When a value is defined by an
 // AsPointerOp or AsMemRefOp, this function returns the operation that defines
-// the underlying memref instead, since AsPointerOp and AsMemRefOp are just type
-// conversion wrappers that don't create new data.
+// the underlying memref instead, since AsPointerOp and AsMemRefOp are just
+// type conversion wrappers that don't create new data.
 //
 // Example:
 //   %1 = some_op ... : memref<...>
