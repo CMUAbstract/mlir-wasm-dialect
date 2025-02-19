@@ -145,6 +145,9 @@ LogicalResult translateSimpleOp(T op, raw_ostream &output, std::string opName) {
 llvm::LogicalResult translateAddOp(AddOp addOp, raw_ostream &output) {
   return translateSimpleOp(addOp, output, "add");
 }
+llvm::LogicalResult translateSubOp(SubOp subOp, raw_ostream &output) {
+  return translateSimpleOp(subOp, output, "sub");
+}
 llvm::LogicalResult translateMulOp(MulOp mulOp, raw_ostream &output) {
   return translateSimpleOp(mulOp, output, "mul");
 }
@@ -171,6 +174,17 @@ llvm::LogicalResult translateFMinOp(FMinOp fMinOp, raw_ostream &output) {
 }
 llvm::LogicalResult translateFMaxOp(FMaxOp fMaxOp, raw_ostream &output) {
   return translateSimpleOp(fMaxOp, output, "max");
+}
+
+llvm::LogicalResult translateSelectOp(SelectOp selectOp, raw_ostream &output) {
+  std::string watType;
+  if (failed(getWatType(selectOp.getType(), watType))) {
+    return failure();
+  }
+  output << "(select (result ";
+  output << watType;
+  output << "))";
+  return success();
 }
 
 llvm::LogicalResult translateReturnOp(WasmReturnOp returnOp,
@@ -484,6 +498,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateCallOp(callOp, output);
   } else if (auto addOp = dyn_cast<AddOp>(op)) {
     return translateAddOp(addOp, output);
+  } else if (auto subOp = dyn_cast<SubOp>(op)) {
+    return translateSubOp(subOp, output);
   } else if (auto mulOp = dyn_cast<MulOp>(op)) {
     return translateMulOp(mulOp, output);
   } else if (auto iLeUOp = dyn_cast<ILeUOp>(op)) {
@@ -502,6 +518,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFMinOp(fMinOp, output);
   } else if (auto fMaxOp = dyn_cast<FMaxOp>(op)) {
     return translateFMaxOp(fMaxOp, output);
+  } else if (auto selectOp = dyn_cast<SelectOp>(op)) {
+    return translateSelectOp(selectOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
     return translateReturnOp(returnOp, output);
     // DEPRECATED. TODO: remove
