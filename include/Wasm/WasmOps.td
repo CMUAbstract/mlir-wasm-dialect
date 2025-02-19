@@ -71,6 +71,9 @@ def Wasm_AddOp : Wasm_NumericBinaryOp<"add">;
 def Wasm_SubOp : Wasm_NumericBinaryOp<"sub">;
 def Wasm_MulOp : Wasm_NumericBinaryOp<"mul">;
 
+def Wasm_EqOp : Wasm_NumericBinaryOp<"eq">;
+def Wasm_LtSOp : Wasm_NumericBinaryOp<"lt_s">;
+
 // integer unary operations
 
 def Wasm_IClzOp : Wasm_IntegerUnaryOp<"clz">;
