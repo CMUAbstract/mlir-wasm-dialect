@@ -137,7 +137,7 @@ def SsaWasm_LtSOp : SsaWasm_WasmNumericBinaryOp<"lt_s", [AlwaysSpeculatableImplT
     Compares two operands explicitly and yields the result of the comparison.
   }];
 
-  let hasFolder = 1;
+  // TODO: Add folder
 }
 
 def SsaWasm_DivSOp : SsaWasm_WasmNumericBinaryOp<"div_s"> {
@@ -146,7 +146,7 @@ def SsaWasm_DivSOp : SsaWasm_WasmNumericBinaryOp<"div_s"> {
     returns the result.
   }];
 
-  let hasFolder = 1;
+  // TODO: Add folder
 }
 
 /////////////////////////////////////////////////////////////////////////// 

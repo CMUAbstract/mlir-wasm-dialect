@@ -315,20 +315,6 @@ OpFoldResult EqOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-/// SsaWasm_LtSOp folding:
-OpFoldResult LtSOp::fold(FoldAdaptor adaptor) {
-  // lt_s(x, y) -> (x < y)
-  if (auto lhs = dyn_cast<IntegerAttr>(adaptor.getLhs())) {
-    if (auto rhs = dyn_cast<IntegerAttr>(adaptor.getRhs())) {
-      // Use slt for signed comparison of APInt values
-      return IntegerAttr::get(lhs.getType(),
-                              lhs.getValue().slt(rhs.getValue()));
-    }
-  }
-  // TODO: handle float comparison
-  return {};
-}
-
 /// SsaWasm_RemUOp folding:
 OpFoldResult RemUOp::fold(FoldAdaptor adaptor) {
   // remu(x, 1) -> 0
