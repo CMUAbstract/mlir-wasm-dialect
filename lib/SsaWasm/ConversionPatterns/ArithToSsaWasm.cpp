@@ -38,6 +38,9 @@ struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (op.getPredicate() == arith::CmpIPredicate::eq) {
       rewriter.replaceOpWithNewOp<EqOp>(op, adaptor.getLhs(), adaptor.getRhs());
+    } else if (op.getPredicate() == arith::CmpIPredicate::slt) {
+      rewriter.replaceOpWithNewOp<LtSOp>(op, adaptor.getLhs(),
+                                         adaptor.getRhs());
     } else {
       return rewriter.notifyMatchFailure(op,
                                          "unsupported comparison predicate");

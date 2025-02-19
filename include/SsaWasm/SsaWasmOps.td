@@ -132,6 +132,14 @@ def SsaWasm_EqOp : SsaWasm_WasmNumericBinaryOp<"eq", [AlwaysSpeculatableImplTrai
   let hasFolder = 1;
 }
 
+def SsaWasm_LtSOp : SsaWasm_WasmNumericBinaryOp<"lt_s", [AlwaysSpeculatableImplTrait]> {
+  let description = [{
+    Compares two operands explicitly and yields the result of the comparison.
+  }];
+
+  let hasFolder = 1;
+}
+
 /////////////////////////////////////////////////////////////////////////// 
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
