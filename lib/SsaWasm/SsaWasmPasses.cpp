@@ -804,6 +804,10 @@ private:
       rewriter.create<wasm::LtSOp>(
           op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
                             op->getResult(0).getType(), op->getContext())));
+    } else if (isa<DivSOp>(op)) {
+      rewriter.create<wasm::IDivSOp>(
+          op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
+                            op->getResult(0).getType(), op->getContext())));
     } else if (auto callOp = dyn_cast<CallOp>(op)) {
       rewriter.create<wasm::CallOp>(op->getLoc(), callOp.getCallee());
     } else if (auto loadOp = dyn_cast<LoadOp>(op)) {

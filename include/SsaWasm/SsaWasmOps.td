@@ -140,6 +140,15 @@ def SsaWasm_LtSOp : SsaWasm_WasmNumericBinaryOp<"lt_s", [AlwaysSpeculatableImplT
   let hasFolder = 1;
 }
 
+def SsaWasm_DivSOp : SsaWasm_WasmNumericBinaryOp<"div_s"> {
+  let description = [{
+    Divides the left-hand-side operand by the right-hand-side operand and
+    returns the result.
+  }];
+
+  let hasFolder = 1;
+}
+
 /////////////////////////////////////////////////////////////////////////// 
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
