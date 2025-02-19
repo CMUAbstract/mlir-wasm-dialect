@@ -753,6 +753,10 @@ private:
       rewriter.create<wasm::AddOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
                                                      op->getContext()));
+    } else if (isa<SubOp>(op)) {
+      rewriter.create<wasm::SubOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
     } else if (isa<MulOp>(op)) {
       rewriter.create<wasm::MulOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
