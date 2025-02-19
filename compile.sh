@@ -102,11 +102,11 @@ if [[ "$COMPILER" == "mlir" ]]; then
     --reconcile-unrealized-casts \
     --canonicalize \
     --cse \
+    --sccp \
     --loop-invariant-code-motion \
     --loop-invariant-subset-hoisting \
     --convert-scf-to-ssawasm \
     --reconcile-unrealized-casts \
-    --sccp \
     --convert-ssawasm-global-to-wasm \
     --introduce-locals \
     --convert-ssawasm-to-wasm \
@@ -135,12 +135,23 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-6.wat"
 
     echo "Converting $INPUT_MLIR to LLVM dialect..."
-    mlir-opt "$INPUT_MLIR" --convert-scf-to-cf --lower-affine \
+    mlir-opt "$INPUT_MLIR" \
+        --canonicalize \
+        --cse \
+        --sccp \
+        --loop-invariant-code-motion \
+        --loop-invariant-subset-hoisting \
+        --convert-scf-to-cf --lower-affine \
         --convert-arith-to-llvm="index-bitwidth=32" \
         --convert-func-to-llvm="index-bitwidth=32" \
         --memref-expand --expand-strided-metadata \
         --finalize-memref-to-llvm="index-bitwidth=32" \
-        --convert-to-llvm --reconcile-unrealized-casts -o "$OUTPUT_LLVM_MLIR"
+        --convert-to-llvm --reconcile-unrealized-casts \
+        --cse \
+        --sccp \
+        --loop-invariant-code-motion \
+        --loop-invariant-subset-hoisting \
+        -o "$OUTPUT_LLVM_MLIR"
 
     echo "Translating $OUTPUT_LLVM_MLIR to LLVM IR (.ll)..."
     mlir-translate "$OUTPUT_LLVM_MLIR" --mlir-to-llvmir -o "$OUTPUT_LL"
