@@ -66,15 +66,15 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
 
     auto bodyArgs = bodyBlock->getArguments();
 
-    // create locals for iteration variables before the BlockLoopOp:w
+    // create locals for iteration variables before the BlockLoopOp
     rewriter.setInsertionPoint(blockLoopOp);
     SmallVector<Value, 4> iterationLocals;
     for (Value initArg : initArgs) {
       auto local = rewriter.create<LocalOp>(loc, initArg).getResult();
-      auto castedLocal = rewriter
-                             .create<UnrealizedConversionCastOp>(
-                                 loc, rewriter.getF32Type(), local)
-                             .getResult(0);
+      auto castedLocal =
+          rewriter
+              .create<UnrealizedConversionCastOp>(loc, initArg.getType(), local)
+              .getResult(0);
       iterationLocals.push_back(castedLocal);
     }
     // create local for induction variable
@@ -104,6 +104,22 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.setInsertionPointToEnd(bodyBlock);
     // get the old terminator
     Operation *terminator = bodyBlock->getTerminator();
+    if (isa<scf::YieldOp>(terminator)) {
+      // store the results of the yield op to iteration locals using LocalSetOp
+      for (unsigned i = 0; i < initArgs.size(); ++i) {
+        auto castedIterationLocal =
+            rewriter
+                .create<UnrealizedConversionCastOp>(
+                    loc, iterationLocals[i].getType(), iterationLocals[i])
+                .getResult(0);
+        auto castedResult = rewriter
+                                .create<UnrealizedConversionCastOp>(
+                                    loc, iterationLocals[i].getType(),
+                                    terminator->getOperand(i))
+                                .getResult(0);
+        rewriter.create<LocalSetOp>(loc, castedIterationLocal, castedResult);
+      }
+    }
     rewriter.eraseOp(terminator);
     rewriter.create<TempBranchOp>(loc, inductionVariableUpdateBlock);
 
