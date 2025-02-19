@@ -30,6 +30,7 @@ using MulFOpLowering = NumericBinaryOpLowering<arith::MulFOp, MulOp>;
 using MinFOpLowering = NumericBinaryOpLowering<arith::MinimumFOp, MinOp>;
 using MaxFOpLowering = NumericBinaryOpLowering<arith::MaximumFOp, MaxOp>;
 using RemUIOpLowering = NumericBinaryOpLowering<arith::RemUIOp, RemUOp>;
+using DivSIOpLowering = NumericBinaryOpLowering<arith::DivSIOp, DivSOp>;
 
 struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
   using OpConversionPattern<arith::CmpIOp>::OpConversionPattern;
@@ -101,7 +102,8 @@ void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
   MLIRContext *context = patterns.getContext();
   patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
                MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
-               CmpIOpLowering, SelectOpLowering, RemUIOpLowering,
-               ConstantOpLowering, IndexCastOpLowering>(typeConverter, context);
+               DivSIOpLowering, CmpIOpLowering, SelectOpLowering,
+               RemUIOpLowering, ConstantOpLowering, IndexCastOpLowering>(
+      typeConverter, context);
 }
 } // namespace mlir::ssawasm
