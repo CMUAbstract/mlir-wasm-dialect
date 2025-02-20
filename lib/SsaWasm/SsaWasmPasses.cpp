@@ -222,8 +222,18 @@ public:
                      localGetRequiredOps[op].end(),
                      operandIdx) != localGetRequiredOps[op].end();
   }
-  vector<int> getLocalGetRequiredOperandIndices(Operation *op) {
-    return localGetRequiredOps[op];
+  bool isConstantRequired(Operation *op, int operandIdx) {
+    return std::find(constantRequiredOps[op].begin(),
+                     constantRequiredOps[op].end(),
+                     operandIdx) != constantRequiredOps[op].end();
+  }
+  bool isLocalGetOrConstantRequired(Operation *op) {
+    for (unsigned i = 0; i < op->getNumOperands(); i++) {
+      if (isLocalGetRequired(op, i) || isConstantRequired(op, i)) {
+        return true;
+      }
+    }
+    return false;
   }
 
 private:
@@ -258,6 +268,9 @@ private:
                 isa<AsMemRefOp>(operand.getDefiningOp())) &&
                "Expected a block argument or an AsPointerOp or AsMemRefOp");
         localGetRequiredOps[op].push_back(operandIdx);
+      } else if (isa<ConstantOp>(definingOp)) {
+        // we can clone the constant declaration instead of introducing a local
+        constantRequiredOps[op].push_back(operandIdx);
       } else if (isa<LocalOp>(definingOp)) {
         // if the defining operation is already a local, we do not need to
         // introduce a new local
@@ -288,6 +301,7 @@ private:
   }
   vector<Operation *> localRequiredOps;
   map<Operation *, vector<int>> localGetRequiredOps;
+  map<Operation *, vector<int>> constantRequiredOps;
 };
 
 struct IntroduceLocalPattern : public RewritePattern {
@@ -336,9 +350,9 @@ unsigned computeOffset(Operation *op, int operandIdx) {
   return offset;
 }
 
-struct IntroduceLocalGetPattern : public RewritePattern {
-  IntroduceLocalGetPattern(MLIRContext *context,
-                           IntroduceLocalAnalysis &introduceLocal)
+struct IntroduceLocalGetOrConstantPattern : public RewritePattern {
+  IntroduceLocalGetOrConstantPattern(MLIRContext *context,
+                                     IntroduceLocalAnalysis &introduceLocal)
       : RewritePattern(MatchAnyOpTypeTag(), 1, context),
         introduceLocal(introduceLocal) {}
 
@@ -348,7 +362,7 @@ struct IntroduceLocalGetPattern : public RewritePattern {
            op->getDialect() ==
                op->getContext()->getLoadedDialect<wasm::WasmDialect>());
 
-    if (introduceLocal.getLocalGetRequiredOperandIndices(op).size() > 0) {
+    if (introduceLocal.isLocalGetOrConstantRequired(op)) {
       return success();
     }
     return failure();
@@ -382,6 +396,24 @@ struct IntroduceLocalGetPattern : public RewritePattern {
         op->setOperand(operandIdx, local);
         offset += 1;
 
+      } else if (introduceLocal.isConstantRequired(op, operandIdx)) {
+        auto constantOp =
+            cast<ConstantOp>(op->getOperand(operandIdx).getDefiningOp());
+
+        rewriter.setInsertionPoint(op);
+        auto ip = rewriter.getInsertionPoint();
+        for (unsigned i = 0; i < offset; i++) {
+          rewriter.setInsertionPoint(rewriter.getInsertionBlock(), --ip);
+        }
+
+        auto newConstant =
+            rewriter
+                .create<ssawasm::ConstantOp>(op->getLoc(),
+                                             constantOp.getResult().getType(),
+                                             constantOp.getValue())
+                .getResult();
+        op->setOperand(operandIdx, newConstant);
+        offset += 1;
       } else {
         offset += computeOffset(op, operandIdx);
       }
@@ -408,7 +440,8 @@ public:
 
     // introduce local gets
     RewritePatternSet localGetPatterns(context);
-    localGetPatterns.add<IntroduceLocalGetPattern>(context, introduceLocal);
+    localGetPatterns.add<IntroduceLocalGetOrConstantPattern>(context,
+                                                             introduceLocal);
     walkAndApplyPatterns(module, std::move(localGetPatterns));
   }
 };
