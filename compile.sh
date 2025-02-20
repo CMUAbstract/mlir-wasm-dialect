@@ -105,6 +105,7 @@ if [[ "$COMPILER" == "mlir" ]]; then
     --loop-invariant-code-motion \
     --loop-invariant-subset-hoisting \
     --cse \
+    --control-flow-sink \
     --convert-scf-to-ssawasm \
     --reconcile-unrealized-casts \
     --convert-ssawasm-global-to-wasm \
@@ -149,6 +150,7 @@ elif [[ "$COMPILER" == "llvm" ]]; then
         --convert-to-llvm --reconcile-unrealized-casts \
         --cse \
         --sccp \
+        --control-flow-sink \
         --loop-invariant-code-motion \
         --loop-invariant-subset-hoisting \
         -o "$OUTPUT_LLVM_MLIR"
