@@ -101,10 +101,10 @@ if [[ "$COMPILER" == "mlir" ]]; then
     --convert-memref-to-ssawasm \
     --reconcile-unrealized-casts \
     --canonicalize \
-    --cse \
     --sccp \
     --loop-invariant-code-motion \
     --loop-invariant-subset-hoisting \
+    --cse \
     --convert-scf-to-ssawasm \
     --reconcile-unrealized-casts \
     --convert-ssawasm-global-to-wasm \
