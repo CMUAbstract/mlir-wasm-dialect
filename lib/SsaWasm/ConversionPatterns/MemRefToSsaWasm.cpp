@@ -121,22 +121,22 @@ generatePointerComputation(Operation *op, Value base, MemRefType memRefType,
               op, "Cannot handle dynamic strides in the MemRefType."),
           Value());
     } else {
-      Value stride =
-          rewriter
-              .create<ConstantOp>(loc, rewriter.getI32IntegerAttr(strides[i]))
-              .getResult();
-      Value striedTimesIndex =
-          rewriter.create<MulOp>(loc, stride, indices[i]).getResult();
-
       Type memRefElementType = memRefType.getElementType();
       int64_t elementSize = memRefElementType.getIntOrFloatBitWidth() / 8;
       Value size =
           rewriter
               .create<ConstantOp>(loc, rewriter.getI32IntegerAttr(elementSize))
               .getResult();
-      Value offset =
-          rewriter.create<MulOp>(loc, striedTimesIndex, size).getResult();
-      result = rewriter.create<AddOp>(loc, result, offset).getResult();
+      Value stride =
+          rewriter
+              .create<ConstantOp>(loc, rewriter.getI32IntegerAttr(strides[i]))
+              .getResult();
+      Value sizeXstride = rewriter.create<MulOp>(loc, size, stride).getResult();
+
+      Value sizeXstrideXindex =
+          rewriter.create<MulOp>(loc, sizeXstride, indices[i]).getResult();
+      result =
+          rewriter.create<AddOp>(loc, result, sizeXstrideXindex).getResult();
     }
   }
 
