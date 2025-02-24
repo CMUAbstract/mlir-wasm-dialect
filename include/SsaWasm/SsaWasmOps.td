@@ -382,8 +382,8 @@ def SsaWasm_LocalOp : SsaWasm_Op<"local", [SameOperandsAndResultType]> {
         This is the base class for local variable operations in the SSA Wasm dialect.
     }];
 
-    let arguments = (ins SsaWasm_WasmNumericLike:$value);
-    let results = (outs SsaWasm_WasmNumericLike:$result);
+    let arguments = (ins SsaWasm_LocalLike:$value);
+    let results = (outs SsaWasm_LocalLike:$result);
 
     let assemblyFormat = "attr-dict $value `:` type($result)";
 }
@@ -396,7 +396,7 @@ def SsaWasm_LocalSetOp : SsaWasm_Op<"local_set"> {
     The definingOp of `local` must be LocalOp.
   }];
   // TODO: Type-level enforcement of the above constraint
-  let arguments = (ins SsaWasm_WasmNumericLike:$local, SsaWasm_WasmNumericLike:$value);
+  let arguments = (ins SsaWasm_LocalLike:$local, SsaWasm_LocalLike:$value);
   let assemblyFormat = "$local `,` $value `:` type($local) `->` type($value) attr-dict";
 }
 
@@ -408,8 +408,8 @@ def SsaWasm_LocalGetOp : SsaWasm_Op<"local_get"> {
     The definingOp of `local` must be LocalOp.
   }];
   // TODO: Type-level enforcement of the above constraint
-  let arguments = (ins SsaWasm_WasmNumericLike:$local);
-  let results = (outs SsaWasm_WasmNumericLike:$result);
+  let arguments = (ins SsaWasm_LocalLike:$local);
+  let results = (outs SsaWasm_LocalLike:$result);
   let assemblyFormat = "$local `:` type($local) `->` type($result) attr-dict";
 }
 

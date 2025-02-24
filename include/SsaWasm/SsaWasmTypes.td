@@ -83,4 +83,9 @@ def SsaWasm_WasmContinuationType : SsaWasm_Type<"WasmContinuation", "cont"> {
     let assemblyFormat = "$id";
 }
 
+def SsaWasm_LocalLike : TypeConstraint<
+    Or<[SsaWasm_WasmNumericLike.predicate,
+        SsaWasm_WasmContinuationType.predicate]>,
+    "ssawasm numeric or continuation type">;
+
 #endif // SSAWASM_TYPES
