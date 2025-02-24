@@ -252,21 +252,55 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
   LogicalResult
   matchAndRewrite(ResumeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.eraseOp(op);
+    Location loc = op.getLoc();
+    // overall structure:
+    // block {
+    //     ^outerEntryBlock
+    //  	     tempBranch to innerEntryBlock1
+    //     block {
+    //     ^innerEntryBlock1
+    // 	        ssawasm.resume(on_yield:^innerExitBlock,fallback:^innerEntryBlock2)
+    //     ^innerEntryBlock2
+    //        	branch ^outerExitBlock
+    //     }
+    //     ^innerExitBlock
+    // 	        handler
+    // 	        exit
+    // }
+    //     ^outerExitBlock
+    // 	        exit
+    //
 
-    // TODO: Use BlockBlockOp and put ResumeOp in the block
-    auto blockOp = rewriter.create<ssawasm::BlockOp>(op.getLoc(), ValueRange{});
-    auto endBlock = rewriter.createBlock(&blockOp.getRegion());
-    rewriter.setInsertionPointToEnd(endBlock);
-    rewriter.create<ssawasm::BlockEndOp>(op.getLoc(), op.getResults());
+    auto blockBlockOp = rewriter.create<ssawasm::BlockBlockOp>(loc);
+    auto [outerEntryBlock, innerEntryBlock2, innerExitBlock, outerExitBlock] =
+        blockBlockOp.initialize(rewriter);
+    auto innerEntryBlock1 =
+        rewriter.splitBlock(innerEntryBlock2, innerEntryBlock2->begin());
 
-    rewriter.create<ssawasm::ResumeOp>(op.getLoc(),
+    rewriter.setInsertionPointToEnd(outerEntryBlock);
+    rewriter.create<ssawasm::TempBranchOp>(loc, innerEntryBlock1);
+
+    rewriter.setInsertionPointToEnd(innerEntryBlock1);
+    rewriter.create<ssawasm::ResumeOp>(loc,
                                        /*results=*/op.getResults().getType(),
                                        /*tag=*/rewriter.getStringAttr("yield"),
                                        /*cont=*/adaptor.getCont(),
                                        /*args=*/adaptor.getArgs(),
-                                       /*on_yield=*/endBlock,
-                                       /*fallback=*/endBlock);
+                                       /*on_yield=*/innerExitBlock,
+                                       /*fallback=*/innerEntryBlock2);
+
+    rewriter.setInsertionPointToEnd(innerEntryBlock2);
+    rewriter.create<ssawasm::BlockBlockBranchOp>(loc, outerExitBlock);
+
+    rewriter.setInsertionPointToEnd(innerExitBlock);
+    // TODO: Copy handler here
+    rewriter.create<ssawasm::TempBranchOp>(loc, outerExitBlock);
+
+    rewriter.setInsertionPointToEnd(outerExitBlock);
+    rewriter.create<ssawasm::BlockBlockTerminatorOp>(loc);
+
+    rewriter.eraseOp(op);
+
     return success();
   }
 };
