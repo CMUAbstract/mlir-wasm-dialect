@@ -823,14 +823,14 @@ private:
           op->getLoc(),
           TypeAttr::get(convertSsaWasmTypeToWasmType(
               storeOp.getValue().getType(), storeOp.getContext())));
-    } else if (auto resumeSwitchOp = dyn_cast<ResumeSwitchOp>(op)) {
-      rewriter.create<wasm::ResumeSwitchOp>(
-          op->getLoc(), resumeSwitchOp.getCont().getType().getId(),
-          resumeSwitchOp.getTag());
-    } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
-      rewriter.create<wasm::SwitchOp>(op->getLoc(),
-                                      switchOp.getCont().getType().getId(),
-                                      switchOp.getTag());
+      //     } else if (auto resumeSwitchOp = dyn_cast<ResumeSwitchOp>(op)) {
+      //       rewriter.create<wasm::ResumeSwitchOp>(
+      //           op->getLoc(), resumeSwitchOp.getCont().getType().getId(),
+      //           resumeSwitchOp.getTag());
+      //     } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
+      //       rewriter.create<wasm::SwitchOp>(op->getLoc(),
+      //                                       switchOp.getCont().getType().getId(),
+      //                                       switchOp.getTag());
     } else if (auto contNewOp = dyn_cast<ContNewOp>(op)) {
       rewriter.create<wasm::ContNewOp>(op->getLoc(),
                                        contNewOp.getResult().getType().getId());

@@ -209,41 +209,42 @@ struct NullContOpLowering : public OpConversionPattern<NullContOp> {
   }
 };
 
-struct ResumeSwitchOpLowering : public OpConversionPattern<ResumeSwitchOp> {
-  using OpConversionPattern<ResumeSwitchOp>::OpConversionPattern;
+// FIXME
+// struct ResumeSwitchOpLowering : public OpConversionPattern<ResumeSwitchOp> {
+//   using OpConversionPattern<ResumeSwitchOp>::OpConversionPattern;
+//
+//   LogicalResult
+//   matchAndRewrite(ResumeSwitchOp op, OpAdaptor adaptor,
+//                   ConversionPatternRewriter &rewriter) const override {
+//     rewriter.replaceOpWithNewOp<ssawasm::ResumeSwitchOp>(
+//         op,
+//         /*returnedCont=*/
+//         getTypeConverter()->convertType(op.getReturnedCont().getType()),
+//         /*results=*/op.getResults().getType(),
+//         /*tag=*/rewriter.getStringAttr("yield"),
+//         /*cont=*/adaptor.getCont(),
+//         /*args=*/adaptor.getArgs());
+//     return success();
+//   }
+// };
 
-  LogicalResult
-  matchAndRewrite(ResumeSwitchOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<ssawasm::ResumeSwitchOp>(
-        op,
-        /*returnedCont=*/
-        getTypeConverter()->convertType(op.getReturnedCont().getType()),
-        /*results=*/op.getResults().getType(),
-        /*tag=*/rewriter.getStringAttr("yield"),
-        /*cont=*/adaptor.getCont(),
-        /*args=*/adaptor.getArgs());
-    return success();
-  }
-};
-
-struct SwitchOpLowering : public OpConversionPattern<SwitchOp> {
-  using OpConversionPattern<SwitchOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(SwitchOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<ssawasm::SwitchOp>(
-        op,
-        /*returnedCont=*/
-        getTypeConverter()->convertType(op.getReturnedCont().getType()),
-        /*results=*/op.getResults().getType(),
-        /*tag=*/rewriter.getStringAttr("yield"),
-        /*cont=*/adaptor.getCont(),
-        /*args=*/adaptor.getArgs());
-    return success();
-  }
-};
+// struct SwitchOpLowering : public OpConversionPattern<SwitchOp> {
+//   using OpConversionPattern<SwitchOp>::OpConversionPattern;
+//
+//   LogicalResult
+//   matchAndRewrite(SwitchOp op, OpAdaptor adaptor,
+//                   ConversionPatternRewriter &rewriter) const override {
+//     rewriter.replaceOpWithNewOp<ssawasm::SwitchOp>(
+//         op,
+//         /*returnedCont=*/
+//         getTypeConverter()->convertType(op.getReturnedCont().getType()),
+//         /*results=*/op.getResults().getType(),
+//         /*tag=*/rewriter.getStringAttr("yield"),
+//         /*cont=*/adaptor.getCont(),
+//         /*args=*/adaptor.getArgs());
+//     return success();
+//   }
+// };
 
 struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
   using OpConversionPattern<ResumeOp>::OpConversionPattern;
@@ -310,9 +311,9 @@ class ConvertDContToSsaWasm
 
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);
-    patterns.add<NewOpLowering, NullContOpLowering, ResumeSwitchOpLowering,
-                 SwitchOpLowering, ResumeOpLowering, SuspendOpLowering>(
-        typeConverter, context);
+    patterns.add<NewOpLowering, NullContOpLowering, ResumeOpLowering,
+                 SuspendOpLowering>(typeConverter, context);
+    // TODO: Fix and add ResumeSwitchOpLowering and SwitchOpLowering
 
     ConversionTarget target(getContext());
     target.addLegalDialect<ssawasm::SsaWasmDialect>();
