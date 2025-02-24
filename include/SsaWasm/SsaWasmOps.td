@@ -522,22 +522,22 @@ def SsaWasm_SuspendOp : SsaWasm_Op<"suspend"> {
   let results = (outs Variadic<AnyType>:$results);
 }
 
-def SsaWasm_ResumeSwitchOp : SsaWasm_Op<"resume_switch"> {
-  let description = [{
-    This corresponds to the `resume` operation in Wasm with a switch handler.
-  }];
-  let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
-  let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
-}
-
-def SsaWasm_SwitchOp : SsaWasm_Op<"switch"> {
-  let description = [{
-    This corresponds to the `switch` operation in Wasm.
-  }];
-  let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
-
-  let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
-}
+// def SsaWasm_ResumeSwitchOp : SsaWasm_Op<"resume_switch"> {
+//   let description = [{
+//     This corresponds to the `resume` operation in Wasm with a switch handler.
+//   }];
+//   let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
+//   let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
+// }
+// 
+// def SsaWasm_SwitchOp : SsaWasm_Op<"switch"> {
+//   let description = [{
+//     This corresponds to the `switch` operation in Wasm.
+//   }];
+//   let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
+// 
+//   let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
+// }
 
 def SsaWasm_RecContFuncDeclOp : SsaWasm_Op<"rec_cont_func_decl"> {
   let description = [{

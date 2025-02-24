@@ -63,16 +63,6 @@ def DCont_ResumeOp : DCont_Op<"resume"> {
     }];
 }
 
-def DCont_ResumeSwitchOp : DCont_Op<"resume_switch"> {
-    let summary = "resume a delimited continuation so that childs can switch to each other";
-    let description = [{
-        The `resume_switch` operation resumes a delimited continuation.
-        The resumed continuation can switch to other continuations.
-    }];
-    let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
-    // TODO: add assembly format
-}
 
 def DCont_SuspendOp : DCont_Op<"suspend"> {
     let summary = "suspend a delimited continuation";
@@ -87,6 +77,19 @@ def DCont_SuspendOp : DCont_Op<"suspend"> {
   
 }
 
+// FIXME: This is not a good modeling
+def DCont_ResumeSwitchOp : DCont_Op<"resume_switch"> {
+    let summary = "resume a delimited continuation so that childs can switch to each other";
+    let description = [{
+        The `resume_switch` operation resumes a delimited continuation.
+        The resumed continuation can switch to other continuations.
+    }];
+    let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
+    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
+    // TODO: add assembly format
+}
+
+// FIXME: This is not a good modeling
 def DCont_SwitchOp : DCont_Op<"switch"> {
     let summary = "switch to a different delimited continuation";
     let description = [{
