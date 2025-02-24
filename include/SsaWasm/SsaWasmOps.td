@@ -506,12 +506,29 @@ def SsaWasm_ContNewOp : SsaWasm_Op<"cont_new"> {
   let assemblyFormat = "attr-dict $func_ref `->` type($result)";
 }
 
-def SsaWasm_ResumeOp : SsaWasm_Op<"resume"> {
+def SsaWasm_BlockOp : SsaWasm_Op<"block"> {
+  let description = [{
+    This operation creates a new block.
+  }];
+  let regions = (region AnyRegion:$body);
+  let results = (outs Variadic<AnyType>:$results);
+}
+
+def SsaWasm_BlockEndOp : SsaWasm_Op<"block_end", [Terminator, HasParent<"BlockOp">]> {
+  let description = [{
+    This operation ends a block.
+  }];
+  let arguments = (ins Variadic<AnyType>:$results);
+}
+
+def SsaWasm_ResumeOp : SsaWasm_Op<"resume", [Terminator]> {
   let description = [{
     This operation resumes a continuation.
   }];
   let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
-  let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
+  // default successor must be the next block in the region
+  let successors = (successor AnySuccessor:$on_yield, AnySuccessor:$fallback);
+  let results = (outs Variadic<AnyType>:$results);
 }
 
 def SsaWasm_SuspendOp : SsaWasm_Op<"suspend"> {

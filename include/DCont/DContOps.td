@@ -52,15 +52,9 @@ def DCont_ResumeOp : DCont_Op<"resume"> {
         The `resume` operation resumes a delimited continuation.
     }];
     let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
-    let assemblyFormat = [{
-    `(` $cont `:` type($cont)
-    (`,` $args^)?  
-    `)`               
-    attr-dict        
-    `:` functional-type($args, $results)
-    `,` type($returned_cont)
-    }];
+    let results = (outs Variadic<AnyType>:$results);
+    // TODO: We should support suspend handler with multiple blocks
+    let regions = (region SizedRegion<1>:$suspend_handler);
 }
 
 
