@@ -37,6 +37,34 @@ def DCont_NewOp : DCont_Op<"new"> {
     let assemblyFormat = "attr-dict $function_type_name `:` type($cont)";
 }
 
+def DCont_StorageOp : DCont_Op<"storage"> {
+    let summary = "create a storage for a delimited continuation";
+    let description = [{
+        The `storage` operation creates a storage for a delimited continuation.
+    }];
+    let results = (outs DCont_StorageType:$storage);
+    let assemblyFormat = "attr-dict `:` type($storage)";
+}
+
+def DCont_LoadOp : DCont_Op<"load"> {
+    let summary = "load a value from a storage";
+    let description = [{
+        The `load` operation loads a value from a storage.
+    }];
+    let arguments = (ins DCont_StorageType:$storage);
+    let results = (outs DCont_ContType:$cont);
+    let assemblyFormat = "attr-dict $storage `:` type($storage) `->` type($cont)";
+}
+
+def DCont_StoreOp : DCont_Op<"store"> {
+    let summary = "store a value to a storage";
+    let description = [{
+        The `store` operation stores a value to a storage.
+    }];
+    let arguments = (ins DCont_StorageType:$storage, DCont_ContType:$cont);
+    let assemblyFormat = "attr-dict $storage `,` $cont `:` type($cont) `->` type($storage)";
+}
+
 def DCont_NullContOp : DCont_Op<"null_cont"> {
     let summary = "null delimited continuation";
     let description = [{
