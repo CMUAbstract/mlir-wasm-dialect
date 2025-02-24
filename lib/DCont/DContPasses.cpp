@@ -1,4 +1,3 @@
-
 //===- DContPasses.cpp - DCont passes -----------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -293,8 +292,21 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     rewriter.create<ssawasm::BlockBlockBranchOp>(loc, outerExitBlock);
 
     rewriter.setInsertionPointToEnd(innerExitBlock);
-    // TODO: Copy handler here
-    rewriter.create<ssawasm::TempBranchOp>(loc, outerExitBlock);
+    // Copy block arguments to the innerExitBlock with type conversion
+    SmallVector<Value> newArguments;
+    for (auto arg : op.getSuspendHandler().front().getArguments()) {
+      Type convertedType = getTypeConverter()->convertType(arg.getType());
+      newArguments.push_back(
+          innerExitBlock->addArgument(convertedType, arg.getLoc()));
+    }
+    Block &handlerBlock = op.getSuspendHandler().front();
+    auto *terminator = handlerBlock.getTerminator();
+    rewriter.inlineBlockBefore(&handlerBlock, innerExitBlock,
+                               innerExitBlock->begin(), newArguments);
+    rewriter.eraseOp(terminator);
+
+    rewriter.setInsertionPointToEnd(innerExitBlock);
+    rewriter.create<ssawasm::TempBranchOp>(op.getLoc(), outerExitBlock);
 
     rewriter.setInsertionPointToEnd(outerExitBlock);
     rewriter.create<ssawasm::BlockBlockTerminatorOp>(loc);
