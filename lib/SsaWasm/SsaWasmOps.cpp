@@ -478,6 +478,17 @@ bool BlockLoopCondBranchOp::isBranchingToBegin() {
   return getDest() == blockLoopOp.getEntryBlock();
 }
 
+// BlockBlockOp
+std::tuple<Block *, Block *, Block *, Block *>
+BlockBlockOp::initialize(OpBuilder &builder) {
+  Block *outerEntryBlock = builder.createBlock(&getRegion());
+  Block *innerEntryBlock = builder.createBlock(&getRegion());
+  Block *innerExitBlock = builder.createBlock(&getRegion());
+  Block *outerExitBlock = builder.createBlock(&getRegion());
+  return std::make_tuple(outerEntryBlock, innerEntryBlock, innerExitBlock,
+                         outerExitBlock);
+}
+
 // for SsaWasm::DataOp
 // copied from mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
 
