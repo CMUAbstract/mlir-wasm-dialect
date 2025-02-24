@@ -252,14 +252,21 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
   LogicalResult
   matchAndRewrite(ResumeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<ssawasm::ResumeOp>(
-        op,
-        /*returnedCont=*/
-        getTypeConverter()->convertType(op.getReturnedCont().getType()),
-        /*results=*/op.getResults().getType(),
-        /*tag=*/rewriter.getStringAttr("yield"),
-        /*cont=*/adaptor.getCont(),
-        /*args=*/adaptor.getArgs());
+    rewriter.eraseOp(op);
+
+    // TODO: Use BlockBlockOp and put ResumeOp in the block
+    auto blockOp = rewriter.create<ssawasm::BlockOp>(op.getLoc(), ValueRange{});
+    auto endBlock = rewriter.createBlock(&blockOp.getRegion());
+    rewriter.setInsertionPointToEnd(endBlock);
+    rewriter.create<ssawasm::BlockEndOp>(op.getLoc(), op.getResults());
+
+    rewriter.create<ssawasm::ResumeOp>(op.getLoc(),
+                                       /*results=*/op.getResults().getType(),
+                                       /*tag=*/rewriter.getStringAttr("yield"),
+                                       /*cont=*/adaptor.getCont(),
+                                       /*args=*/adaptor.getArgs(),
+                                       /*on_yield=*/endBlock,
+                                       /*fallback=*/endBlock);
     return success();
   }
 };
@@ -270,6 +277,7 @@ struct SuspendOpLowering : public OpConversionPattern<SuspendOp> {
   LogicalResult
   matchAndRewrite(SuspendOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+
     rewriter.replaceOpWithNewOp<ssawasm::SuspendOp>(
         op,
         /*results=*/op.getResults().getType(),
