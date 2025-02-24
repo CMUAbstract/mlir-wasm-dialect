@@ -461,6 +461,28 @@ def SsaWasm_TempBranchOp : SsaWasm_Op<"temp_branch", [Terminator]> {
   let successors = (successor AnySuccessor:$dest);
 }
 
+def SsaWasm_BlockBlockOp : SsaWasm_Op<"block_block"> {
+  let description = [{
+    This is a temporary operation used to model 
+    a block inside a block.
+  }];
+  let regions = (region AnyRegion:$body);
+  let extraClassDeclaration = [{
+    // TODO: Convert this to a builder
+    std::tuple<Block *, Block *, Block *, Block *> initialize(OpBuilder &builder);
+  }];
+}
+
+def SsaWasm_BlockBlockTerminatorOp : SsaWasm_Op<"block_block.terminator", [Terminator]> {
+  let description = [{
+    This is a temporary operation to be put at the exit block of a BlockBlockOp.
+  }];
+}
+
+def SsaWasm_BlockBlockBranchOp : SsaWasm_Op<"block_block.br", [Terminator, HasParent<"BlockBlockOp">]> {
+  let successors = (successor AnySuccessor:$dest);
+}
+
 def SsaWasm_SelectOp : SsaWasm_Op<"select", [AllTypesMatch<["true_value", "false_value", "result"]>]> {
   let description = [{
     This operation selects between two values based on a condition.
@@ -504,21 +526,6 @@ def SsaWasm_ContNewOp : SsaWasm_Op<"cont_new"> {
   let arguments = (ins SsaWasm_WasmRefType:$func_ref);
   let results = (outs SsaWasm_WasmContinuationType:$result);
   let assemblyFormat = "attr-dict $func_ref `->` type($result)";
-}
-
-def SsaWasm_BlockOp : SsaWasm_Op<"block"> {
-  let description = [{
-    This operation creates a new block.
-  }];
-  let regions = (region AnyRegion:$body);
-  let results = (outs Variadic<AnyType>:$results);
-}
-
-def SsaWasm_BlockEndOp : SsaWasm_Op<"block_end", [Terminator, HasParent<"BlockOp">]> {
-  let description = [{
-    This operation ends a block.
-  }];
-  let arguments = (ins Variadic<AnyType>:$results);
 }
 
 def SsaWasm_ResumeOp : SsaWasm_Op<"resume", [Terminator]> {
