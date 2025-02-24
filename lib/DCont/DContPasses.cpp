@@ -164,6 +164,9 @@ struct DContToSsaWasmTypeConverter : public TypeConverter {
     addConversion([ctx](IndexType type) -> Type {
       return ssawasm::WasmIntegerType::get(ctx, 32);
     });
+    addConversion([ctx](StorageType type) -> Type {
+      return ssawasm::WasmContinuationType::get(ctx, type.getId());
+    });
     addSourceMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) -> Value {
       return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
@@ -332,6 +335,49 @@ struct SuspendOpLowering : public OpConversionPattern<SuspendOp> {
     return success();
   }
 };
+
+struct StorageOpLowering : public OpConversionPattern<StorageOp> {
+  using OpConversionPattern<StorageOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(StorageOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    // create a local variable initialized to null
+    auto nullContRef =
+        rewriter
+            .create<ssawasm::NullContRefOp>(
+                op.getLoc(),
+                getTypeConverter()->convertType(op.getStorage().getType()))
+            .getResult();
+    rewriter.replaceOpWithNewOp<ssawasm::LocalOp>(op, nullContRef);
+    return success();
+  }
+};
+struct LoadOpLowering : public OpConversionPattern<LoadOp> {
+  using OpConversionPattern<LoadOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(LoadOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ssawasm::LocalGetOp>(
+        op, getTypeConverter()->convertType(op.getResult().getType()),
+        adaptor.getStorage());
+    return success();
+  }
+};
+
+struct StoreOpLowering : public OpConversionPattern<StoreOp> {
+  using OpConversionPattern<StoreOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(StoreOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ssawasm::LocalSetOp>(op, adaptor.getStorage(),
+                                                     adaptor.getCont());
+    return success();
+  }
+};
 } // namespace
 
 class ConvertDContToSsaWasm
@@ -366,7 +412,8 @@ class ConvertDContToSsaWasm
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);
     patterns.add<NewOpLowering, NullContOpLowering, ResumeOpLowering,
-                 SuspendOpLowering>(typeConverter, context);
+                 SuspendOpLowering, StorageOpLowering, LoadOpLowering,
+                 StoreOpLowering>(typeConverter, context);
     // TODO: Fix and add ResumeSwitchOpLowering and SwitchOpLowering
 
     ConversionTarget target(getContext());
