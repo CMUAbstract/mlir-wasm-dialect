@@ -27,5 +27,10 @@ def DCont_ContType : DCont_Type<"Cont", "cont"> {
     let assemblyFormat = "`<` $id `>`";
 }
 
+def DCont_StorageType : DCont_Type<"Storage", "storage"> {
+    let parameters = (ins "StringAttr":$id);
+    let assemblyFormat = "`<` $id `>`";
+}
+
 
 #endif // DCONT_DCONT_TYPES
