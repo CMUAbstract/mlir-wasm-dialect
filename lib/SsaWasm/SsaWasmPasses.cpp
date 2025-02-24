@@ -428,7 +428,11 @@ Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
     }
   } else if (isa<WasmMemRefType>(type)) {
     return IntegerType::get(ctx, 32);
+  } else if (isa<WasmContinuationType>(type)) {
+    // TODO: We should not hardcode this
+    return wasm::ContinuationType::get(ctx, "ct", "ft");
   } else {
+    type.dump();
     assert(false && "Unsupported type");
   }
 }
@@ -452,8 +456,10 @@ public:
             localTypes.push_back(convertSsaWasmTypeToWasmType(
                 op.getResult(0).getType(), op.getContext()));
             index++;
-          } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
-            for (auto &nestedBlock : blockLoopOp.getRegion()) {
+          }
+          // Recursively traverse any nested regions
+          for (Region &nestedRegion : op.getRegions()) {
+            for (auto &nestedBlock : nestedRegion.getBlocks()) {
               traverse(&nestedBlock);
             }
           }
@@ -796,6 +802,9 @@ private:
     } else if (auto blockLoopOp = dyn_cast<BlockLoopOp>(op)) {
       convertBlockLoopOp(funcOp, blockLoopOp, rewriter, localIndexAnalysis,
                          newLabelIndex);
+    } else if (auto blockBlockOp = dyn_cast<BlockBlockOp>(op)) {
+      convertBlockBlockOp(funcOp, blockBlockOp, rewriter, localIndexAnalysis,
+                          newLabelIndex);
     } else if (isa<ILeUOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));
@@ -887,6 +896,26 @@ private:
 
     rewriter.setInsertionPointToEnd(loopBody);
     rewriter.create<wasm::LoopEndOp>(loc);
+  }
+
+  void convertBlockBlockOp(FuncOp funcOp, BlockBlockOp blockBlockOp,
+                           IRRewriter &rewriter,
+                           LocalIndexAnalysis &localIndexAnalysis,
+                           int &newLabelIndex) {
+    Location loc = blockBlockOp.getLoc();
+    auto outerBlockOp = rewriter.create<wasm::BlockOp>(
+        loc, "block_" + std::to_string(newLabelIndex++));
+    // TODO: outerEntryBlock
+
+    auto innerBlockOp = rewriter.create<wasm::BlockOp>(
+        loc, "block_" + std::to_string(newLabelIndex++));
+    // TODO: innerEntryBlocks
+
+    auto innerBlockEndOp = rewriter.create<wasm::BlockEndOp>(loc);
+    // TODO: innerExitBlock
+
+    auto outerBlockEndOp = rewriter.create<wasm::BlockEndOp>(loc);
+    // TODO: outerExitBlock
   }
 
   void moveAndMergeBlock(Block *from, Block *to, IRRewriter &rewriter,
