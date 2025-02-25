@@ -297,16 +297,32 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     rewriter.setInsertionPointToEnd(innerExitBlock);
     // Copy block arguments to the innerExitBlock with type conversion
     SmallVector<Value> newArguments;
-    for (auto arg : op.getSuspendHandler().front().getArguments()) {
-      Type convertedType = getTypeConverter()->convertType(arg.getType());
-      newArguments.push_back(
-          innerExitBlock->addArgument(convertedType, arg.getLoc()));
+    if (!op.getSuspendHandler().empty()) { // Check if region has blocks
+      for (auto arg : op.getSuspendHandler().front().getArguments()) {
+        Type convertedType = getTypeConverter()->convertType(arg.getType());
+        newArguments.push_back(
+            innerExitBlock->addArgument(convertedType, arg.getLoc()));
+      }
+
+      // Inline handler operations into innerExitBlock, except the terminator
+      Block &handlerBlock = op.getSuspendHandler().front();
+      auto *terminator = handlerBlock.getTerminator();
+      rewriter.inlineBlockBefore(&handlerBlock, innerExitBlock,
+                                 innerExitBlock->begin(), newArguments);
+      rewriter.eraseOp(terminator);
+
+      // block parameters are in stack, so ideally we don't necessarily need to
+      // store them in locals, but we do it for now for simplicity
+      // TODO: We should fix this in the future
+      rewriter.setInsertionPointToStart(innerExitBlock);
+      for (auto it = innerExitBlock->getArguments().rbegin();
+           it != innerExitBlock->getArguments().rend(); ++it) {
+        auto arg = *it;
+        auto localOp =
+            rewriter.create<ssawasm::LocalOp>(op.getLoc(), arg.getType(), arg);
+        rewriter.replaceAllUsesExcept(arg, localOp.getResult(), localOp);
+      }
     }
-    Block &handlerBlock = op.getSuspendHandler().front();
-    auto *terminator = handlerBlock.getTerminator();
-    rewriter.inlineBlockBefore(&handlerBlock, innerExitBlock,
-                               innerExitBlock->begin(), newArguments);
-    rewriter.eraseOp(terminator);
 
     rewriter.setInsertionPointToEnd(innerExitBlock);
     rewriter.create<ssawasm::TempBranchOp>(op.getLoc(), outerExitBlock);
