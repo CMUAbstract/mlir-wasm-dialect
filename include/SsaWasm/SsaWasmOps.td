@@ -481,6 +481,9 @@ def SsaWasm_BlockBlockTerminatorOp : SsaWasm_Op<"block_block.terminator", [Termi
 
 def SsaWasm_BlockBlockBranchOp : SsaWasm_Op<"block_block.br", [Terminator, HasParent<"BlockBlockOp">]> {
   let successors = (successor AnySuccessor:$dest);
+  let extraClassDeclaration = [{
+    bool isBranchingToOuter();
+  }];
 }
 
 def SsaWasm_SelectOp : SsaWasm_Op<"select", [AllTypesMatch<["true_value", "false_value", "result"]>]> {
@@ -534,7 +537,7 @@ def SsaWasm_ResumeOp : SsaWasm_Op<"resume", [Terminator]> {
   }];
   let arguments = (ins FlatSymbolRefAttr:$tag, SsaWasm_WasmContinuationType:$cont, Variadic<AnyType>:$args);
   // default successor must be the next block in the region
-  let successors = (successor AnySuccessor:$on_yield, AnySuccessor:$fallback);
+  let successors = (successor AnySuccessor:$on_tag, AnySuccessor:$fallback);
   let results = (outs Variadic<AnyType>:$results);
 }
 

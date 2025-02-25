@@ -257,6 +257,16 @@ private:
                 isa<AsPointerOp>(operand.getDefiningOp()) ||
                 isa<AsMemRefOp>(operand.getDefiningOp())) &&
                "Expected a block argument or an AsPointerOp or AsMemRefOp");
+
+        if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
+          if (blockArg.getParentBlock() !=
+              &blockArg.getParentRegion()->front()) {
+            // if this is not the function argument
+            // This must be placed in the first position of the block
+            continue;
+          }
+        }
+
         localGetRequiredOps[op].push_back(operandIdx);
       } else if (isa<LocalOp>(definingOp)) {
         // if the defining operation is already a local, we do not need to
@@ -440,7 +450,6 @@ Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
 class LocalIndexAnalysis {
 public:
   LocalIndexAnalysis(ModuleOp module) {
-
     module.walk([&](FuncOp funcOp) {
       int index = 0;
       // each wasm function argument is treated as a local
@@ -472,7 +481,18 @@ public:
     });
   }
   int getLocalIndex(FuncOp funcOp, Value value) const {
-    return localIndex.at(funcOp).at(getUnderlyingValue(value));
+    Value underlyingValue = getUnderlyingValue(value);
+    auto funcIt = localIndex.find(funcOp);
+    assert(funcIt != localIndex.end() &&
+           "Function not found in local index map");
+
+    auto valueIt = funcIt->second.find(underlyingValue);
+    if (valueIt == funcIt->second.end()) {
+      llvm::errs() << "Value not found in local index map for function:\n";
+      value.dump();
+      assert(false && "Value not found in local index map");
+    }
+    return valueIt->second;
   }
   vector<Type> getLocalTypes(FuncOp funcOp) const { return localTypes; }
 
@@ -888,7 +908,8 @@ private:
 
     for (Block &block : blockLoopOp.getRegion()) {
       if (&block != blockLoopOp.getExitBlock()) {
-        moveAndMergeBlock(&block, loopBody, rewriter, loopLabel, blockLabel);
+        moveAndMergeBlockInBlockLoop(&block, loopBody, rewriter, loopLabel,
+                                     blockLabel);
       }
     }
 
@@ -897,29 +918,9 @@ private:
     rewriter.setInsertionPointToEnd(loopBody);
     rewriter.create<wasm::LoopEndOp>(loc);
   }
-
-  void convertBlockBlockOp(FuncOp funcOp, BlockBlockOp blockBlockOp,
-                           IRRewriter &rewriter,
-                           LocalIndexAnalysis &localIndexAnalysis,
-                           int &newLabelIndex) {
-    Location loc = blockBlockOp.getLoc();
-    auto outerBlockOp = rewriter.create<wasm::BlockOp>(
-        loc, "block_" + std::to_string(newLabelIndex++));
-    // TODO: outerEntryBlock
-
-    auto innerBlockOp = rewriter.create<wasm::BlockOp>(
-        loc, "block_" + std::to_string(newLabelIndex++));
-    // TODO: innerEntryBlocks
-
-    auto innerBlockEndOp = rewriter.create<wasm::BlockEndOp>(loc);
-    // TODO: innerExitBlock
-
-    auto outerBlockEndOp = rewriter.create<wasm::BlockEndOp>(loc);
-    // TODO: outerExitBlock
-  }
-
-  void moveAndMergeBlock(Block *from, Block *to, IRRewriter &rewriter,
-                         std::string loopLabel, std::string blockLabel) {
+  void moveAndMergeBlockInBlockLoop(Block *from, Block *to,
+                                    IRRewriter &rewriter, std::string loopLabel,
+                                    std::string blockLabel) {
     rewriter.setInsertionPointToEnd(to);
     vector<Operation *> opsToMove;
     for (auto &op : *from) {
@@ -946,6 +947,115 @@ private:
           // need to add local get here?
           rewriter.create<wasm::CondBranchOp>(loc, blockLabel);
         }
+        rewriter.eraseOp(op);
+      } else {
+        rewriter.moveOpBefore(op, to, to->end());
+      }
+    }
+  }
+
+  void convertBlockBlockOp(FuncOp funcOp, BlockBlockOp blockBlockOp,
+                           IRRewriter &rewriter,
+                           LocalIndexAnalysis &localIndexAnalysis,
+                           int &newLabelIndex) {
+    Location loc = blockBlockOp.getLoc();
+
+    auto it = blockBlockOp->getRegion(0).begin();
+    Block *outerEntryBlock = &*it;
+    ++it;
+    // Block *innerEntryBlock = &*it;
+    ++it;
+    auto revIt = blockBlockOp->getRegion(0).rbegin();
+    Block *outerExitBlock = &*revIt;
+    ++revIt;
+    Block *innerExitBlock = &*revIt;
+
+    auto outerBlockLabel = "block_" + std::to_string(newLabelIndex++);
+    auto outerBlockOp = rewriter.create<wasm::BlockOp>(loc, outerBlockLabel);
+    rewriter.moveBlockBefore(outerEntryBlock, &outerBlockOp.getBody(),
+                             outerBlockOp.getBody().begin());
+    Block *outerBlockBody = &outerBlockOp.getBody().front();
+    rewriter.eraseOp(outerBlockBody->getTerminator());
+    convertBlock(funcOp, outerBlockBody, localIndexAnalysis, rewriter,
+                 newLabelIndex);
+
+    rewriter.setInsertionPointToEnd(outerBlockBody);
+
+    auto innerBlockLabel = "block_" + std::to_string(newLabelIndex++);
+    auto innerBlockOp = rewriter.create<wasm::BlockOp>(loc, innerBlockLabel);
+
+    Block *tempBlock = new Block();
+    moveAndMergeBlocksInBlockBlock(blockBlockOp, innerExitBlock, tempBlock,
+                                   rewriter, innerBlockLabel, outerBlockLabel);
+    convertBlock(funcOp, tempBlock, localIndexAnalysis, rewriter,
+                 newLabelIndex);
+    vector<Operation *> opsToMove;
+    for (auto &op : *tempBlock) {
+      opsToMove.push_back(&op);
+    }
+    for (auto &op : opsToMove) {
+      rewriter.moveOpBefore(op, outerBlockBody, outerBlockBody->end());
+    }
+
+    Block *innerBlockBody = rewriter.createBlock(&innerBlockOp.getBody());
+    rewriter.setInsertionPointToStart(innerBlockBody);
+
+    SmallVector<Block *> blocksToMove;
+    for (Block &block : blockBlockOp.getRegion()) {
+      if (&block != outerExitBlock && &block != innerExitBlock) {
+        blocksToMove.push_back(&block);
+      }
+    }
+    for (Block *block : blocksToMove) {
+      moveAndMergeBlocksInBlockBlock(blockBlockOp, block, innerBlockBody,
+                                     rewriter, innerBlockLabel,
+                                     outerBlockLabel);
+    }
+
+    convertBlock(funcOp, innerBlockBody, localIndexAnalysis, rewriter,
+                 newLabelIndex);
+    rewriter.setInsertionPointToEnd(innerBlockBody);
+    rewriter.create<wasm::BlockEndOp>(loc);
+    rewriter.setInsertionPointToEnd(outerBlockBody);
+    rewriter.create<wasm::BlockEndOp>(loc);
+  }
+
+  void moveAndMergeBlocksInBlockBlock(BlockBlockOp blockBlockOp, Block *from,
+                                      Block *to, IRRewriter &rewriter,
+                                      std::string innerBlockLabel,
+                                      std::string outerBlockLabel) {
+    rewriter.setInsertionPointToEnd(to);
+    vector<Operation *> opsToMove;
+    for (auto &op : *from) {
+      opsToMove.push_back(&op);
+    }
+    for (auto &op : opsToMove) {
+      Location loc = op->getLoc();
+      if (isa<TempBranchOp>(op)) {
+        // do not clone this
+        rewriter.eraseOp(op);
+      } else if (auto blockBlockBranchOp = dyn_cast<BlockBlockBranchOp>(op)) {
+        if (blockBlockBranchOp.isBranchingToOuter()) {
+          rewriter.create<wasm::BranchOp>(loc, outerBlockLabel);
+        } else {
+          rewriter.create<wasm::BranchOp>(loc, innerBlockLabel);
+        }
+        rewriter.eraseOp(op);
+        // FIXME: We should not assume that resumeOp is always
+        // in a BlockBlockOp
+      } else if (auto resumeOp = dyn_cast<ResumeOp>(op)) {
+        // FIXME: Move this to somewhere else
+
+        Block *outerBlock = &blockBlockOp.getRegion().getBlocks().back();
+        std::string onTagLabel;
+        if (resumeOp.getOnTag() == outerBlock) {
+          onTagLabel = outerBlockLabel;
+        } else {
+          onTagLabel = innerBlockLabel;
+        }
+        rewriter.create<wasm::ResumeOp>(op->getLoc(),
+                                        resumeOp.getCont().getType().getId(),
+                                        resumeOp.getTag(), onTagLabel);
         rewriter.eraseOp(op);
       } else {
         rewriter.moveOpBefore(op, to, to->end());

@@ -489,6 +489,11 @@ BlockBlockOp::initialize(OpBuilder &builder) {
                          outerExitBlock);
 }
 
+bool BlockBlockBranchOp::isBranchingToOuter() {
+  auto blockBlockOp = getParentOp<BlockBlockOp>();
+  return getDest() == &blockBlockOp.getRegion().getBlocks().back();
+}
+
 // for SsaWasm::DataOp
 // copied from mlir/lib/Dialect/MemRef/IR/MemRefOps.cpp
 
