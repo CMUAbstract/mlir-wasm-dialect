@@ -397,7 +397,8 @@ LogicalResult translateGlobalSetOp(GlobalSetOp globalSetOp,
 }
 
 LogicalResult translateResumeOp(ResumeOp resumeOp, raw_ostream &output) {
-  output << "(resume $" << resumeOp.getCt() << ")";
+  output << "(resume $" << resumeOp.getCt() << " (on $" << resumeOp.getTag()
+         << " " << resumeOp.getOnTag() << "))";
   return success();
 }
 
