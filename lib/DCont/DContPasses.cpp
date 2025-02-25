@@ -16,6 +16,7 @@
 #include "SsaWasm/SsaWasmDialect.h"
 #include "SsaWasm/SsaWasmOps.h"
 #include "SsaWasm/SsaWasmTypes.h"
+#include <set>
 
 using namespace std;
 
@@ -418,20 +419,73 @@ class ConvertDContToSsaWasm
     rewriter.create<ssawasm::TagOp>(module.getLoc(),
                                     rewriter.getStringAttr("yield"));
 
-    // FIXME: We should not hardcode this
-    // We assume that all functions except the main have type: "ct" -> ()
-    // and use "ft" to denote the type
-    //    rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
-    //                                                rewriter.getStringAttr("ft"),
-    //                                                rewriter.getStringAttr("ct"));
-    //
-    // NOTE: func::FuncOp will be converted to ssawasm::FuncOp
-    // by the ConvertToSsaWasm pass
-    module.walk([&](func::FuncOp funcOp) {
-      if (funcOp.getName() != "main") {
-        funcOp->setAttr("type_id", StringAttr::get(context, "ft"));
+    // search for all functions that are called by `dcont.new`
+
+    set<func::FuncOp> contFunctions;
+
+    module.walk([&](NewOp newOp) {
+      // search for funcOp with the same name as newOp.getFunctionName()
+      auto funcOp = module.lookupSymbol<func::FuncOp>(newOp.getFunctionName());
+      if (funcOp) {
+        contFunctions.insert(funcOp);
       }
     });
+    // TODO: We only support one continuation type for now
+    // this means that all functions called by dcont.new
+    // should have the same type
+    FunctionType firstFuncType = nullptr;
+    for (auto funcOp : contFunctions) {
+      FunctionType funcType = funcOp.getFunctionType();
+
+      if (!firstFuncType) {
+        firstFuncType = funcType;
+      } else if (firstFuncType != funcType) {
+        funcOp->emitError()
+            << "All functions called by dcont.new must have the same type.\n"
+            << "  First function type: " << firstFuncType << "\n"
+            << "  Current function type: " << funcType;
+        return;
+      }
+    }
+    // assign type_id to all functions called by dcont.new
+    for (auto funcOp : contFunctions) {
+      funcOp->setAttr("type_id", StringAttr::get(context, "ft"));
+    }
+    // declare the type for all functions called by dcont.new
+    for (auto funcOp : contFunctions) {
+      rewriter.setInsertionPointAfter(funcOp);
+      rewriter.create<ssawasm::ElemDeclFuncOp>(module.getLoc(),
+                                               rewriter.getStringAttr("ft"));
+    }
+    // declare func type
+    rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
+    // check if the cont type is recursive
+    bool isRecursive = false;
+    if (!contFunctions.empty()) {
+      auto funcOp = *contFunctions.begin();
+      FunctionType funcType = funcOp.getFunctionType();
+
+      // Check if any of the input types matches the function type
+      for (Type inputType : funcType.getInputs()) {
+        if (auto contType = dyn_cast<ContType>(inputType)) {
+          if (contType.getId() == "ct") {
+            isRecursive = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (isRecursive) {
+      // FIXME: We should not hardcode this
+      rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
+                                                  rewriter.getStringAttr("ft"),
+                                                  rewriter.getStringAttr("ct"));
+    } else {
+      rewriter.create<ssawasm::ContTypeDeclOp>(module.getLoc(),
+                                               rewriter.getStringAttr("ct"),
+                                               rewriter.getStringAttr("ft"));
+    }
 
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);
