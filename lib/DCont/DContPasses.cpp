@@ -304,24 +304,23 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
             innerExitBlock->addArgument(convertedType, arg.getLoc()));
       }
 
-      // Inline handler operations into innerExitBlock, except the terminator
-      Block &handlerBlock = op.getSuspendHandler().front();
-      auto *terminator = handlerBlock.getTerminator();
-      rewriter.inlineBlockBefore(&handlerBlock, innerExitBlock,
-                                 innerExitBlock->begin(), newArguments);
-      rewriter.eraseOp(terminator);
-
       // block parameters are in stack, so ideally we don't necessarily need to
       // store them in locals, but we do it for now for simplicity
       // TODO: We should fix this in the future
-      rewriter.setInsertionPointToStart(innerExitBlock);
+      SmallVector<Value> newArgLocals;
       for (auto it = innerExitBlock->getArguments().rbegin();
            it != innerExitBlock->getArguments().rend(); ++it) {
         auto arg = *it;
         auto localOp =
             rewriter.create<ssawasm::LocalOp>(op.getLoc(), arg.getType(), arg);
-        rewriter.replaceAllUsesExcept(arg, localOp.getResult(), localOp);
+        newArgLocals.push_back(localOp.getResult());
       }
+
+      // Inline handler operations into innerExitBlock, except the terminator
+      Block &handlerBlock = op.getSuspendHandler().front();
+      auto *terminator = handlerBlock.getTerminator();
+      rewriter.mergeBlocks(&handlerBlock, innerExitBlock, newArgLocals);
+      rewriter.eraseOp(terminator);
     }
 
     rewriter.setInsertionPointToEnd(innerExitBlock);
@@ -376,9 +375,18 @@ struct LoadOpLowering : public OpConversionPattern<LoadOp> {
   LogicalResult
   matchAndRewrite(LoadOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<ssawasm::LocalGetOp>(
-        op, getTypeConverter()->convertType(op.getResult().getType()),
-        adaptor.getStorage());
+    // We just erase this op (with type casting)
+    // because reading from a local will be converted to a local get
+    // through the introduce-locals pass
+    Value convertedValue =
+        rewriter
+            .create<UnrealizedConversionCastOp>(
+                op.getLoc(),
+                getTypeConverter()->convertType(op.getResult().getType()),
+                adaptor.getStorage())
+            .getResult(0);
+
+    rewriter.replaceOp(op, convertedValue);
     return success();
   }
 };

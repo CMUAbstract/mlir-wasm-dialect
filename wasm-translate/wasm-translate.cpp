@@ -396,6 +396,11 @@ LogicalResult translateGlobalSetOp(GlobalSetOp globalSetOp,
   return success();
 }
 
+LogicalResult translateResumeOp(ResumeOp resumeOp, raw_ostream &output) {
+  output << "(resume $" << resumeOp.getCt() << ")";
+  return success();
+}
+
 LogicalResult translateResumeSwitchOp(ResumeSwitchOp resumeSwitchOp,
                                       raw_ostream &output) {
   output << "(resume $" << resumeSwitchOp.getCt() << " (on $"
@@ -535,6 +540,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateGlobalGetOp(globalGetOp, output);
   } else if (auto globalSetOp = dyn_cast<GlobalSetOp>(op)) {
     return translateGlobalSetOp(globalSetOp, output);
+  } else if (auto resumeOp = dyn_cast<ResumeOp>(op)) {
+    return translateResumeOp(resumeOp, output);
   } else if (auto resumeSwitchOp = dyn_cast<ResumeSwitchOp>(op)) {
     return translateResumeSwitchOp(resumeSwitchOp, output);
   } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
