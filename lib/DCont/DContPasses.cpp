@@ -455,7 +455,7 @@ class ConvertDContToSsaWasm
     for (auto funcOp : contFunctions) {
       rewriter.setInsertionPointAfter(funcOp);
       rewriter.create<ssawasm::ElemDeclFuncOp>(module.getLoc(),
-                                               rewriter.getStringAttr("ft"));
+                                               funcOp.getName());
     }
     // declare func type
     rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
