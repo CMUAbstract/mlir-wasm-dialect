@@ -191,7 +191,7 @@ struct NewOpLowering : public OpConversionPattern<NewOp> {
         rewriter
             .create<ssawasm::FuncRefOp>(
                 op->getLoc(), ssawasm::WasmRefType::get(op.getContext()),
-                adaptor.getFunctionTypeName())
+                adaptor.getFunctionName())
             .getResult();
     rewriter.replaceOpWithNewOp<ssawasm::ContNewOp>(
         op, getTypeConverter()->convertType(op.getCont().getType()), funcRef);
