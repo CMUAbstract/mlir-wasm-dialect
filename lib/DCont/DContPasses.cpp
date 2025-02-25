@@ -459,6 +459,9 @@ class ConvertDContToSsaWasm
     }
     // declare func type
     rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
+    rewriter.create<ssawasm::FuncTypeDeclOp>(
+        module.getLoc(), rewriter.getStringAttr("ft"), firstFuncType);
+
     // check if the cont type is recursive
     bool isRecursive = false;
     if (!contFunctions.empty()) {

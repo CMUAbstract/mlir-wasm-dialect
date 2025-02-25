@@ -643,6 +643,18 @@ public:
   }
 };
 
+class FuncTypeDeclOpLowering : public OpConversionPattern<FuncTypeDeclOp> {
+public:
+  using OpConversionPattern<FuncTypeDeclOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(FuncTypeDeclOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<wasm::FuncTypeDeclOp>(
+        op, adaptor.getFuncTypeId(), adaptor.getFuncType());
+    return success();
+  }
+};
+
 class ContTypeDeclOpLowering : public OpConversionPattern<ContTypeDeclOp> {
 public:
   using OpConversionPattern<ContTypeDeclOp>::OpConversionPattern;
@@ -680,14 +692,16 @@ public:
     }
 
     RewritePatternSet globalLoweringPattern(context);
-    globalLoweringPattern
-        .add<DataOpLowering, TagOpLowering, RecContFuncDeclOpLowering,
-             ElemDeclFuncOpLowering, ContTypeDeclOpLowering>(context);
+    globalLoweringPattern.add<DataOpLowering, TagOpLowering,
+                              RecContFuncDeclOpLowering, ElemDeclFuncOpLowering,
+                              ContTypeDeclOpLowering, FuncTypeDeclOpLowering>(
+        context);
     target.addIllegalOp<DataOp>();
     target.addIllegalOp<TagOp>();
     target.addIllegalOp<RecContFuncDeclOp>();
     target.addIllegalOp<ElemDeclFuncOp>();
     target.addIllegalOp<ContTypeDeclOp>();
+    target.addIllegalOp<FuncTypeDeclOp>();
     if (failed(applyPartialConversion(module, target,
                                       std::move(globalLoweringPattern)))) {
       signalPassFailure();

@@ -574,6 +574,14 @@ def SsaWasm_ElemDeclFuncOp : SsaWasm_Op<"elem_decl_func"> {
   let assemblyFormat = "attr-dict $func_name";
 }
 
+def SsaWasm_FuncTypeDeclOp : SsaWasm_Op<"func_type_decl"> {
+  let description = [{
+    This operation declares a function type.
+  }];
+  let arguments = (ins SymbolNameAttr:$func_type_id, TypeAttrOf<FunctionType>:$func_type);
+  let assemblyFormat = "attr-dict $func_type_id `,` $func_type";
+}
+
 def SsaWasm_ContTypeDeclOp : SsaWasm_Op<"cont_type_decl"> {
   let description = [{
     This operation declares a continuation type.
