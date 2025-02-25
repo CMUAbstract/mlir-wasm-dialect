@@ -421,10 +421,10 @@ class ConvertDContToSsaWasm
     // FIXME: We should not hardcode this
     // We assume that all functions except the main have type: "ct" -> ()
     // and use "ft" to denote the type
-    rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
-                                                rewriter.getStringAttr("ft"),
-                                                rewriter.getStringAttr("ct"));
-
+    //    rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
+    //                                                rewriter.getStringAttr("ft"),
+    //                                                rewriter.getStringAttr("ct"));
+    //
     // NOTE: func::FuncOp will be converted to ssawasm::FuncOp
     // by the ConvertToSsaWasm pass
     module.walk([&](func::FuncOp funcOp) {
