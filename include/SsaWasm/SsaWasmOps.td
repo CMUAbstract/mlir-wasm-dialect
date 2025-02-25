@@ -566,6 +566,22 @@ def SsaWasm_SuspendOp : SsaWasm_Op<"suspend"> {
 //   let results = (outs SsaWasm_WasmContinuationType:$returned_cont, Variadic<AnyType>:$results);
 // }
 
+def SsaWasm_ElemDeclFuncOp : SsaWasm_Op<"elem_decl_func"> {
+  let description = [{
+    This operation declares a function as element
+  }];
+  let arguments = (ins SymbolNameAttr:$func_name);
+  let assemblyFormat = "attr-dict $func_name";
+}
+
+def SsaWasm_ContTypeDeclOp : SsaWasm_Op<"cont_type_decl"> {
+  let description = [{
+    This operation declares a continuation type.
+  }];
+  let arguments = (ins SymbolNameAttr:$cont_type_id, SymbolNameAttr:$func_type_id);
+  let assemblyFormat = "attr-dict $cont_type_id `,` $func_type_id";
+}
+
 def SsaWasm_RecContFuncDeclOp : SsaWasm_Op<"rec_cont_func_decl"> {
   let description = [{
   This operation declares the following types:
