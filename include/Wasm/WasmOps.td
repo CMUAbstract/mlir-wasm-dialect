@@ -637,6 +637,15 @@ def Wasm_ContNewOp : Wasm_Op<"cont.new"> {
   let assemblyFormat = "$ct attr-dict";
 }
 
+def Wasm_ResumeOp : Wasm_Op<"resume"> {
+  let summary = "Resume a continuation";
+  let description = [{
+    Resumes a continuation and pushes the result onto the stack.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$ct, FlatSymbolRefAttr:$tag, FlatSymbolRefAttr:$on_tag);
+  let assemblyFormat = "$ct `(` `tag` `:` $tag `,` `on` $on_tag `)` attr-dict";
+}
+
 // TODO: Ideally, `resume` operation should
 // take a variadic list of handlers. 
 // For now, we are assuming that there is only one handler
