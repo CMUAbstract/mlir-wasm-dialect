@@ -437,12 +437,17 @@ def Wasm_Unreachable : Wasm_Op<"unreachable", []> {
 // control flow instructions
 
 def Wasm_BlockOp : Wasm_Op<"block"> {
-  let description = [{
-    A block operation.
-  }];
-  let arguments = (ins SymbolNameAttr:$name);
-  let regions = (region AnyRegion:$body);
+    let description = [{
+        A block operation.
+    }];
+    // TODO: Support arguments
+    let arguments = (ins SymbolNameAttr:$name, TypeArrayAttr:$return_types);
+    let regions = (region AnyRegion:$body);
+    let builders = [
+        OpBuilder<(ins "StringRef":$name, CArg<"ArrayRef<Attribute>", "{}">:$return_types)>
+    ];
 }
+
 
 def Wasm_BlockEndOp : Wasm_Op<"block.end", [Terminator, HasParent<"BlockOp">]> {
   let description = [{

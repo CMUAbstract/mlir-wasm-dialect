@@ -159,6 +159,14 @@ void TempGlobalIndexOp::print(OpAsmPrinter &p) {
   p << " : " << getGlobal().getType().getInner();
 }
 
+void BlockOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+                    llvm::StringRef name,
+                    llvm::ArrayRef<mlir::Attribute> return_types) {
+  state.addAttribute("name", builder.getStringAttr(name));
+  state.addAttribute("return_types", builder.getArrayAttr(return_types));
+  state.addRegion();
+}
+
 void LoopOpDeprecated::initialize(OpBuilder &builder) {
   Region &body = getBody();
   auto *entryBlock = builder.createBlock(&body);
