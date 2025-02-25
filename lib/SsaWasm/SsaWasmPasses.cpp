@@ -923,6 +923,7 @@ private:
                           int &newLabelIndex) {
     Location loc = blockLoopOp.getLoc();
     std::string blockLabel = "block_" + std::to_string(newLabelIndex++);
+    // TODO: Support arguments
     auto blockOp = rewriter.create<wasm::BlockOp>(loc, blockLabel);
 
     // move the entry block of the loop into the block
@@ -1006,8 +1007,10 @@ private:
     ++revIt;
     Block *innerExitBlock = &*revIt;
 
+    // TODO: Support arguments
     auto outerBlockLabel = "block_" + std::to_string(newLabelIndex++);
-    auto outerBlockOp = rewriter.create<wasm::BlockOp>(loc, outerBlockLabel);
+    auto outerBlockOp = rewriter.create<wasm::BlockOp>(
+        loc, rewriter.getStringAttr(outerBlockLabel));
     rewriter.moveBlockBefore(outerEntryBlock, &outerBlockOp.getBody(),
                              outerBlockOp.getBody().begin());
     Block *outerBlockBody = &outerBlockOp.getBody().front();
@@ -1018,7 +1021,20 @@ private:
     rewriter.setInsertionPointToEnd(outerBlockBody);
 
     auto innerBlockLabel = "block_" + std::to_string(newLabelIndex++);
-    auto innerBlockOp = rewriter.create<wasm::BlockOp>(loc, innerBlockLabel);
+    auto innerBlockOp = rewriter.create<wasm::BlockOp>(
+        loc, rewriter.getStringAttr(innerBlockLabel));
+    // if innerExitBlock has arguments, set return_types of innerBlockOp to the
+    // argument types
+    if (innerExitBlock->getNumArguments() > 0) {
+      auto returnTypes = innerExitBlock->getArgumentTypes();
+      MLIRContext *context = innerBlockOp->getContext();
+      SmallVector<Attribute> typeAttrs;
+      for (Type t : returnTypes) {
+        typeAttrs.push_back(
+            TypeAttr::get(convertSsaWasmTypeToWasmType(t, context)));
+      }
+      innerBlockOp.setReturnTypesAttr(ArrayAttr::get(context, typeAttrs));
+    }
 
     Block *tempBlock = new Block();
     moveAndMergeBlocksInBlockBlock(blockBlockOp, innerExitBlock, tempBlock,

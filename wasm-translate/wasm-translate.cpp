@@ -452,7 +452,20 @@ LogicalResult translateElemDeclareFuncOp(ElemDeclareFuncOp elemDeclareFuncOp,
 }
 
 LogicalResult translateBlockOp(BlockOp blockOp, raw_ostream &output) {
-  output << "(block $" << blockOp.getName() << "\n";
+  output << "(block $" << blockOp.getName();
+  if (blockOp.getReturnTypes().size() > 0) {
+    output << " (result";
+    for (auto &resultTypeAttr : blockOp.getReturnTypes()) {
+      std::string watType;
+      if (failed(
+              getWatType(cast<TypeAttr>(resultTypeAttr).getValue(), watType))) {
+        blockOp.emitError("unsupported result type");
+        // TODO: handle error
+      }
+      output << " " << watType;
+    }
+    output << ")\n";
+  }
   for (auto &block : blockOp.getBody()) {
     for (Operation &op : block) {
       if (isa<BlockEndOp>(op)) {
