@@ -1013,6 +1013,16 @@ private:
         blocksToMove.push_back(&block);
       }
     }
+    // sort blocks by topological order
+    std::sort(blocksToMove.begin(), blocksToMove.end(),
+              [&](Block *a, Block *b) {
+                for (Block *successor : a->getSuccessors()) {
+                  if (successor == b) {
+                    return true;
+                  }
+                }
+                return false;
+              });
     for (Block *block : blocksToMove) {
       moveAndMergeBlocksInBlockBlock(blockBlockOp, block, innerBlockBody,
                                      rewriter, innerBlockLabel,
