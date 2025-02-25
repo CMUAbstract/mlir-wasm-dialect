@@ -18,6 +18,7 @@
 #include "SsaWasm/SsaWasmPasses.h"
 #include "SsaWasm/SsaWasmTypeConverter.h"
 #include "Wasm/WasmOps.h"
+#include <map>
 #include <vector>
 
 using namespace std;
@@ -451,6 +452,7 @@ class LocalIndexAnalysis {
 public:
   LocalIndexAnalysis(ModuleOp module) {
     module.walk([&](FuncOp funcOp) {
+      localTypes[funcOp.getName().str()] = vector<Type>();
       int index = 0;
       // each wasm function argument is treated as a local
       for (auto &arg : funcOp.getArguments()) {
@@ -462,8 +464,9 @@ public:
         for (auto &op : *block) {
           if (isa<LocalOp>(op)) {
             localIndex[funcOp][op.getResult(0)] = index;
-            localTypes.push_back(convertSsaWasmTypeToWasmType(
-                op.getResult(0).getType(), op.getContext()));
+            localTypes[funcOp.getName().str()].push_back(
+                convertSsaWasmTypeToWasmType(op.getResult(0).getType(),
+                                             op.getContext()));
             index++;
           }
           // Recursively traverse any nested regions
@@ -494,11 +497,13 @@ public:
     }
     return valueIt->second;
   }
-  vector<Type> getLocalTypes(FuncOp funcOp) const { return localTypes; }
+  vector<Type> getLocalTypes(string funcName) const {
+    return localTypes.at(funcName);
+  }
 
 private:
   DenseMap<FuncOp, DenseMap<Value, int>> localIndex;
-  vector<Type> localTypes;
+  map<string, vector<Type>> localTypes;
 };
 
 class SsaWasmToWasmTypeConverter : public TypeConverter {
@@ -731,7 +736,7 @@ private:
     Block &entryBlock = newFuncOp.getBody().front();
     rewriter.setInsertionPointToStart(&entryBlock);
     vector<Attribute> typeAttrs;
-    for (auto type : localIndexAnalysis.getLocalTypes(funcOp)) {
+    for (auto type : localIndexAnalysis.getLocalTypes(funcOp.getName().str())) {
       typeAttrs.push_back(TypeAttr::get(type));
     }
     if (typeAttrs.size() > 0) {
@@ -860,6 +865,8 @@ private:
       //       rewriter.create<wasm::SwitchOp>(op->getLoc(),
       //                                       switchOp.getCont().getType().getId(),
       //                                       switchOp.getTag());
+    } else if (auto suspendOp = dyn_cast<SuspendOp>(op)) {
+      rewriter.create<wasm::SuspendOp>(op->getLoc(), suspendOp.getTag());
     } else if (auto contNewOp = dyn_cast<ContNewOp>(op)) {
       rewriter.create<wasm::ContNewOp>(op->getLoc(),
                                        contNewOp.getResult().getType().getId());
