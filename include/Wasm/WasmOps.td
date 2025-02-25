@@ -646,6 +646,15 @@ def Wasm_ResumeOp : Wasm_Op<"resume"> {
   let assemblyFormat = "$ct `(` `tag` `:` $tag `,` `on` $on_tag `)` attr-dict";
 }
 
+def Wasm_SuspendOp : Wasm_Op<"suspend"> {
+  let summary = "Suspends a continuation";
+  let description = [{
+    Suspends a continuation and pushes the result onto the stack.
+  }];
+  let arguments = (ins FlatSymbolRefAttr:$tag);
+  let assemblyFormat = "$tag  attr-dict";
+}
+
 // TODO: Ideally, `resume` operation should
 // take a variadic list of handlers. 
 // For now, we are assuming that there is only one handler

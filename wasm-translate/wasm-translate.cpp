@@ -42,7 +42,7 @@ llvm::LogicalResult getWatType(Type mlirType, std::string &watType) {
   } else if (mlirType.isF64()) {
     watType = "f64";
   } else if (auto continuationType = dyn_cast<ContinuationType>(mlirType)) {
-    watType = "$" + continuationType.getName().str();
+    watType = "(ref null $" + continuationType.getName().str() + ")";
     return success();
   } else {
     // Unsupported type
@@ -401,6 +401,11 @@ LogicalResult translateResumeOp(ResumeOp resumeOp, raw_ostream &output) {
   return success();
 }
 
+LogicalResult translateSuspendOp(SuspendOp suspendOp, raw_ostream &output) {
+  output << "(suspend $" << suspendOp.getTag() << ")";
+  return success();
+}
+
 LogicalResult translateResumeSwitchOp(ResumeSwitchOp resumeSwitchOp,
                                       raw_ostream &output) {
   output << "(resume $" << resumeSwitchOp.getCt() << " (on $"
@@ -542,6 +547,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateGlobalSetOp(globalSetOp, output);
   } else if (auto resumeOp = dyn_cast<ResumeOp>(op)) {
     return translateResumeOp(resumeOp, output);
+  } else if (auto suspendOp = dyn_cast<SuspendOp>(op)) {
+    return translateSuspendOp(suspendOp, output);
   } else if (auto resumeSwitchOp = dyn_cast<ResumeSwitchOp>(op)) {
     return translateResumeSwitchOp(resumeSwitchOp, output);
   } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
