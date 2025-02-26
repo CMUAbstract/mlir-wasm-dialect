@@ -462,10 +462,11 @@ LogicalResult translateBlockOp(BlockOp blockOp, raw_ostream &output) {
         blockOp.emitError("unsupported result type");
         // TODO: handle error
       }
-      output << " " << watType;
+      output << " $" << watType;
     }
-    output << ")\n";
+    output << ")";
   }
+  output << "\n";
   for (auto &block : blockOp.getBody()) {
     for (Operation &op : block) {
       if (isa<BlockEndOp>(op)) {
