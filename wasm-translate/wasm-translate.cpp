@@ -462,7 +462,7 @@ LogicalResult translateBlockOp(BlockOp blockOp, raw_ostream &output) {
         blockOp.emitError("unsupported result type");
         // TODO: handle error
       }
-      output << " $" << watType;
+      output << " " << watType;
     }
     output << ")";
   }
