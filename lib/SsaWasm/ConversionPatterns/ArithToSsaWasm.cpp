@@ -55,9 +55,9 @@ struct SelectOpLowering : public OpConversionPattern<arith::SelectOp> {
   LogicalResult
   matchAndRewrite(arith::SelectOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<SelectOp>(op, adaptor.getCondition(),
-                                          adaptor.getTrueValue(),
-                                          adaptor.getFalseValue());
+    rewriter.replaceOpWithNewOp<SelectOp>(op, adaptor.getTrueValue(),
+                                          adaptor.getFalseValue(),
+                                          adaptor.getCondition());
     return success();
   }
 };

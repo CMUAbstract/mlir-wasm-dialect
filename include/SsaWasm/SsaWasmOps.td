@@ -490,7 +490,7 @@ def SsaWasm_SelectOp : SsaWasm_Op<"select", [AllTypesMatch<["true_value", "false
   let description = [{
     This operation selects between two values based on a condition.
   }];
-  let arguments = (ins SsaWasm_WasmIntegerType:$condition, AnyType:$true_value, AnyType:$false_value);
+  let arguments = (ins AnyType:$true_value, AnyType:$false_value, SsaWasm_WasmIntegerType:$condition);
   let results = (outs AnyType:$result);
   let assemblyFormat = "$condition `:` type($condition) `,` $true_value `,` $false_value  `->` type($result) attr-dict";
 }
