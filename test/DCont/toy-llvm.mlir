@@ -49,7 +49,7 @@ module {
     // We'll define 4 blocks:
     // ^entry, ^loop, ^cleanup, ^suspend
 
-    %N = llvm.mlir.constant(10 : i32) : i32
+    %N = llvm.mlir.constant(1000 : i32) : i32
 
     // ^entry
     llvm.br ^entry_block
@@ -134,7 +134,7 @@ module {
   //===--------------------------------------------------------------------===//
   llvm.func @main() {
     // We'll define N=3 again
-    %N = llvm.mlir.constant(10 : i32) : i32
+    %N = llvm.mlir.constant(1000 : i32) : i32
     %c0 = llvm.mlir.constant(0 : i32) : i32
     %c1 = llvm.mlir.constant(1 : i32) : i32
 

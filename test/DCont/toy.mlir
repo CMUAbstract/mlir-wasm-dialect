@@ -2,7 +2,7 @@ module {
 
   func.func @task1() {
       %c0_index = arith.constant 0 : index
-      %c10_index = arith.constant 10 : index
+      %c10_index = arith.constant 1000 : index
       %c1_index = arith.constant 1 : index
 
       scf.for %i = %c0_index to %c10_index step %c1_index {
@@ -24,7 +24,7 @@ module {
     dcont.store %storage, %task1_handle : !dcont.cont<"ct"> -> !dcont.storage<"ct">
 
     %c0_index  = arith.constant 0 : index
-    %c10_index = arith.constant 10 : index
+    %c10_index = arith.constant 1000 : index
     %c1_index  = arith.constant 1 : index
 
     scf.for %i = %c0_index to %c10_index step %c1_index {
