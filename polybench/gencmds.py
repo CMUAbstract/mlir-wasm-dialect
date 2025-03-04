@@ -14,10 +14,13 @@ FILENAME = {
     "three_mm": "three_mm_64.mlir",
     "trmm": "trmm_128.mlir",
     "two_mm": "two_mm_128.mlir",
+    "lenet": "lenet-affine-optimized.mlir", # This is not polybench, but we put it here for simplicity
 }
 
 
 def gen_testcase(tag: str, compiler: str) -> str:
+    if tag == "lenet":
+        return f"MNIST_{compiler.upper()}"
     return f"{tag.upper()}_{compiler.upper()}"
 
 
@@ -98,6 +101,7 @@ if __name__ == "__main__":
         "three_mm",
         "trmm",
         "two_mm",
+        "lenet",
     ]
 
     tests = [

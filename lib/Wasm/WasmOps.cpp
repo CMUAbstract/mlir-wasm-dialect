@@ -167,6 +167,13 @@ void BlockOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
   state.addRegion();
 }
 
+void IfElseOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
+                     llvm::ArrayRef<mlir::Attribute> return_types) {
+  state.addAttribute("return_types", builder.getArrayAttr(return_types));
+  state.addRegion();
+  state.addRegion();
+}
+
 void LoopOpDeprecated::initialize(OpBuilder &builder) {
   Region &body = getBody();
   auto *entryBlock = builder.createBlock(&body);
