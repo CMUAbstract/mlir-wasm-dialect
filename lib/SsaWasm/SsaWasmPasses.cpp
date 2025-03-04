@@ -278,7 +278,9 @@ private:
           }
         }
 
-        localGetRequiredOps[op].push_back(operandIdx);
+        if (!isa<LocalSetOp>(op) || operandIdx != 0) {
+          localGetRequiredOps[op].push_back(operandIdx);
+        }
       } else if (isa<ConstantOp>(definingOp)) {
         // we can clone the constant declaration instead of introducing a local
         constantRequiredOps[op].push_back(operandIdx);
@@ -300,7 +302,9 @@ private:
             !isa<LocalOp>(definingOp)) {
           localRequiredOps.push_back(definingOp);
         }
-        localGetRequiredOps[op].push_back(operandIdx);
+        if (!isa<LocalSetOp>(op) || operandIdx != 0) {
+          localGetRequiredOps[op].push_back(operandIdx);
+        }
       }
     }
 
@@ -489,14 +493,14 @@ public:
       int index = 0;
       // each wasm function argument is treated as a local
       for (auto &arg : funcOp.getArguments()) {
-        localIndex[funcOp][arg] = index;
+        localIndex[funcOp.getName().str()][arg] = index;
         index++;
       }
 
       std::function<void(Block *)> traverse = [&](Block *block) {
         for (auto &op : *block) {
           if (isa<LocalOp>(op)) {
-            localIndex[funcOp][op.getResult(0)] = index;
+            localIndex[funcOp.getName().str()][op.getResult(0)] = index;
             localTypes[funcOp.getName().str()].push_back(
                 convertSsaWasmTypeToWasmType(op.getResult(0).getType(),
                                              op.getContext()));
@@ -518,13 +522,14 @@ public:
   }
   int getLocalIndex(FuncOp funcOp, Value value) const {
     Value underlyingValue = getUnderlyingValue(value);
-    auto funcIt = localIndex.find(funcOp);
+    auto funcIt = localIndex.find(funcOp.getName().str());
     assert(funcIt != localIndex.end() &&
            "Function not found in local index map");
 
     auto valueIt = funcIt->second.find(underlyingValue);
     if (valueIt == funcIt->second.end()) {
       llvm::errs() << "Value not found in local index map for function:\n";
+      funcOp.dump();
       value.dump();
       assert(false && "Value not found in local index map");
     }
@@ -535,7 +540,7 @@ public:
   }
 
 private:
-  DenseMap<FuncOp, DenseMap<Value, int>> localIndex;
+  map<string, DenseMap<Value, int>> localIndex;
   map<string, vector<Type>> localTypes;
 };
 
@@ -874,6 +879,10 @@ private:
                                                      op->getContext()));
     } else if (isa<MaxOp>(op)) {
       rewriter.create<wasm::FMaxOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
+    } else if (isa<RemUOp>(op)) {
+      rewriter.create<wasm::IRemUOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
                                                      op->getContext()));
     } else if (auto constantOp = dyn_cast<ConstantOp>(op)) {
