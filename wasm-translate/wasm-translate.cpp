@@ -163,6 +163,9 @@ llvm::LogicalResult translateLtSOp(LtSOp ltSOp, raw_ostream &output) {
 llvm::LogicalResult translateDivSOp(IDivSOp divSOp, raw_ostream &output) {
   return translateSimpleOp(divSOp, output, "div_s");
 }
+llvm::LogicalResult translateRemUOp(IRemUOp remUOp, raw_ostream &output) {
+  return translateSimpleOp(remUOp, output, "rem_u");
+}
 llvm::LogicalResult translateLoadOp(LoadOp loadOp, raw_ostream &output) {
   return translateSimpleOp(loadOp, output, "load");
 }
@@ -535,6 +538,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateLtSOp(ltSOp, output);
   } else if (auto divSOp = dyn_cast<IDivSOp>(op)) {
     return translateDivSOp(divSOp, output);
+  } else if (auto remUOp = dyn_cast<IRemUOp>(op)) {
+    return translateRemUOp(remUOp, output);
   } else if (auto loadOp = dyn_cast<LoadOp>(op)) {
     return translateLoadOp(loadOp, output);
   } else if (auto storeOp = dyn_cast<StoreOp>(op)) {

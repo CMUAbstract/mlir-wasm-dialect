@@ -26,6 +26,9 @@ public:
     addConversion([ctx](dcont::ContType type) -> Type {
       return WasmContinuationType::get(ctx, type.getId());
     });
+    addConversion([ctx](dcont::StorageType type) -> Type {
+      return WasmContinuationType::get(ctx, type.getId());
+    });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) -> Value {
