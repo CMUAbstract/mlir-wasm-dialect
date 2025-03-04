@@ -513,6 +513,52 @@ LogicalResult translateCondBranchOp(CondBranchOp condBranchOp,
   return success();
 }
 
+LogicalResult translateIfElseOp(IfElseOp ifElseOp, raw_ostream &output) {
+  output << "(if ";
+  if (ifElseOp.getReturnTypes().size() > 0) {
+    output << " (result";
+    for (auto &resultTypeAttr : ifElseOp.getReturnTypes()) {
+      std::string watType;
+      if (failed(
+              getWatType(cast<TypeAttr>(resultTypeAttr).getValue(), watType))) {
+        ifElseOp.emitError("unsupported result type");
+        // TODO: handle error
+      }
+      output << " " << watType;
+    }
+    output << ")";
+  }
+  output << "\n";
+  output << "  (then \n";
+  for (auto &block : ifElseOp.getThenRegion()) {
+    for (Operation &op : block) {
+      if (isa<IfElseEndOp>(op)) {
+        continue;
+      }
+      if (failed(translateOperation(&op, output))) {
+        return failure();
+      }
+      output << "\n";
+    }
+  }
+  output << "  )\n";
+  output << "  (else \n";
+  for (auto &block : ifElseOp.getElseRegion()) {
+    for (Operation &op : block) {
+      if (isa<IfElseEndOp>(op)) {
+        continue;
+      }
+      if (failed(translateOperation(&op, output))) {
+        return failure();
+      }
+      output << "\n";
+    }
+  }
+  output << "  )\n";
+  output << ")";
+  return success();
+}
+
 llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
   if (auto constantOp = dyn_cast<ConstantOp>(op)) {
     return translateConstantOp(constantOp, output);
@@ -593,6 +639,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateBranchOp(branchOp, output);
   } else if (auto condBranchOp = dyn_cast<CondBranchOp>(op)) {
     return translateCondBranchOp(condBranchOp, output);
+  } else if (auto ifElseOp = dyn_cast<IfElseOp>(op)) {
+    return translateIfElseOp(ifElseOp, output);
   } else {
     op->emitError("unsupported operation");
     return failure();

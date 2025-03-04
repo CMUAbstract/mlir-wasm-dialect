@@ -495,6 +495,23 @@ def SsaWasm_SelectOp : SsaWasm_Op<"select", [AllTypesMatch<["true_value", "false
   let assemblyFormat = "$condition `:` type($condition) `,` $true_value `,` $false_value  `->` type($result) attr-dict";
 }
 
+def SsaWasm_IfElseOp : SsaWasm_Op<"if_else"> {
+  let description = [{
+    This operation is used to model an if-else construct.
+  }];
+  // TODO: Support arguments
+  let arguments = (ins SsaWasm_WasmIntegerType:$condition);
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$then_region, SizedRegion<1>:$else_region);
+}
+
+def SsaWasm_IfElseTerminatorOp : SsaWasm_Op<"if_else.terminator", [Terminator]> {
+  let description = [{
+    This is a temporary operation to be put at the exit block of an IfElseOp.
+  }];
+  let arguments = (ins Variadic<AnyType>:$results);
+}
+
 // stack switching related ops
 
 def SsaWasm_TagOp : SsaWasm_Op<"tag", [Symbol]> {

@@ -915,6 +915,11 @@ private:
     } else if (auto blockBlockOp = dyn_cast<BlockBlockOp>(op)) {
       convertBlockBlockOp(funcOp, blockBlockOp, rewriter, localIndexAnalysis,
                           newLabelIndex);
+    } else if (auto ifElseOp = dyn_cast<IfElseOp>(op)) {
+      convertIfElseOp(funcOp, ifElseOp, rewriter, localIndexAnalysis,
+                      newLabelIndex);
+    } else if (auto ifElseTerminatorOp = dyn_cast<IfElseTerminatorOp>(op)) {
+      rewriter.create<wasm::IfElseEndOp>(op->getLoc());
     } else if (isa<ILeUOp>(op)) {
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));
@@ -1179,6 +1184,43 @@ private:
         rewriter.moveOpBefore(op, to, to->end());
       }
     }
+  }
+  void convertIfElseOp(FuncOp funcOp, IfElseOp ifElseOp, IRRewriter &rewriter,
+                       LocalIndexAnalysis &localIndexAnalysis,
+                       int &newLabelIndex) {
+    Location loc = ifElseOp.getLoc();
+    MLIRContext *context = ifElseOp.getContext();
+
+    // Create wasm if-else operation with the same result types
+    auto wasmIfElseOp = rewriter.create<wasm::IfElseOp>(loc);
+    if (ifElseOp.getResults().size() > 0) {
+      SmallVector<Attribute> typeAttrs;
+      for (Value result : ifElseOp.getResults()) {
+        typeAttrs.push_back(TypeAttr::get(
+            convertSsaWasmTypeToWasmType(result.getType(), context)));
+      }
+      wasmIfElseOp.setReturnTypesAttr(rewriter.getArrayAttr(typeAttrs));
+    }
+
+    // Move the then region
+    rewriter.inlineRegionBefore(ifElseOp.getThenRegion(),
+                                wasmIfElseOp.getThenRegion(),
+                                wasmIfElseOp.getThenRegion().end());
+
+    // Move the else region
+    rewriter.inlineRegionBefore(ifElseOp.getElseRegion(),
+                                wasmIfElseOp.getElseRegion(),
+                                wasmIfElseOp.getElseRegion().end());
+
+    // Convert blocks in then region
+    Block &thenBlock = wasmIfElseOp.getThenRegion().front();
+    convertBlock(funcOp, &thenBlock, localIndexAnalysis, rewriter,
+                 newLabelIndex);
+
+    // Convert blocks in else region
+    Block &elseBlock = wasmIfElseOp.getElseRegion().front();
+    convertBlock(funcOp, &elseBlock, localIndexAnalysis, rewriter,
+                 newLabelIndex);
   }
 };
 } // namespace mlir::ssawasm

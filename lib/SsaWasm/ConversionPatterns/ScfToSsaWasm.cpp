@@ -141,9 +141,93 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
   }
 };
 
+struct IfElseOpLowering : public OpConversionPattern<scf::IfOp> {
+  using OpConversionPattern<scf::IfOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(scf::IfOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto condition = adaptor.getCondition();
+    auto results = op.getResults();
+
+    // Create the if-else operation
+    SmallVector<Type, 4> convertedTypes;
+    if (failed(getTypeConverter()->convertTypes(results.getTypes(),
+                                                convertedTypes))) {
+      emitError(loc, "Failed to convert types");
+      return failure();
+    }
+    auto ifElseOp = rewriter.create<IfElseOp>(loc, convertedTypes, condition);
+
+    // Move the then body
+    rewriter.inlineRegionBefore(op.getThenRegion(), ifElseOp.getThenRegion(),
+                                ifElseOp.getThenRegion().end());
+
+    // Move the else body if it exists
+    if (!op.getElseRegion().empty()) {
+      rewriter.inlineRegionBefore(op.getElseRegion(), ifElseOp.getElseRegion(),
+                                  ifElseOp.getElseRegion().end());
+    } else {
+      emitError(loc, "We only support if-else with else body");
+      return failure();
+    }
+
+    // apply signature conversion to the then and else regions
+    TypeConverter::SignatureConversion thenSignatureConversion(
+        ifElseOp.getThenRegion().front().getNumArguments());
+    TypeConverter::SignatureConversion elseSignatureConversion(
+        ifElseOp.getElseRegion().front().getNumArguments());
+    rewriter.applySignatureConversion(&ifElseOp.getThenRegion().front(),
+                                      thenSignatureConversion);
+    rewriter.applySignatureConversion(&ifElseOp.getElseRegion().front(),
+                                      elseSignatureConversion);
+
+    // Convert scf.yield in then block to IfElseTerminatorOp
+    if (auto yieldOp = dyn_cast<scf::YieldOp>(
+            ifElseOp.getThenRegion().front().getTerminator())) {
+      rewriter.setInsertionPoint(yieldOp);
+      if (convertedTypes.size() > 0) {
+        auto convertedResults =
+            rewriter
+                .create<UnrealizedConversionCastOp>(loc, convertedTypes,
+                                                    yieldOp.getResults())
+                .getResults();
+        rewriter.replaceOpWithNewOp<IfElseTerminatorOp>(yieldOp,
+                                                        convertedResults);
+      } else {
+        rewriter.replaceOpWithNewOp<IfElseTerminatorOp>(yieldOp,
+                                                        yieldOp.getResults());
+      }
+    }
+
+    // Convert scf.yield in else block to IfElseTerminatorOp
+    if (auto yieldOp = dyn_cast<scf::YieldOp>(
+            ifElseOp.getElseRegion().front().getTerminator())) {
+      rewriter.setInsertionPoint(yieldOp);
+      if (convertedTypes.size() > 0) {
+        auto convertedResults =
+            rewriter
+                .create<UnrealizedConversionCastOp>(loc, convertedTypes,
+                                                    yieldOp.getResults())
+                .getResults();
+        rewriter.replaceOpWithNewOp<IfElseTerminatorOp>(yieldOp,
+                                                        convertedResults);
+      } else {
+        rewriter.replaceOpWithNewOp<IfElseTerminatorOp>(yieldOp,
+                                                        yieldOp.getResults());
+      }
+    }
+
+    rewriter.replaceOp(op, ifElseOp.getResults());
+    return success();
+  }
+};
+
 void populateScfToSsaWasmPatterns(TypeConverter &typeConverter,
                                   RewritePatternSet &patterns) {
-  patterns.add<ForOpLowering>(typeConverter, patterns.getContext());
+  patterns.add<ForOpLowering, IfElseOpLowering>(typeConverter,
+                                                patterns.getContext());
 }
 
 } // namespace mlir::ssawasm

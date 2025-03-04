@@ -483,6 +483,20 @@ def Wasm_CondBranchOp : Wasm_Op<"cond_br", [ParentOneOf<["BlockOp", "LoopOp"]>]>
   let arguments = (ins FlatSymbolRefAttr:$name);
 }
 
+def Wasm_IfElseOp : Wasm_Op<"if_else"> {
+    let description = [{
+        A conditional branch operation.
+    }];
+    let arguments = (ins TypeArrayAttr:$return_types);
+    let regions = (region AnyRegion:$then_region, AnyRegion:$else_region);
+    let builders = [
+        OpBuilder<(ins CArg<"ArrayRef<Attribute>", "{}">:$return_types)>
+    ];
+}
+
+def Wasm_IfElseEndOp : Wasm_Op<"if_else.end", [Terminator, HasParent<"IfElseOp">]> {
+}
+
 
 def Wasm_BlockLoopOpDeprecated: Wasm_Op<"blockloop_deprecated"> {
     let summary = "Wasm dialect-only operation to represent loop inside block";
