@@ -45,6 +45,10 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
+    llvm::dbgs() << "ForOpLowering\n";
+    op.dump();
+    llvm::dbgs() << "\n";
+
     auto lowerBound = adaptor.getLowerBound();
     auto upperBound = adaptor.getUpperBound();
     ValueRange initArgs = adaptor.getInitArgs();
@@ -85,7 +89,8 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
                                                 inductionLocal)
             .getResult(0);
 
-    // replace uses of iteration variables and induction variable with locals
+    // replace uses of iteration variables and induction variable with
+    // locals
     rewriter.replaceAllUsesWith(bodyArgs[0], castedInductionLocal);
     for (unsigned i = 0; i < initArgs.size(); ++i) {
       rewriter.replaceAllUsesWith(bodyArgs[i + 1], iterationLocals[i]);

@@ -2,26 +2,36 @@
 import json
 
 FILENAME = {
-    "atax": "atax_256.mlir",
-    "bicg": "bicg_256.mlir",
-    "doitgen": "doitgen_64.mlir",
-    "gemm": "gemm_128.mlir",
-    "gemver": "gemver_256.mlir",
-    "gesummv": "gesummv_256.mlir",
-    "mvt": "mvt_256.mlir",
-    "symm": "symm_128.mlir",
-    "syr2k": "syr2k_128.mlir",
-    "three_mm": "three_mm_64.mlir",
-    "trmm": "trmm_128.mlir",
-    "two_mm": "two_mm_128.mlir",
-    "lenet": "lenet-affine-optimized.mlir", # This is not polybench, but we put it here for simplicity
+    "2mm": "2mm.mlir",
+    "3mm": "3mm.mlir",
+    "adi": "adi.mlir",
+    "atax": "atax.mlir",
+    "bicg": "bicg.mlir",
+    "cholesky": "cholesky.mlir",
+    "correlation": "correlation.mlir",
+    "covariance": "covariance.mlir",
+    "doitgen": "doitgen.mlir",
+    "durbin": "durbin.mlir",
+    "fdtd-2d": "fdtd-2d.mlir",
+    "floyd-warshall": "floyd-warshall.mlir",
+    "gemm": "gemm.mlir",
+    "gemver": "gemver.mlir",
+    "gesummv": "gesummv.mlir",
+    "gramschmidt": "gramschmidt.mlir",
+    "heat-3d": "heat-3d.mlir",
+    "jacobi-1d": "jacobi-1d.mlir",
+    "jacobi-2d": "jacobi-2d.mlir",
+    "lu": "lu.mlir",
+    "ludcmp": "ludcmp.mlir",
+    "mvt": "mvt.mlir",
+    "nussinov": "nussinov.mlir",
+    "seidel-2d": "seidel-2d.mlir",
+    "symm": "symm.mlir",
+    "syr2k": "syr2k.mlir",
+    "syrk": "syrk.mlir",
+    "trisolv": "trisolv.mlir",
+    "trmm": "trmm.mlir",
 }
-
-
-def gen_testcase(tag: str, compiler: str) -> str:
-    if tag == "lenet":
-        return f"MNIST_{compiler.upper()}"
-    return f"{tag.upper()}_{compiler.upper()}"
 
 
 def cmd(
@@ -41,8 +51,19 @@ def cmd(
         else ""
     )
     file_name = FILENAME[tag]
-    testcase = gen_testcase(tag, compiler)
-    cmd_template = f'echo "cd .. && ./run-mcu.sh polybench/{file_name} --compiler={compiler} --testcase={testcase} --llvm-opt-flags={llvm_opt_flags} --binaryen-opt-flags={binaryen_opt_flags} --use-aot={"true" if use_aot else "false"} --silent {aot_str}" | pipenv run ./measure.py'
+    cmd_parts = [
+        'echo "cd .. && ./run-mcu.sh',
+        f"polybench/{file_name}",
+        f"--compiler={compiler}",
+        f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+        f"--binaryen-opt-flags={binaryen_opt_flags}",
+        f'--use-aot={"true" if use_aot else "false"}',
+        # "--silent",
+        aot_str,
+        '" | pipenv run ./measure.py',
+    ]
+
+    cmd_template = " ".join(filter(bool, cmd_parts))
     return cmd_template
 
 
@@ -67,9 +88,10 @@ def make_row(
         ),
         "compiler": compiler,
         "use_aot": use_aot,
-        "llvm_opt_level": llvm_opt_level,
         "binaryen_opt_level": binaryen_opt_level,
     }
+    if compiler == "llvm":
+        row["llvm_opt_level"] = llvm_opt_level
     if use_aot:
         row["aot_opt_level"] = aot_opt_level
     return row
@@ -89,19 +111,35 @@ def filter_unique(row):
 
 if __name__ == "__main__":
     tags = [
+        "2mm",
+        "3mm",
+        "adi",
         "atax",
         "bicg",
+        "cholesky",
+        "correlation",
+        "covariance",
         "doitgen",
+        "durbin",
+        "fdtd-2d",
+        "floyd-warshall",
         "gemm",
         "gemver",
         "gesummv",
+        "gramschmidt",
+        "heat-3d",
+        "jacobi-1d",
+        "jacobi-2d",
+        "lu",
+        "ludcmp",
         "mvt",
-        # "symm",
+        "nussinov",
+        "seidel-2d",
+        "symm",
         "syr2k",
-        "three_mm",
+        "syrk",
+        "trisolv",
         "trmm",
-        "two_mm",
-        "lenet",
     ]
 
     tests = [

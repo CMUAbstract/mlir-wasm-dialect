@@ -157,6 +157,15 @@ def SsaWasm_DivSOp : SsaWasm_WasmNumericBinaryOp<"div_s"> {
   // TODO: Add folder
 }
 
+def SsaWasm_DivFOp : SsaWasm_WasmNumericBinaryOp<"div_f"> {
+  let description = [{
+    Divides the left-hand-side operand by the right-hand-side operand and
+    returns the result.
+  }];
+
+  // TODO: Add folder
+}
+
 /////////////////////////////////////////////////////////////////////////// 
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
@@ -193,6 +202,24 @@ def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure, ConstantLike]> {
   ];
 
   let hasFolder = 1;
+}
+
+def SsaWasm_ConvertSIToFPOp : SsaWasm_Op<"convert_si_to_fp", [Pure]> {
+  let summary = "signed integer to floating-point conversion operation";
+  let description = [{
+    Converts a signed integer to a floating-point value.
+  }];
+  let arguments = (ins SsaWasm_WasmIntegerType:$value);
+  let results = (outs SsaWasm_WasmFloatType:$result);
+}
+
+def SsaWasm_TruncateFPToSIOp : SsaWasm_Op<"truncate_fp_to_si", [Pure]> {
+  let summary = "floating-point to signed integer conversion operation";
+  let description = [{
+    Converts a floating-point value to a signed integer.
+  }];
+  let arguments = (ins SsaWasm_WasmFloatType:$value);
+  let results = (outs SsaWasm_WasmIntegerType:$result);
 }
 
 ///////////////////////////////////////////////////////////////////////////

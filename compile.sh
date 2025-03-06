@@ -96,6 +96,8 @@ if [[ "$COMPILER" == "mlir" ]]; then
     # Convert MLIR file to the Wasm dialect
     echo "Converting $INPUT_MLIR to Wasm dialect..."
     build/bin/wasm-opt \
+    --lower-affine \
+    --convert-math-to-libm \
     --convert-arith-to-ssawasm \
     --convert-func-to-ssawasm \
     --convert-memref-to-ssawasm \
@@ -137,12 +139,13 @@ elif [[ "$COMPILER" == "llvm" ]]; then
 
     echo "Converting $INPUT_MLIR to LLVM dialect..."
     mlir-opt "$INPUT_MLIR" \
+        --lower-affine \
         --canonicalize \
         --cse \
         --sccp \
         --loop-invariant-code-motion \
         --loop-invariant-subset-hoisting \
-        --convert-scf-to-cf --lower-affine \
+        --convert-scf-to-cf \
         --convert-arith-to-llvm="index-bitwidth=32" \
         --convert-func-to-llvm="index-bitwidth=32" \
         --memref-expand --expand-strided-metadata \
@@ -166,8 +169,8 @@ elif [[ "$COMPILER" == "llvm" ]]; then
 
     echo "Linking the object file with stdlib using wasm-ld..."
     # We always use -O3 optimization level
-    $WASI_SDK_PATH/bin/wasm-ld --no-entry \
-    --export-memory --export=_mlir_ciface_main --export=malloc --export=free \
+    $WASI_SDK_PATH/bin/wasm-ld --no-entry --allow-undefined \
+    --export-memory --export=main --export=malloc --export=free \
     -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
     -O3 --lto-CGO3 --lto-O3 -o "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_OBJ"
 fi
