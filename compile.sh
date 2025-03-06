@@ -97,7 +97,7 @@ if [[ "$COMPILER" == "mlir" ]]; then
     echo "Converting $INPUT_MLIR to Wasm dialect..."
     build/bin/wasm-opt \
     --lower-affine \
-    --convert-math-to-libm \
+    --convert-math-to-ssawasm \
     --convert-arith-to-ssawasm \
     --convert-func-to-ssawasm \
     --convert-memref-to-ssawasm \
