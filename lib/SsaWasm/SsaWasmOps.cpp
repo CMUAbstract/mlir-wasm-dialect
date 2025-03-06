@@ -315,8 +315,8 @@ OpFoldResult EqOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-/// SsaWasm_RemUOp folding:
-OpFoldResult RemUOp::fold(FoldAdaptor adaptor) {
+/// SsaWasm_RemUIOp folding:
+OpFoldResult RemUIOp::fold(FoldAdaptor adaptor) {
   // remu(x, 1) -> 0
   if (Attribute rhs = adaptor.getRhs()) {
     if (isInt32Or64(rhs)) {
@@ -349,6 +349,48 @@ OpFoldResult RemUOp::fold(FoldAdaptor adaptor) {
 
                         APInt result =
                             lhsInt.getValue().urem(rhsInt.getValue());
+                        return IntegerAttr::get(lhsInt.getType(), result);
+                      });
+  if (folded)
+    return folded;
+
+  return {};
+}
+
+/// SsaWasm_RemSIOp folding:
+OpFoldResult RemSIOp::fold(FoldAdaptor adaptor) {
+  // rems(x, 1) -> 0
+  if (Attribute rhs = adaptor.getRhs()) {
+    if (isInt32Or64(rhs)) {
+      auto iAttr = cast<IntegerAttr>(rhs);
+      if (iAttr.getValue() == 1)
+        return IntegerAttr::get(iAttr.getType(),
+                                APInt(iAttr.getValue().getBitWidth(), 0));
+    }
+  }
+
+  // rems(0, x) -> 0 (when x != 0)
+  if (Attribute lhs = adaptor.getLhs()) {
+    if (isInt32Or64(lhs)) {
+      auto iAttr = cast<IntegerAttr>(lhs);
+      if (iAttr.getValue() == 0)
+        return lhs; // 0 % x = 0 (if x != 0)
+    }
+  }
+
+  // If both constant, compute rems
+  Attribute folded =
+      tryFoldBinaryOp(adaptor.getLhs(), adaptor.getRhs(),
+                      [&](Attribute a, Attribute b) -> Attribute {
+                        auto lhsInt = cast<IntegerAttr>(a);
+                        auto rhsInt = cast<IntegerAttr>(b);
+
+                        // Don't fold division by zero
+                        if (rhsInt.getValue().isZero())
+                          return {};
+
+                        APInt result =
+                            lhsInt.getValue().srem(rhsInt.getValue());
                         return IntegerAttr::get(lhsInt.getType(), result);
                       });
   if (folded)

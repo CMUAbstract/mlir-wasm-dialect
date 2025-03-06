@@ -169,8 +169,10 @@ struct IfElseOpLowering : public OpConversionPattern<scf::IfOp> {
       rewriter.inlineRegionBefore(op.getElseRegion(), ifElseOp.getElseRegion(),
                                   ifElseOp.getElseRegion().end());
     } else {
-      emitError(loc, "We only support if-else with else body");
-      return failure();
+      // create an empty block
+      Block *elseBlock = rewriter.createBlock(&ifElseOp.getElseRegion());
+      rewriter.setInsertionPointToEnd(elseBlock);
+      rewriter.create<IfElseTerminatorOp>(loc, ValueRange());
     }
 
     // apply signature conversion to the then and else regions

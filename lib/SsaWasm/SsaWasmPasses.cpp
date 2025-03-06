@@ -223,18 +223,8 @@ public:
                      localGetRequiredOps[op].end(),
                      operandIdx) != localGetRequiredOps[op].end();
   }
-  bool isConstantRequired(Operation *op, int operandIdx) {
-    return std::find(constantRequiredOps[op].begin(),
-                     constantRequiredOps[op].end(),
-                     operandIdx) != constantRequiredOps[op].end();
-  }
-  bool isLocalGetOrConstantRequired(Operation *op) {
-    for (unsigned i = 0; i < op->getNumOperands(); i++) {
-      if (isLocalGetRequired(op, i) || isConstantRequired(op, i)) {
-        return true;
-      }
-    }
-    return false;
+  vector<int> getLocalGetRequiredOperandIndices(Operation *op) {
+    return localGetRequiredOps[op];
   }
 
 private:
@@ -281,9 +271,6 @@ private:
         if (!isa<LocalSetOp>(op) || operandIdx != 0) {
           localGetRequiredOps[op].push_back(operandIdx);
         }
-      } else if (isa<ConstantOp>(definingOp)) {
-        // we can clone the constant declaration instead of introducing a local
-        constantRequiredOps[op].push_back(operandIdx);
       } else if (isa<LocalOp>(definingOp)) {
         // if the defining operation is already a local, we do not need to
         // introduce a new local
@@ -316,7 +303,6 @@ private:
   }
   vector<Operation *> localRequiredOps;
   map<Operation *, vector<int>> localGetRequiredOps;
-  map<Operation *, vector<int>> constantRequiredOps;
 };
 
 struct IntroduceLocalPattern : public RewritePattern {
@@ -365,9 +351,9 @@ unsigned computeOffset(Operation *op, int operandIdx) {
   return offset;
 }
 
-struct IntroduceLocalGetOrConstantPattern : public RewritePattern {
-  IntroduceLocalGetOrConstantPattern(MLIRContext *context,
-                                     IntroduceLocalAnalysis &introduceLocal)
+struct IntroduceLocalGetPattern : public RewritePattern {
+  IntroduceLocalGetPattern(MLIRContext *context,
+                           IntroduceLocalAnalysis &introduceLocal)
       : RewritePattern(MatchAnyOpTypeTag(), 1, context),
         introduceLocal(introduceLocal) {}
 
@@ -377,7 +363,7 @@ struct IntroduceLocalGetOrConstantPattern : public RewritePattern {
            op->getDialect() ==
                op->getContext()->getLoadedDialect<wasm::WasmDialect>());
 
-    if (introduceLocal.isLocalGetOrConstantRequired(op)) {
+    if (introduceLocal.getLocalGetRequiredOperandIndices(op).size() > 0) {
       return success();
     }
     return failure();
@@ -411,24 +397,6 @@ struct IntroduceLocalGetOrConstantPattern : public RewritePattern {
         op->setOperand(operandIdx, local);
         offset += 1;
 
-      } else if (introduceLocal.isConstantRequired(op, operandIdx)) {
-        auto constantOp =
-            cast<ConstantOp>(op->getOperand(operandIdx).getDefiningOp());
-
-        rewriter.setInsertionPoint(op);
-        auto ip = rewriter.getInsertionPoint();
-        for (unsigned i = 0; i < offset; i++) {
-          rewriter.setInsertionPoint(rewriter.getInsertionBlock(), --ip);
-        }
-
-        auto newConstant =
-            rewriter
-                .create<ssawasm::ConstantOp>(op->getLoc(),
-                                             constantOp.getResult().getType(),
-                                             constantOp.getValue())
-                .getResult();
-        op->setOperand(operandIdx, newConstant);
-        offset += 1;
       } else {
         offset += computeOffset(op, operandIdx);
       }
@@ -455,8 +423,7 @@ public:
 
     // introduce local gets
     RewritePatternSet localGetPatterns(context);
-    localGetPatterns.add<IntroduceLocalGetOrConstantPattern>(context,
-                                                             introduceLocal);
+    localGetPatterns.add<IntroduceLocalGetPattern>(context, introduceLocal);
     walkAndApplyPatterns(module, std::move(localGetPatterns));
   }
 };
@@ -707,6 +674,57 @@ public:
   }
 };
 
+class ImportFuncOpLowering : public OpConversionPattern<ImportFuncOp> {
+public:
+  using OpConversionPattern<ImportFuncOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(ImportFuncOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Convert function type
+    auto funcType = adaptor.getFuncType();
+    SmallVector<Type, 4> convertedInputTypes;
+    SmallVector<Type, 4> convertedResultTypes;
+
+    auto convertType = [&](Type type) -> Type {
+      if (auto wasmIntegerType = dyn_cast<WasmIntegerType>(type)) {
+        if (wasmIntegerType.getBitWidth() == 32) {
+          return rewriter.getI32Type();
+        }
+        if (wasmIntegerType.getBitWidth() == 64) {
+          return rewriter.getI64Type();
+        }
+      }
+      if (auto wasmFloatType = dyn_cast<WasmFloatType>(type)) {
+        if (wasmFloatType.getBitWidth() == 32) {
+          return rewriter.getF32Type();
+        }
+        if (wasmFloatType.getBitWidth() == 64) {
+          return rewriter.getF64Type();
+        }
+      }
+      if (isa<WasmMemRefType>(type)) {
+        return rewriter.getI32Type();
+      }
+      return type;
+    };
+
+    for (auto inputType : funcType.getInputs()) {
+      convertedInputTypes.push_back(convertType(inputType));
+    }
+
+    for (auto resultType : funcType.getResults()) {
+      convertedResultTypes.push_back(convertType(resultType));
+    }
+
+    auto newFuncType =
+        rewriter.getFunctionType(convertedInputTypes, convertedResultTypes);
+
+    rewriter.replaceOpWithNewOp<wasm::ImportFuncOp>(op, adaptor.getFuncName(),
+                                                    newFuncType);
+    return success();
+  }
+};
+
 class ConvertSsaWasmGlobalToWasm
     : public impl::ConvertSsaWasmGlobalToWasmBase<ConvertSsaWasmGlobalToWasm> {
 public:
@@ -732,7 +750,7 @@ public:
     RewritePatternSet globalLoweringPattern(context);
     globalLoweringPattern.add<DataOpLowering, TagOpLowering,
                               RecContFuncDeclOpLowering, ElemDeclFuncOpLowering,
-                              ContTypeDeclOpLowering, FuncTypeDeclOpLowering>(
+                              ContTypeDeclOpLowering, ImportFuncOpLowering>(
         context);
     target.addIllegalOp<DataOp>();
     target.addIllegalOp<TagOp>();
@@ -740,6 +758,7 @@ public:
     target.addIllegalOp<ElemDeclFuncOp>();
     target.addIllegalOp<ContTypeDeclOp>();
     target.addIllegalOp<FuncTypeDeclOp>();
+    target.addIllegalOp<ImportFuncOp>();
     if (failed(applyPartialConversion(module, target,
                                       std::move(globalLoweringPattern)))) {
       signalPassFailure();
@@ -881,8 +900,12 @@ private:
       rewriter.create<wasm::FMaxOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
                                                      op->getContext()));
-    } else if (isa<RemUOp>(op)) {
+    } else if (isa<RemUIOp>(op)) {
       rewriter.create<wasm::IRemUOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
+    } else if (isa<RemSIOp>(op)) {
+      rewriter.create<wasm::IRemSOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
                                                      op->getContext()));
     } else if (auto constantOp = dyn_cast<ConstantOp>(op)) {
@@ -947,14 +970,6 @@ private:
           op->getLoc(),
           TypeAttr::get(convertSsaWasmTypeToWasmType(
               storeOp.getValue().getType(), storeOp.getContext())));
-      //     } else if (auto resumeSwitchOp = dyn_cast<ResumeSwitchOp>(op)) {
-      //       rewriter.create<wasm::ResumeSwitchOp>(
-      //           op->getLoc(), resumeSwitchOp.getCont().getType().getId(),
-      //           resumeSwitchOp.getTag());
-      //     } else if (auto switchOp = dyn_cast<SwitchOp>(op)) {
-      //       rewriter.create<wasm::SwitchOp>(op->getLoc(),
-      //                                       switchOp.getCont().getType().getId(),
-      //                                       switchOp.getTag());
     } else if (auto suspendOp = dyn_cast<SuspendOp>(op)) {
       rewriter.create<wasm::SuspendOp>(op->getLoc(), suspendOp.getTag());
     } else if (auto contNewOp = dyn_cast<ContNewOp>(op)) {

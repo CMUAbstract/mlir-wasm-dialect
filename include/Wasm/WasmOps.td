@@ -605,7 +605,6 @@ def Wasm_WasmReturnOp : Wasm_Op<"return", [Pure, Terminator, HasParent<"WasmFunc
     let assemblyFormat = "attr-dict";
 }
 
-
 def Wasm_FuncTypeDeclOp : Wasm_Op<"type.func", [Pure]> {
     let summary = "Declare a function type";
     let description = [{
@@ -703,9 +702,9 @@ def Wasm_ImportFuncOp : Wasm_Op<"import"> {
     let description = [{
         The `import` operation imports a function from the environment.
     }];
-    let arguments = (ins SymbolNameAttr:$name, TypeAttrOf<FunctionType>:$function_type);
+    let arguments = (ins SymbolNameAttr:$func_name, TypeAttrOf<FunctionType>:$func_type);
     let assemblyFormat = [{
-       $name $function_type attr-dict
+       $func_name $func_type attr-dict
     }];
 }
 

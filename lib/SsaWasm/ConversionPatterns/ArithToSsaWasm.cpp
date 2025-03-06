@@ -29,7 +29,8 @@ using MulIOpLowering = NumericBinaryOpLowering<arith::MulIOp, MulOp>;
 using MulFOpLowering = NumericBinaryOpLowering<arith::MulFOp, MulOp>;
 using MinFOpLowering = NumericBinaryOpLowering<arith::MinimumFOp, MinOp>;
 using MaxFOpLowering = NumericBinaryOpLowering<arith::MaximumFOp, MaxOp>;
-using RemUIOpLowering = NumericBinaryOpLowering<arith::RemUIOp, RemUOp>;
+using RemUIOpLowering = NumericBinaryOpLowering<arith::RemUIOp, RemUIOp>;
+using RemSIOpLowering = NumericBinaryOpLowering<arith::RemSIOp, RemSIOp>;
 using DivSIOpLowering = NumericBinaryOpLowering<arith::DivSIOp, DivSOp>;
 
 struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
@@ -79,6 +80,12 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
       }
     }
 
+    // if the constant is of bool type, convert it to i32
+    if (auto boolAttr = dyn_cast<BoolAttr>(value)) {
+      auto i32Type = IntegerType::get(op.getContext(), 32);
+      value = IntegerAttr::get(i32Type, boolAttr.getValue() ? 1 : 0);
+    }
+
     auto typedAttr = cast<TypedAttr>(value);
     rewriter.replaceOpWithNewOp<ConstantOp>(op, typedAttr);
     return success();
@@ -100,10 +107,11 @@ struct IndexCastOpLowering : public OpConversionPattern<arith::IndexCastOp> {
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                                     RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-               MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
-               DivSIOpLowering, CmpIOpLowering, SelectOpLowering,
-               RemUIOpLowering, ConstantOpLowering, IndexCastOpLowering>(
-      typeConverter, context);
+  patterns
+      .add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+           MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
+           DivSIOpLowering, CmpIOpLowering, SelectOpLowering, RemUIOpLowering,
+           RemSIOpLowering, ConstantOpLowering, IndexCastOpLowering>(
+          typeConverter, context);
 }
 } // namespace mlir::ssawasm
