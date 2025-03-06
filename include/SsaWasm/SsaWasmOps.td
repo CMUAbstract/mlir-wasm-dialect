@@ -97,6 +97,17 @@ def SsaWasm_ILeUOp : SsaWasm_WasmNumericBinaryOp<"ileu"> {
   }];
 }
 
+def SsaWasm_FLeOp : SsaWasm_Op<"fle", [Pure, AllTypesMatch<["lhs", "rhs"]>,]> {
+  let summary = "SSA-based floating-point less than or equal to operation";
+  let description = [{
+    Compares two operands explicitly and yields the result of the comparison.
+  }];
+  let arguments = (ins SsaWasm_WasmFloatType:$lhs, SsaWasm_WasmFloatType:$rhs);
+  let results = (outs SsaWasm_WasmIntegerType:$result);
+
+  let assemblyFormat = "attr-dict $lhs `,` $rhs `:` type($lhs) `->` type($result)";
+}
+
 def SsaWasm_MinOp : SsaWasm_WasmNumericBinaryOp<"min"> {
   let summary = "SSA-based minimum operation";
   let description = [{

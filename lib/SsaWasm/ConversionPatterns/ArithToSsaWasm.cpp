@@ -34,6 +34,23 @@ using RemSIOpLowering = NumericBinaryOpLowering<arith::RemSIOp, RemSIOp>;
 using DivSIOpLowering = NumericBinaryOpLowering<arith::DivSIOp, DivSOp>;
 using DivFOpLowering = NumericBinaryOpLowering<arith::DivFOp, DivFOp>;
 
+struct CmpFOpLowering : public OpConversionPattern<arith::CmpFOp> {
+  using OpConversionPattern<arith::CmpFOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::CmpFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // TODO: think about how to handle ULE
+    if (op.getPredicate() == arith::CmpFPredicate::OLE) {
+      rewriter.replaceOpWithNewOp<FLeOp>(
+          op, getTypeConverter()->convertType(rewriter.getI32Type()),
+          adaptor.getLhs(), adaptor.getRhs());
+    } else {
+      return rewriter.notifyMatchFailure(op,
+                                         "unsupported comparison predicate");
+    }
+    return success();
+  }
+};
 struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
   using OpConversionPattern<arith::CmpIOp>::OpConversionPattern;
   LogicalResult
@@ -132,12 +149,11 @@ struct FPToSIOpLowering : public OpConversionPattern<arith::FPToSIOp> {
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                                     RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns
-      .add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-           MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
-           DivSIOpLowering, CmpIOpLowering, SelectOpLowering, RemUIOpLowering,
-           RemSIOpLowering, ConstantOpLowering, IndexCastOpLowering,
-           SIToFPOpLowering, FPToSIOpLowering, DivFOpLowering>(typeConverter,
-                                                               context);
+  patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+               MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
+               DivSIOpLowering, CmpIOpLowering, CmpFOpLowering,
+               SelectOpLowering, RemUIOpLowering, RemSIOpLowering,
+               ConstantOpLowering, IndexCastOpLowering, SIToFPOpLowering,
+               FPToSIOpLowering, DivFOpLowering>(typeConverter, context);
 }
 } // namespace mlir::ssawasm
