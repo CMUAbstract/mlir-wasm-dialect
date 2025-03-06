@@ -7,7 +7,7 @@ CMDARGS="$@"
 
 # Check if the minimum number of arguments is provided
 if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <mlir_file> --type=[mlir|llvm] --testcase=[testname] [--optimize] [--use-aot=<true|false>] --silent -- <aot_flags>"
+    echo "Usage: $0 <mlir_file> --type=[mlir|llvm] [--optimize] [--use-aot=<true|false>] --silent -- <aot_flags>"
     exit 1
 fi
 
@@ -18,7 +18,6 @@ LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
 USE_AOT=false  # Default is to use interpreter
 AOT_FLAGS=""
-TESTCASE=""
 SILENT=false
 
 # Parse arguments
@@ -26,10 +25,6 @@ while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --compiler=*)
             COMPILER="${1#*=}"
-            shift
-            ;;
-        --testcase=*)
-            TESTCASE="${1#*=}"
             shift
             ;;
         --llvm-opt-flags=*)
@@ -128,7 +123,7 @@ run_on_device() {
     COMMAND_GROUP='
         cd mcu-wasm-executor && \
         xxd -i -n wasm_file "../$file" src/wasm.h && \
-        west build . -b apollo4p_blue_kxr_evb -p -- -D$TESTCASE=1 && \
+        west build . -b apollo4p_blue_kxr_evb -p && \
         west flash
     '
 
