@@ -299,16 +299,22 @@ OpFoldResult MaxOp::fold(FoldAdaptor adaptor) {
 
 /// SsaWasm_EqOp folding:
 OpFoldResult EqOp::fold(FoldAdaptor adaptor) {
+  Attribute lhs = adaptor.getLhs();
+  Attribute rhs = adaptor.getRhs();
+  if (!lhs || !rhs)
+    return {};
+
   // eq(x, x) -> 1
-  if (adaptor.getLhs() == adaptor.getRhs()) {
+  if (lhs == rhs) {
     // Need to cast to TypedAttr to access getType()
-    auto typedAttr = cast<TypedAttr>(adaptor.getLhs());
+    auto typedAttr = cast<TypedAttr>(lhs);
     return IntegerAttr::get(typedAttr.getType(), 1);
   }
   // if both are constants, return the result of the comparison
-  if (auto lhs = dyn_cast<IntegerAttr>(adaptor.getLhs())) {
-    if (auto rhs = dyn_cast<IntegerAttr>(adaptor.getRhs())) {
-      return IntegerAttr::get(lhs.getType(), lhs.getValue() == rhs.getValue());
+  if (auto lhsInt = dyn_cast<IntegerAttr>(lhs)) {
+    if (auto rhsInt = dyn_cast<IntegerAttr>(rhs)) {
+      return IntegerAttr::get(lhsInt.getType(),
+                              lhsInt.getValue() == rhsInt.getValue());
     }
   }
   // TODO: handle float comparison
@@ -340,6 +346,8 @@ OpFoldResult RemUIOp::fold(FoldAdaptor adaptor) {
   Attribute folded =
       tryFoldBinaryOp(adaptor.getLhs(), adaptor.getRhs(),
                       [&](Attribute a, Attribute b) -> Attribute {
+                        if (!a || !b)
+                          return {};
                         auto lhsInt = cast<IntegerAttr>(a);
                         auto rhsInt = cast<IntegerAttr>(b);
 
@@ -382,6 +390,8 @@ OpFoldResult RemSIOp::fold(FoldAdaptor adaptor) {
   Attribute folded =
       tryFoldBinaryOp(adaptor.getLhs(), adaptor.getRhs(),
                       [&](Attribute a, Attribute b) -> Attribute {
+                        if (!a || !b)
+                          return {};
                         auto lhsInt = cast<IntegerAttr>(a);
                         auto rhsInt = cast<IntegerAttr>(b);
 

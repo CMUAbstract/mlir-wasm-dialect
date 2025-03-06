@@ -53,7 +53,7 @@ class SsaWasm_WasmNumericBinaryOp<string mnemonic, list<Trait> traits = []>
 // Addition Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative]> {
+def SsaWasm_AddOp : SsaWasm_WasmNumericBinaryOp<"add", [Commutative,]> {
   let summary = "SSA-based addition operation";
   let description = [{
     Adds the left-hand-side operand to the right-hand-side operand and
@@ -115,7 +115,7 @@ def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max"> {
   let hasFolder = 1;
 }
 
-def SsaWasm_RemUIOp : SsaWasm_WasmNumericBinaryOp<"remui", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_RemUIOp : SsaWasm_WasmNumericBinaryOp<"remui"> {
   let description = [{
     Computes the remainder of the division of the left-hand-side operand by the right-hand-side operand.
   }];
@@ -123,7 +123,7 @@ def SsaWasm_RemUIOp : SsaWasm_WasmNumericBinaryOp<"remui", [AlwaysSpeculatableIm
   let hasFolder = 1;
 }
 
-def SsaWasm_RemSIOp : SsaWasm_WasmNumericBinaryOp<"remsi", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_RemSIOp : SsaWasm_WasmNumericBinaryOp<"remsi"> {
   let description = [{
     Computes the remainder of the division of the left-hand-side operand by the right-hand-side operand.
   }];
@@ -131,7 +131,7 @@ def SsaWasm_RemSIOp : SsaWasm_WasmNumericBinaryOp<"remsi", [AlwaysSpeculatableIm
   let hasFolder = 1;
 }
 
-def SsaWasm_EqOp : SsaWasm_WasmNumericBinaryOp<"eq", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_EqOp : SsaWasm_WasmNumericBinaryOp<"eq"> {
   let summary = "SSA-based equality operation";
   let description = [{
     Compares two operands explicitly and yields the result of the comparison.
@@ -140,7 +140,7 @@ def SsaWasm_EqOp : SsaWasm_WasmNumericBinaryOp<"eq", [AlwaysSpeculatableImplTrai
   let hasFolder = 1;
 }
 
-def SsaWasm_LtSOp : SsaWasm_WasmNumericBinaryOp<"lt_s", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_LtSOp : SsaWasm_WasmNumericBinaryOp<"lt_s"> {
   let description = [{
     Compares two operands explicitly and yields the result of the comparison.
   }];
@@ -312,7 +312,7 @@ def SsaWasm_CallOp : SsaWasm_Op<"call",
     }];
 }
 
-def SsaWasm_ImportFuncOp : SsaWasm_Op<"import_func", [Pure]> {
+def SsaWasm_ImportFuncOp : SsaWasm_Op<"import_func"> {
   let summary = "function import operation";
   let description = [{
     This operation imports a function from an external module.
