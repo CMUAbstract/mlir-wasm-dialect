@@ -37,22 +37,42 @@ namespace mlir::ssawasm {
 //                 v
 //          (Back to conditionBlock)
 
-struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
-  using OpConversionPattern<scf::ForOp>::OpConversionPattern;
+struct ForOpLowering : public RewritePattern {
+  TypeConverter &typeConverter;
 
-  LogicalResult
-  matchAndRewrite(scf::ForOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
+  ForOpLowering(TypeConverter &typeConverter, MLIRContext *context)
+      : RewritePattern(scf::ForOp::getOperationName(), 1, context),
+        typeConverter(typeConverter) {}
 
-    llvm::dbgs() << "ForOpLowering\n";
-    op.dump();
-    llvm::dbgs() << "\n";
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto forOp = cast<scf::ForOp>(op);
+    Location loc = forOp.getLoc();
 
-    auto lowerBound = adaptor.getLowerBound();
-    auto upperBound = adaptor.getUpperBound();
-    ValueRange initArgs = adaptor.getInitArgs();
-    auto step = adaptor.getStep();
+    auto lowerBound = forOp.getLowerBound();
+    auto upperBound = forOp.getUpperBound();
+    ValueRange initArgs = forOp.getInitArgs();
+    auto step = forOp.getStep();
+
+    // since we are not using DialectConversion, we need to manually cast the
+    // types
+    auto castedLowerBound =
+        rewriter
+            .create<UnrealizedConversionCastOp>(
+                loc, typeConverter.convertType(lowerBound.getType()),
+                lowerBound)
+            .getResult(0);
+    auto castedUpperBound =
+        rewriter
+            .create<UnrealizedConversionCastOp>(
+                loc, typeConverter.convertType(upperBound.getType()),
+                upperBound)
+            .getResult(0);
+    auto castedStep =
+        rewriter
+            .create<UnrealizedConversionCastOp>(
+                loc, typeConverter.convertType(step.getType()), step)
+            .getResult(0);
 
     auto blockLoopOp = rewriter.create<BlockLoopOp>(loc);
     auto [entryBlock, loopStartLabel, blockEndLabel] =
@@ -62,11 +82,12 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     Block *inductionVariableUpdateBlock =
         rewriter.createBlock(&blockLoopOp.getRegion());
 
-    assert(op.getRegion().getBlocks().size() == 1 &&
+    assert(forOp.getRegion().getBlocks().size() == 1 &&
            "Only support scf.for op with one block");
-    Block *bodyBlock = &op.getRegion().front();
+    Block *bodyBlock = &forOp.getRegion().front();
 
-    rewriter.inlineRegionBefore(op.getRegion(), inductionVariableUpdateBlock);
+    rewriter.inlineRegionBefore(forOp.getRegion(),
+                                inductionVariableUpdateBlock);
 
     auto bodyArgs = bodyBlock->getArguments();
 
@@ -74,7 +95,12 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.setInsertionPoint(blockLoopOp);
     SmallVector<Value, 4> iterationLocals;
     for (Value initArg : initArgs) {
-      auto local = rewriter.create<LocalOp>(loc, initArg).getResult();
+      auto castedInitArg =
+          rewriter
+              .create<UnrealizedConversionCastOp>(
+                  loc, typeConverter.convertType(initArg.getType()), initArg)
+              .getResult(0);
+      auto local = rewriter.create<LocalOp>(loc, castedInitArg).getResult();
       auto castedLocal =
           rewriter
               .create<UnrealizedConversionCastOp>(loc, initArg.getType(), local)
@@ -82,10 +108,11 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
       iterationLocals.push_back(castedLocal);
     }
     // create local for induction variable
-    auto inductionLocal = rewriter.create<LocalOp>(loc, lowerBound).getResult();
+    auto inductionLocal =
+        rewriter.create<LocalOp>(loc, castedLowerBound).getResult();
     auto castedInductionLocal =
         rewriter
-            .create<UnrealizedConversionCastOp>(loc, rewriter.getI32Type(),
+            .create<UnrealizedConversionCastOp>(loc, lowerBound.getType(),
                                                 inductionLocal)
             .getResult(0);
 
@@ -99,7 +126,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     // Condition Block: evaluate loop condition
     rewriter.setInsertionPointToStart(conditionBlock);
     auto comparisonOp =
-        rewriter.create<ILeUOp>(loc, upperBound, inductionLocal);
+        rewriter.create<ILeUOp>(loc, castedUpperBound, inductionLocal);
 
     rewriter.create<BlockLoopCondBranchOp>(loc, comparisonOp.getResult(),
                                            blockEndLabel, bodyBlock);
@@ -130,7 +157,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
 
     // Induction Variable Update Block
     rewriter.setInsertionPointToStart(inductionVariableUpdateBlock);
-    auto addOp = rewriter.create<AddOp>(loc, inductionLocal, step);
+    auto addOp = rewriter.create<AddOp>(loc, inductionLocal, castedStep);
     rewriter.create<LocalSetOp>(loc, inductionLocal, addOp.getResult());
     rewriter.create<BlockLoopBranchOp>(loc, loopStartLabel);
 
@@ -138,40 +165,46 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.replaceOp(op, iterationLocals);
 
     // Remove block args
-    TypeConverter::SignatureConversion signatureConversion(
-        bodyBlock->getNumArguments());
-    rewriter.applySignatureConversion(bodyBlock, signatureConversion);
+    while (bodyBlock->getNumArguments() > 0) {
+      bodyBlock->eraseArgument(0);
+    }
 
     return success();
   }
 };
 
-struct IfElseOpLowering : public OpConversionPattern<scf::IfOp> {
-  using OpConversionPattern<scf::IfOp>::OpConversionPattern;
+struct IfOpLowering : public RewritePattern {
+  TypeConverter &typeConverter;
 
-  LogicalResult
-  matchAndRewrite(scf::IfOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    auto condition = adaptor.getCondition();
-    auto results = op.getResults();
+  IfOpLowering(TypeConverter &typeConverter, MLIRContext *context)
+      : RewritePattern(scf::IfOp::getOperationName(), 1, context),
+        typeConverter(typeConverter) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto ifOp = cast<scf::IfOp>(op);
+
+    Location loc = ifOp.getLoc();
+    auto condition = ifOp.getCondition();
+    auto results = ifOp.getResults();
 
     // Create the if-else operation
     SmallVector<Type, 4> convertedTypes;
-    if (failed(getTypeConverter()->convertTypes(results.getTypes(),
-                                                convertedTypes))) {
+    if (failed(
+            typeConverter.convertTypes(results.getTypes(), convertedTypes))) {
       emitError(loc, "Failed to convert types");
       return failure();
     }
     auto ifElseOp = rewriter.create<IfElseOp>(loc, convertedTypes, condition);
 
     // Move the then body
-    rewriter.inlineRegionBefore(op.getThenRegion(), ifElseOp.getThenRegion(),
+    rewriter.inlineRegionBefore(ifOp.getThenRegion(), ifElseOp.getThenRegion(),
                                 ifElseOp.getThenRegion().end());
 
     // Move the else body if it exists
-    if (!op.getElseRegion().empty()) {
-      rewriter.inlineRegionBefore(op.getElseRegion(), ifElseOp.getElseRegion(),
+    if (!ifOp.getElseRegion().empty()) {
+      rewriter.inlineRegionBefore(ifOp.getElseRegion(),
+                                  ifElseOp.getElseRegion(),
                                   ifElseOp.getElseRegion().end());
     } else {
       // create an empty block
@@ -180,15 +213,11 @@ struct IfElseOpLowering : public OpConversionPattern<scf::IfOp> {
       rewriter.create<IfElseTerminatorOp>(loc, ValueRange());
     }
 
-    // apply signature conversion to the then and else regions
-    TypeConverter::SignatureConversion thenSignatureConversion(
-        ifElseOp.getThenRegion().front().getNumArguments());
-    TypeConverter::SignatureConversion elseSignatureConversion(
-        ifElseOp.getElseRegion().front().getNumArguments());
-    rewriter.applySignatureConversion(&ifElseOp.getThenRegion().front(),
-                                      thenSignatureConversion);
-    rewriter.applySignatureConversion(&ifElseOp.getElseRegion().front(),
-                                      elseSignatureConversion);
+    for (auto region : ifElseOp.getRegions()) {
+      while (region->front().getNumArguments() > 0) {
+        region->front().eraseArgument(0);
+      }
+    }
 
     // Convert scf.yield in then block to IfElseTerminatorOp
     if (auto yieldOp = dyn_cast<scf::YieldOp>(
@@ -233,8 +262,8 @@ struct IfElseOpLowering : public OpConversionPattern<scf::IfOp> {
 
 void populateScfToSsaWasmPatterns(TypeConverter &typeConverter,
                                   RewritePatternSet &patterns) {
-  patterns.add<ForOpLowering, IfElseOpLowering>(typeConverter,
-                                                patterns.getContext());
+  patterns.add<ForOpLowering, IfOpLowering>(typeConverter,
+                                            patterns.getContext());
 }
 
 } // namespace mlir::ssawasm
