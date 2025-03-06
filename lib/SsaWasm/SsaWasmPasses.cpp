@@ -341,10 +341,15 @@ struct IntroduceLocalPattern : public RewritePattern {
         introduceLocal(introduceLocal) {}
 
   LogicalResult match(Operation *op) const override {
-    assert(op->getDialect() ==
-               op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>() ||
-           op->getDialect() ==
-               op->getContext()->getLoadedDialect<wasm::WasmDialect>());
+    if (op->getDialect() !=
+            op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>() &&
+        op->getDialect() !=
+            op->getContext()->getLoadedDialect<wasm::WasmDialect>()) {
+      llvm::errs() << "Unsupported operation: ";
+      op->dump();
+      llvm::errs() << "\n";
+      return failure();
+    }
 
     if (introduceLocal.isLocalRequired(op)) {
       return success();
@@ -994,6 +999,10 @@ private:
       TypeAttr typeAttr = TypeAttr::get(convertSsaWasmTypeToWasmType(
           op->getResult(0).getType(), op->getContext()));
       rewriter.create<wasm::ILeUOp>(op->getLoc(), typeAttr);
+    } else if (isa<FLeOp>(op)) {
+      rewriter.create<wasm::FLeOp>(
+          op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
+                            op->getOperand(0).getType(), op->getContext())));
     } else if (isa<EqOp>(op)) {
       rewriter.create<wasm::EqOp>(
           op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(

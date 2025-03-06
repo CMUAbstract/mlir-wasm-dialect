@@ -138,6 +138,7 @@ def Wasm_FDivOp : Wasm_FloatBinaryOp<"div">;
 def Wasm_FMinOp : Wasm_FloatBinaryOp<"min">;
 def Wasm_FMaxOp : Wasm_FloatBinaryOp<"max">;
 def Wasm_FCopysignOp : Wasm_FloatBinaryOp<"copysign">;
+def Wasm_FLeOp : Wasm_FloatBinaryOp<"le">;
 
 // parametric instructions
 
