@@ -44,6 +44,12 @@ fn main() -> Result<()> {
         println!("log_f32: {}", x);
         x
     })?;
+    linker.func_wrap("env", "print_i32", |x: i32| -> () {
+        println!("print_i32: {}", x);
+    })?;
+    linker.func_wrap("env", "toggle_gpio", || -> () {
+        println!("toggle_gpio");
+    })?;
     linker.func_wrap("env", "log", || {
         println!("hi");
     })?;
@@ -52,9 +58,9 @@ fn main() -> Result<()> {
     let instance = linker.instantiate(&mut store, &module)?;
 
     let main_fn = instance
-        .get_func(&mut store, "main")
+        .get_func(&mut store, "__original_main")
         .expect("main not found")
-        .typed::<(), f32>(&store)?;
+        .typed::<(), i32>(&store)?;
 
     let now = Instant::now();
     let result = main_fn.call(&mut store, ())?;

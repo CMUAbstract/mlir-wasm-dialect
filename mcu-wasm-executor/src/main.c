@@ -12,70 +12,23 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(MNIST_MLIR)
-#include "mnist_mlir.h"
-#elif defined(MNIST_LLVM)
-#include "mnist_llvm.h"
-#elif defined(ATAX_MLIR)
-#include "atax_mlir.h"
-#elif defined(ATAX_LLVM)
-#include "atax_llvm.h"
-#elif defined(BICG_MLIR)
-#include "bicg_mlir.h"
-#elif defined(BICG_LLVM)
-#include "bicg_llvm.h"
-#elif defined(DOITGEN_MLIR)
-#include "doitgen_mlir.h"
-#elif defined(DOITGEN_LLVM)
-#include "doitgen_llvm.h"
-#elif defined(GEMM_MLIR)
-#include "gemm_mlir.h"
-#elif defined(GEMM_LLVM)
-#include "gemm_llvm.h"
-#elif defined(GEMVER_MLIR)
-#include "gemver_mlir.h"
-#elif defined(GEMVER_LLVM)
-#include "gemver_llvm.h"
-#elif defined(GESUMMV_MLIR)
-#include "gesummv_mlir.h"
-#elif defined(GESUMMV_LLVM)
-#include "gesummv_llvm.h"
-#elif defined(MVT_MLIR)
-#include "mvt_mlir.h"
-#elif defined(MVT_LLVM)
-#include "mvt_llvm.h"
-#elif defined(SYMM_MLIR)
-#include "symm_mlir.h"
-#elif defined(SYMM_LLVM)
-#include "symm_llvm.h"
-#elif defined(SYR2K_MLIR)
-#include "syr2k_mlir.h"
-#elif defined(SYR2K_LLVM)
-#include "syr2k_llvm.h"
-#elif defined(THREE_MM_MLIR)
-#include "three_mm_mlir.h"
-#elif defined(THREE_MM_LLVM)
-#include "three_mm_llvm.h"
-#elif defined(TRMM_MLIR)
-#include "trmm_mlir.h"
-#elif defined(TRMM_LLVM)
-#include "trmm_llvm.h"
-#elif defined(TWO_MM_MLIR)
-#include "two_mm_mlir.h"
-#elif defined(TWO_MM_LLVM)
-#include "two_mm_llvm.h"
-#endif
+#include "polybench.h"
 
 #define CONFIG_APP_STACK_SIZE 256000
 #define CONFIG_APP_HEAP_SIZE 1024000
 #define CONFIG_GLOBAL_HEAP_BUF_SIZE WASM_GLOBAL_HEAP_SIZE
 
-void gpio_toggle(wasm_exec_env_t exec_env) {
+void toggle_gpio(wasm_exec_env_t exec_env) {
   am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
 }
 
-void delay(wasm_exec_env_t exec_env, int ms) {
-  // am_hal_gpio_state_write(22, AM_HAL_GPIO_OUTPUT_TOGGLE);
+void print_i32(wasm_exec_env_t exec_env, int32_t i) {
+  // print only first 10 times
+  static int print_count = 0;
+  if (print_count < 10) {
+    printk("%d\n", i);
+    print_count++;
+  }
 }
 
 #if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
@@ -122,14 +75,8 @@ void iwasm_main() {
 #endif
 
   /* register native symbols */
-  static NativeSymbol native_symbols[] = {{"gpio_toggle", gpio_toggle, "()"
-
-                                          },
-                                          {
-                                              "delay",
-                                              delay,
-                                              "(i)",
-                                          }};
+  static NativeSymbol native_symbols[] = {{"toggle_gpio", toggle_gpio, "()"},
+                                          {"print_i32", print_i32, "(i)"}};
   int n_native_symbols = sizeof(native_symbols) / sizeof(NativeSymbol);
 
   if (!wasm_runtime_register_natives("env", native_symbols, n_native_symbols)) {

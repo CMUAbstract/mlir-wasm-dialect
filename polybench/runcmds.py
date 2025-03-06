@@ -111,6 +111,8 @@ if __name__ == "__main__":
     for result in runcmds(rows, timeout=args.timeout, silent=args.silent):
         s = "{}\n".format(json.dumps(result))
         args.output.write(s)
+        args.output.flush()
+
         if not args.silent:
             sys.stderr.write(result["stdout"] + "\n")
             sys.stderr.write(result["stderr"] + "\n")

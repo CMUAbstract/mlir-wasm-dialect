@@ -80,6 +80,16 @@ def Wasm_IClzOp : Wasm_IntegerUnaryOp<"clz">;
 def Wasm_ICtzOp : Wasm_IntegerUnaryOp<"ctz">;
 def Wasm_IPopcntOp : Wasm_IntegerUnaryOp<"popcnt">;
 
+def Wasm_ConvertSIToFPOp : Wasm_IntegerUnaryOp<"convert_si_to_fp"> {
+    let summary = "signed integer to floating-point conversion operation";
+    let description = [{
+        Converts a signed integer to a floating-point value.
+    }];
+    // The 'type' argument is the type of the result.  
+    //We do not use 'to_type' to make it more consistent with other ops.
+    let arguments = (ins TypeAttr:$type, TypeAttr:$from_type);
+}
+
 // integer binary operations
 
 def Wasm_IDivSOp : Wasm_IntegerBinaryOp<"div_s">;
@@ -104,8 +114,17 @@ def Wasm_FNegOp : Wasm_FloatUnaryOp<"neg">;
 def Wasm_FSqrtOp : Wasm_FloatUnaryOp<"sqrt">;
 def Wasm_FCeilOp : Wasm_FloatUnaryOp<"ceil">;
 def Wasm_FFloorOp : Wasm_FloatUnaryOp<"floor">;
-def Wasm_FTruncOp : Wasm_FloatUnaryOp<"trunc">;
 def Wasm_FNearesetOp : Wasm_FloatUnaryOp<"nearest">;
+
+def Wasm_TruncateFPToSIOp : Wasm_FloatUnaryOp<"truncate_fp_to_si"> {
+    let summary = "floating-point to signed integer conversion operation";
+    let description = [{
+        Converts a floating-point value to a signed integer.
+    }];
+    // The 'type' argument is the type of the result.  
+    //We do not use 'to_type' to make it more consistent with other ops.
+    let arguments = (ins TypeAttr:$type, TypeAttr:$from_type);
+}
 
 // floating-point binary operations
 

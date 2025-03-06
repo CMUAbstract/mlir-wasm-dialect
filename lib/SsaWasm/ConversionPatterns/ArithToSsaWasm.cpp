@@ -32,6 +32,7 @@ using MaxFOpLowering = NumericBinaryOpLowering<arith::MaximumFOp, MaxOp>;
 using RemUIOpLowering = NumericBinaryOpLowering<arith::RemUIOp, RemUIOp>;
 using RemSIOpLowering = NumericBinaryOpLowering<arith::RemSIOp, RemSIOp>;
 using DivSIOpLowering = NumericBinaryOpLowering<arith::DivSIOp, DivSOp>;
+using DivFOpLowering = NumericBinaryOpLowering<arith::DivFOp, DivFOp>;
 
 struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
   using OpConversionPattern<arith::CmpIOp>::OpConversionPattern;
@@ -102,6 +103,30 @@ struct IndexCastOpLowering : public OpConversionPattern<arith::IndexCastOp> {
     return success();
   }
 };
+
+struct SIToFPOpLowering : public OpConversionPattern<arith::SIToFPOp> {
+  using OpConversionPattern<arith::SIToFPOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::SIToFPOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ConvertSIToFPOp>(
+        op, getTypeConverter()->convertType(op.getResult().getType()),
+        adaptor.getIn());
+    return success();
+  }
+};
+
+struct FPToSIOpLowering : public OpConversionPattern<arith::FPToSIOp> {
+  using OpConversionPattern<arith::FPToSIOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::FPToSIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<TruncateFPToSIOp>(
+        op, getTypeConverter()->convertType(op.getResult().getType()),
+        adaptor.getIn());
+    return success();
+  }
+};
 } // namespace
 
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
@@ -111,7 +136,8 @@ void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
       .add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
            MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
            DivSIOpLowering, CmpIOpLowering, SelectOpLowering, RemUIOpLowering,
-           RemSIOpLowering, ConstantOpLowering, IndexCastOpLowering>(
-          typeConverter, context);
+           RemSIOpLowering, ConstantOpLowering, IndexCastOpLowering,
+           SIToFPOpLowering, FPToSIOpLowering, DivFOpLowering>(typeConverter,
+                                                               context);
 }
 } // namespace mlir::ssawasm

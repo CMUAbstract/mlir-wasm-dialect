@@ -918,6 +918,20 @@ private:
       } else {
         rewriter.create<wasm::ConstantOp>(op->getLoc(), constantOp.getValue());
       }
+    } else if (isa<ConvertSIToFPOp>(op)) {
+      rewriter.create<wasm::ConvertSIToFPOp>(
+          op->getLoc(),
+          convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                       op->getContext()),
+          convertSsaWasmTypeToWasmType(op->getOperand(0).getType(),
+                                       op->getContext()));
+    } else if (isa<TruncateFPToSIOp>(op)) {
+      rewriter.create<wasm::TruncateFPToSIOp>(
+          op->getLoc(),
+          convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                       op->getContext()),
+          convertSsaWasmTypeToWasmType(op->getOperand(0).getType(),
+                                       op->getContext()));
     } else if (isa<LocalOp>(op)) {
       rewriter.create<wasm::LocalSetOp>(
           op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
@@ -957,6 +971,10 @@ private:
                             op->getResult(0).getType(), op->getContext())));
     } else if (isa<DivSOp>(op)) {
       rewriter.create<wasm::IDivSOp>(
+          op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
+                            op->getResult(0).getType(), op->getContext())));
+    } else if (isa<DivFOp>(op)) {
+      rewriter.create<wasm::FDivOp>(
           op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
                             op->getResult(0).getType(), op->getContext())));
     } else if (auto callOp = dyn_cast<CallOp>(op)) {

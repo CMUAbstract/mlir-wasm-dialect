@@ -163,6 +163,9 @@ llvm::LogicalResult translateLtSOp(LtSOp ltSOp, raw_ostream &output) {
 llvm::LogicalResult translateDivSOp(IDivSOp divSOp, raw_ostream &output) {
   return translateSimpleOp(divSOp, output, "div_s");
 }
+llvm::LogicalResult translateFDivOp(FDivOp divFOp, raw_ostream &output) {
+  return translateSimpleOp(divFOp, output, "div");
+}
 llvm::LogicalResult translateIRemUOp(IRemUOp iRemUOp, raw_ostream &output) {
   return translateSimpleOp(iRemUOp, output, "rem_u");
 }
@@ -180,6 +183,34 @@ llvm::LogicalResult translateFMinOp(FMinOp fMinOp, raw_ostream &output) {
 }
 llvm::LogicalResult translateFMaxOp(FMaxOp fMaxOp, raw_ostream &output) {
   return translateSimpleOp(fMaxOp, output, "max");
+}
+llvm::LogicalResult translateTruncateFPToSIOp(TruncateFPToSIOp truncateFPToSIOp,
+                                              raw_ostream &output) {
+  std::string opName;
+  if (truncateFPToSIOp.getFromType().isF32()) {
+    opName = "trunc_f32_s";
+  } else if (truncateFPToSIOp.getFromType().isF64()) {
+    opName = "trunc_f64_s";
+  } else {
+    truncateFPToSIOp.emitError("unsupported type");
+    return failure();
+  }
+  return translateSimpleOp(truncateFPToSIOp, output, opName);
+}
+
+llvm::LogicalResult translateConvertSIToFPOp(ConvertSIToFPOp convertSIToFPOp,
+                                             raw_ostream &output) {
+  std::string opName;
+  if (convertSIToFPOp.getFromType().isInteger(32)) {
+    opName = "convert_i32_s";
+  } else if (convertSIToFPOp.getFromType().isInteger(64)) {
+    opName = "convert_i64_s";
+  } else {
+    convertSIToFPOp.dump();
+    convertSIToFPOp.emitError("unsupported type");
+    return failure();
+  }
+  return translateSimpleOp(convertSIToFPOp, output, opName);
 }
 
 llvm::LogicalResult translateSelectOp(SelectOp selectOp, raw_ostream &output) {
@@ -337,7 +368,8 @@ llvm::LogicalResult translateBlockLoopOpDeprecated(BlockLoopOpDeprecated loopOp,
   output << "br " << loopName << "\n";
 
   // termination block
-  // assert that termination block has exactly one operation which is a loop end
+  // assert that termination block has exactly one operation which is a loop
+  // end
   if (terminationBlock->getOperations().size() != 1) {
     loopOp.emitError("Termination block should have exactly one operation");
     return failure();
@@ -587,6 +619,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateLtSOp(ltSOp, output);
   } else if (auto divSOp = dyn_cast<IDivSOp>(op)) {
     return translateDivSOp(divSOp, output);
+  } else if (auto divFOp = dyn_cast<FDivOp>(op)) {
+    return translateFDivOp(divFOp, output);
   } else if (auto iRemUOp = dyn_cast<IRemUOp>(op)) {
     return translateIRemUOp(iRemUOp, output);
   } else if (auto iRemSOp = dyn_cast<IRemSOp>(op)) {
@@ -599,6 +633,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFMinOp(fMinOp, output);
   } else if (auto fMaxOp = dyn_cast<FMaxOp>(op)) {
     return translateFMaxOp(fMaxOp, output);
+  } else if (auto truncateFPToSIOp = dyn_cast<TruncateFPToSIOp>(op)) {
+    return translateTruncateFPToSIOp(truncateFPToSIOp, output);
+  } else if (auto convertSIToFPOp = dyn_cast<ConvertSIToFPOp>(op)) {
+    return translateConvertSIToFPOp(convertSIToFPOp, output);
   } else if (auto selectOp = dyn_cast<SelectOp>(op)) {
     return translateSelectOp(selectOp, output);
   } else if (auto returnOp = dyn_cast<WasmReturnOp>(op)) {
