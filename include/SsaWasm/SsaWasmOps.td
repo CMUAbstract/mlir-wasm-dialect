@@ -115,7 +115,15 @@ def SsaWasm_MaxOp : SsaWasm_WasmNumericBinaryOp<"max"> {
   let hasFolder = 1;
 }
 
-def SsaWasm_RemUOp : SsaWasm_WasmNumericBinaryOp<"remu", [AlwaysSpeculatableImplTrait]> {
+def SsaWasm_RemUIOp : SsaWasm_WasmNumericBinaryOp<"remui", [AlwaysSpeculatableImplTrait]> {
+  let description = [{
+    Computes the remainder of the division of the left-hand-side operand by the right-hand-side operand.
+  }];
+
+  let hasFolder = 1;
+}
+
+def SsaWasm_RemSIOp : SsaWasm_WasmNumericBinaryOp<"remsi", [AlwaysSpeculatableImplTrait]> {
   let description = [{
     Computes the remainder of the division of the left-hand-side operand by the right-hand-side operand.
   }];
@@ -302,6 +310,14 @@ def SsaWasm_CallOp : SsaWasm_Op<"call",
     let assemblyFormat = [{
       $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
     }];
+}
+
+def SsaWasm_ImportFuncOp : SsaWasm_Op<"import_func", [Pure]> {
+  let summary = "function import operation";
+  let description = [{
+    This operation imports a function from an external module.
+  }];
+  let arguments = (ins SymbolNameAttr:$func_name, TypeAttrOf<FunctionType>:$func_type);
 }
 
 ///////////////////////////////////////////////////////////////////////////

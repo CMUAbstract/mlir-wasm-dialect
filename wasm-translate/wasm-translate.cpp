@@ -163,8 +163,11 @@ llvm::LogicalResult translateLtSOp(LtSOp ltSOp, raw_ostream &output) {
 llvm::LogicalResult translateDivSOp(IDivSOp divSOp, raw_ostream &output) {
   return translateSimpleOp(divSOp, output, "div_s");
 }
-llvm::LogicalResult translateRemUOp(IRemUOp remUOp, raw_ostream &output) {
-  return translateSimpleOp(remUOp, output, "rem_u");
+llvm::LogicalResult translateIRemUOp(IRemUOp iRemUOp, raw_ostream &output) {
+  return translateSimpleOp(iRemUOp, output, "rem_u");
+}
+llvm::LogicalResult translateIRemSOp(IRemSOp iRemSOp, raw_ostream &output) {
+  return translateSimpleOp(iRemSOp, output, "rem_s");
 }
 llvm::LogicalResult translateLoadOp(LoadOp loadOp, raw_ostream &output) {
   return translateSimpleOp(loadOp, output, "load");
@@ -584,8 +587,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateLtSOp(ltSOp, output);
   } else if (auto divSOp = dyn_cast<IDivSOp>(op)) {
     return translateDivSOp(divSOp, output);
-  } else if (auto remUOp = dyn_cast<IRemUOp>(op)) {
-    return translateRemUOp(remUOp, output);
+  } else if (auto iRemUOp = dyn_cast<IRemUOp>(op)) {
+    return translateIRemUOp(iRemUOp, output);
+  } else if (auto iRemSOp = dyn_cast<IRemSOp>(op)) {
+    return translateIRemSOp(iRemSOp, output);
   } else if (auto loadOp = dyn_cast<LoadOp>(op)) {
     return translateLoadOp(loadOp, output);
   } else if (auto storeOp = dyn_cast<StoreOp>(op)) {
@@ -701,7 +706,7 @@ struct FuncSignature {
     }
   }
   FuncSignature(ImportFuncOp &importFuncOp) {
-    for (Type argType : importFuncOp.getFunctionType().getInputs()) {
+    for (Type argType : importFuncOp.getFuncType().getInputs()) {
       // function arguments are always local variables
       std::string watType;
       if (failed(getWatType(argType, watType))) {
@@ -710,8 +715,8 @@ struct FuncSignature {
       }
       paramTypes.push_back(watType);
     }
-    resultTypes.reserve(importFuncOp.getFunctionType().getResults().size());
-    for (auto resultType : importFuncOp.getFunctionType().getResults()) {
+    resultTypes.reserve(importFuncOp.getFuncType().getResults().size());
+    for (auto resultType : importFuncOp.getFuncType().getResults()) {
       std::string watType;
       if (failed(getWatType(resultType, watType))) {
         importFuncOp.emitError("unsupported result type");
@@ -940,8 +945,8 @@ LogicalResult translateImportOps(ModuleOp &moduleOp, raw_ostream &output,
     // FIXME
     FuncSignature signature(importFuncOp);
     output << "(import \"" << "env" << "\"" << " " << "\""
-           << importFuncOp.getName() << "\"" << " "
-           << "(func $" << importFuncOp.getName() << " " << "(type "
+           << importFuncOp.getFuncName() << "\"" << " "
+           << "(func $" << importFuncOp.getFuncName() << " " << "(type "
            << funcSignatureList.getFunctionTypeNameOrIndex(signature) << ")"
            << "))\n";
   });
