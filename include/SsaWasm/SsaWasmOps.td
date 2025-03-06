@@ -222,6 +222,15 @@ def SsaWasm_TruncateFPToSIOp : SsaWasm_Op<"truncate_fp_to_si", [Pure]> {
   let results = (outs SsaWasm_WasmIntegerType:$result);
 }
 
+def SsaWasm_SqrtOp : SsaWasm_Op<"sqrt", [Pure]> {
+  let summary = "square root operation";
+  let description = [{
+    Computes the square root of the operand.
+  }];
+  let arguments = (ins SsaWasm_WasmFloatType:$value);
+  let results = (outs SsaWasm_WasmFloatType:$result);
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // Function Operations
 ///////////////////////////////////////////////////////////////////////////
