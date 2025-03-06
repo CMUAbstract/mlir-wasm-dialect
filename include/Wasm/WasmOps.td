@@ -111,7 +111,13 @@ def Wasm_ILeUOp : Wasm_IntegerBinaryOp<"le_u">;
 
 def Wasm_FAbsOp : Wasm_FloatUnaryOp<"abs">;
 def Wasm_FNegOp : Wasm_FloatUnaryOp<"neg">;
-def Wasm_FSqrtOp : Wasm_FloatUnaryOp<"sqrt">;
+def Wasm_FSqrtOp : Wasm_FloatUnaryOp<"sqrt"> {
+    let summary = "square root operation";
+    let description = [{
+        Computes the square root of the operand.
+    }];
+    let arguments = (ins TypeAttr:$type);
+}
 def Wasm_FCeilOp : Wasm_FloatUnaryOp<"ceil">;
 def Wasm_FFloorOp : Wasm_FloatUnaryOp<"floor">;
 def Wasm_FNearesetOp : Wasm_FloatUnaryOp<"nearest">;

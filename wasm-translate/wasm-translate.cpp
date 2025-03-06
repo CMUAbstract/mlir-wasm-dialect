@@ -184,6 +184,9 @@ llvm::LogicalResult translateFMinOp(FMinOp fMinOp, raw_ostream &output) {
 llvm::LogicalResult translateFMaxOp(FMaxOp fMaxOp, raw_ostream &output) {
   return translateSimpleOp(fMaxOp, output, "max");
 }
+llvm::LogicalResult translateFSqrtOp(FSqrtOp fSqrtOp, raw_ostream &output) {
+  return translateSimpleOp(fSqrtOp, output, "sqrt");
+}
 llvm::LogicalResult translateTruncateFPToSIOp(TruncateFPToSIOp truncateFPToSIOp,
                                               raw_ostream &output) {
   std::string opName;
@@ -633,6 +636,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFMinOp(fMinOp, output);
   } else if (auto fMaxOp = dyn_cast<FMaxOp>(op)) {
     return translateFMaxOp(fMaxOp, output);
+  } else if (auto fSqrtOp = dyn_cast<FSqrtOp>(op)) {
+    return translateFSqrtOp(fSqrtOp, output);
   } else if (auto truncateFPToSIOp = dyn_cast<TruncateFPToSIOp>(op)) {
     return translateTruncateFPToSIOp(truncateFPToSIOp, output);
   } else if (auto convertSIToFPOp = dyn_cast<ConvertSIToFPOp>(op)) {

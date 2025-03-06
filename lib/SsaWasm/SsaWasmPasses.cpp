@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -14,6 +15,7 @@
 
 #include "SsaWasm/ConversionPatterns/ArithToSsaWasm.h"
 #include "SsaWasm/ConversionPatterns/FuncToSsaWasm.h"
+#include "SsaWasm/ConversionPatterns/MathToSsaWasm.h"
 #include "SsaWasm/ConversionPatterns/MemRefToSsaWasm.h"
 #include "SsaWasm/ConversionPatterns/ScfToSsaWasm.h"
 #include "SsaWasm/SsaWasmPasses.h"
@@ -25,6 +27,7 @@
 using namespace std;
 
 namespace mlir::ssawasm {
+#define GEN_PASS_DEF_CONVERTMATHTOSSAWASM
 #define GEN_PASS_DEF_CONVERTARITHTOSSAWASM
 #define GEN_PASS_DEF_CONVERTFUNCTOSSAWASM
 #define GEN_PASS_DEF_CONVERTMEMREFTOSSAWASM
@@ -33,6 +36,31 @@ namespace mlir::ssawasm {
 #define GEN_PASS_DEF_CONVERTSSAWASMTOWASM
 #define GEN_PASS_DEF_CONVERTSSAWASMGLOBALTOWASM
 #include "SsaWasm/SsaWasmPasses.h.inc"
+
+class ConvertMathToSsaWasm
+    : public impl::ConvertMathToSsaWasmBase<ConvertMathToSsaWasm> {
+public:
+  using impl::ConvertMathToSsaWasmBase<
+      ConvertMathToSsaWasm>::ConvertMathToSsaWasmBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    SsaWasmTypeConverter typeConverter(context);
+    ConversionTarget target(*context);
+
+    target.addLegalDialect<ssawasm::SsaWasmDialect>();
+    target.addIllegalDialect<math::MathDialect>();
+    target.addLegalOp<UnrealizedConversionCastOp>();
+
+    RewritePatternSet patterns(context);
+    populateMathToSsaWasmPatterns(typeConverter, patterns);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
 
 class ConvertArithToSsaWasm
     : public impl::ConvertArithToSsaWasmBase<ConvertArithToSsaWasm> {
@@ -933,6 +961,10 @@ private:
                                        op->getContext()),
           convertSsaWasmTypeToWasmType(op->getOperand(0).getType(),
                                        op->getContext()));
+    } else if (isa<SqrtOp>(op)) {
+      rewriter.create<wasm::FSqrtOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
     } else if (isa<LocalOp>(op)) {
       rewriter.create<wasm::LocalSetOp>(
           op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
