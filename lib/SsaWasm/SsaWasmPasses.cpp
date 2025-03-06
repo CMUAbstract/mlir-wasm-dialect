@@ -9,6 +9,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 
 #include "SsaWasm/ConversionPatterns/ArithToSsaWasm.h"
@@ -129,7 +130,7 @@ public:
     RewritePatternSet patterns(context);
     populateScfToSsaWasmPatterns(typeConverter, patterns);
 
-    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
       signalPassFailure();
     }
   }
