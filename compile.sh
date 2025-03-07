@@ -139,24 +139,32 @@ elif [[ "$COMPILER" == "llvm" ]]; then
 
     echo "Converting $INPUT_MLIR to LLVM dialect..."
     mlir-opt "$INPUT_MLIR" \
-        --lower-affine \
-        --canonicalize \
-        --cse \
-        --sccp \
-        --loop-invariant-code-motion \
-        --loop-invariant-subset-hoisting \
-        --convert-scf-to-cf \
-        --convert-arith-to-llvm="index-bitwidth=32" \
-        --convert-func-to-llvm="index-bitwidth=32" \
-        --memref-expand --expand-strided-metadata \
-        --finalize-memref-to-llvm="index-bitwidth=32" \
-        --convert-to-llvm --reconcile-unrealized-casts \
-        --cse \
-        --sccp \
-        --control-flow-sink \
-        --loop-invariant-code-motion \
-        --loop-invariant-subset-hoisting \
-        -o "$OUTPUT_LLVM_MLIR"
+    --lower-affine \
+    --canonicalize \
+    --sccp \
+    --loop-invariant-code-motion \
+    --loop-invariant-subset-hoisting \
+    --cse \
+    --control-flow-sink \
+    --convert-scf-to-cf \
+    --convert-arith-to-llvm="index-bitwidth=32" \
+    --convert-func-to-llvm="index-bitwidth=32" \
+    --memref-expand --expand-strided-metadata \
+    --finalize-memref-to-llvm="index-bitwidth=32" \
+    --canonicalize \
+    --sccp \
+    --loop-invariant-code-motion \
+    --loop-invariant-subset-hoisting \
+    --cse \
+    --control-flow-sink \
+    --convert-to-llvm --reconcile-unrealized-casts \
+    --canonicalize \
+    --sccp \
+    --loop-invariant-code-motion \
+    --loop-invariant-subset-hoisting \
+    --cse \
+    --control-flow-sink \
+    -o "$OUTPUT_LLVM_MLIR"
 
     echo "Translating $OUTPUT_LLVM_MLIR to LLVM IR (.ll)..."
     mlir-translate "$OUTPUT_LLVM_MLIR" --mlir-to-llvmir -o "$OUTPUT_LL"
