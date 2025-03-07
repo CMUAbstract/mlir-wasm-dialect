@@ -195,7 +195,14 @@ struct IfOpLowering : public RewritePattern {
       emitError(loc, "Failed to convert types");
       return failure();
     }
-    auto ifElseOp = rewriter.create<IfElseOp>(loc, convertedTypes, condition);
+    auto castedCondition =
+        rewriter
+            .create<UnrealizedConversionCastOp>(
+                loc, typeConverter.convertType(condition.getType()), condition)
+            .getResult(0);
+
+    auto ifElseOp =
+        rewriter.create<IfElseOp>(loc, convertedTypes, castedCondition);
 
     // Move the then body
     rewriter.inlineRegionBefore(ifOp.getThenRegion(), ifElseOp.getThenRegion(),
