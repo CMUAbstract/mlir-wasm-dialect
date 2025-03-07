@@ -28,6 +28,7 @@ module {
         memref.store %6, %alloc[%arg0, %arg1] : memref<100x80xf64>
       }
     }
+    call @toggle_gpio() : () -> ()
     affine.for %arg0 = 0 to 80 {
       affine.store %cst_1, %alloc_6[%arg0] : memref<80xf64>
       %0 = arith.index_cast %arg0 : index to i32
@@ -99,6 +100,7 @@ module {
       }
     }
     affine.store %cst_0, %alloc_5[79, 79] : memref<80x80xf64>
+    call @toggle_gpio() : () -> ()
     scf.for %arg0 = %c0 to %c80 step %c1 {
       scf.for %arg1 = %c0 to %c80 step %c1 {
         %0 = memref.load %alloc_5[%arg0, %arg1] : memref<80x80xf64>
@@ -112,5 +114,6 @@ module {
     memref.dealloc %alloc_7 : memref<80xf64>
     return %c0_i32 : i32
   }
+  func.func private @toggle_gpio()
   func.func private @print_i32(i32)
 }
