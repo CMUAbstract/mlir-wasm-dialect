@@ -34,7 +34,6 @@ def main():
             capture_mode=automation.DigitalTriggerCaptureMode(
                 trigger_type=automation.DigitalTriggerType.FALLING,  # Trigger on falling edge
                 trigger_channel_index=0,  # Monitor channel 0 for the trigger
-                after_trigger_seconds=0.001,  # Capture an additional 1ms after the trigger
             )
         )
 
@@ -44,21 +43,25 @@ def main():
             capture_configuration=capture_configuration,
         ) as capture:
             # Execute the flash command
-            subprocess.Popen(
-                flash_command,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            ).communicate()
+            try:
+                subprocess.Popen(
+                    flash_command,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                ).communicate()
 
-            # Wait for the flash process to complete
-            # Wait for the capture to complete automatically after the falling edge
-            capture.wait()
-            # print("Capture completed automatically after falling edge.")
+                # Wait for the flash process to complete
+                # Wait for the capture to complete automatically after the falling edge
+                capture.wait()
+                # print("Capture completed automatically after falling edge.")
 
-            # Export the captured data to a CSV file
-            capture.export_raw_data_csv(export_filepath)
-            # print(f"Data exported to {export_filepath}")
+                # Export the captured data to a CSV file
+                capture.export_raw_data_csv(export_filepath)
+                # print(f"Data exported to {export_filepath}")
+            except Exception as e:
+                print(f"Error executing flash command: {e}")
+                raise e
 
     # Analyze the exported data to measure the time window
     rising_edge_time = None
