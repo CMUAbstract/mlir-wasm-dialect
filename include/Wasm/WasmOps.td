@@ -73,6 +73,7 @@ def Wasm_MulOp : Wasm_NumericBinaryOp<"mul">;
 
 def Wasm_EqOp : Wasm_NumericBinaryOp<"eq">;
 def Wasm_LtSOp : Wasm_NumericBinaryOp<"lt_s">;
+def Wasm_GeSOp : Wasm_NumericBinaryOp<"ge_s">;
 
 // integer unary operations
 
@@ -96,7 +97,7 @@ def Wasm_IDivSOp : Wasm_IntegerBinaryOp<"div_s">;
 def Wasm_IDivUOp : Wasm_IntegerBinaryOp<"div_u">;
 def Wasm_IRemSOp : Wasm_IntegerBinaryOp<"rem_s">;
 def Wasm_IRemUOp : Wasm_IntegerBinaryOp<"rem_u">;
-def Wasm_IAndOp : Wasm_IntegerBinaryOp<"and">;
+def Wasm_AndIOp : Wasm_IntegerBinaryOp<"and">;
 def Wasm_IOrOp : Wasm_IntegerBinaryOp<"or">;
 def Wasm_IXorOp : Wasm_IntegerBinaryOp<"xor">;
 def Wasm_IShlOp : Wasm_IntegerBinaryOp<"shl">;
