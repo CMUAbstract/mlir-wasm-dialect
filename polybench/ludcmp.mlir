@@ -65,8 +65,6 @@ module {
     memref.dealloc %alloc_6 : memref<120x120xf64>
     call @toggle_gpio() : () -> ()
     %alloca = memref.alloca() : memref<f64>
-    %0 = llvm.mlir.undef : f64
-    affine.store %0, %alloca[] : memref<f64>
     affine.for %arg0 = 0 to 120 {
       affine.for %arg1 = 0 to #map(%arg0) {
         %1 = affine.load %alloc[%arg0, %arg1] : memref<120x120xf64>

@@ -35,8 +35,6 @@ module {
     }
     call @toggle_gpio() : () -> ()
     %alloca = memref.alloca() : memref<f64>
-    %0 = llvm.mlir.undef : f64
-    affine.store %0, %alloca[] : memref<f64>
     affine.for %arg0 = 0 to 80 {
       affine.store %cst_2, %alloca[] : memref<f64>
       affine.for %arg1 = 0 to 60 {
