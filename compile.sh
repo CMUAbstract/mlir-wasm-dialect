@@ -99,8 +99,8 @@ if [[ "$COMPILER" == "mlir" ]]; then
     --lower-affine \
     --convert-math-to-ssawasm \
     --convert-arith-to-ssawasm \
-    --convert-func-to-ssawasm \
     --convert-memref-to-ssawasm \
+    --convert-func-to-ssawasm \
     --reconcile-unrealized-casts \
     --canonicalize \
     --sccp \
