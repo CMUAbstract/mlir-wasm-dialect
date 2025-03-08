@@ -159,6 +159,22 @@ def SsaWasm_LtSOp : SsaWasm_WasmNumericBinaryOp<"lt_s"> {
   // TODO: Add folder
 }
 
+def SsaWasm_GeSOp : SsaWasm_WasmNumericBinaryOp<"ge_s"> {
+  let description = [{
+    Compares two operands explicitly and yields the result of the comparison.
+  }];
+
+  // TODO: Add folder
+}
+
+def SsaWasm_AndIOp : SsaWasm_WasmNumericBinaryOp<"and"> {
+  let description = [{
+    Performs a bitwise AND operation on the two operands.
+  }];
+
+  // TODO: Add folder
+}
+
 def SsaWasm_DivSOp : SsaWasm_WasmNumericBinaryOp<"div_s"> {
   let description = [{
     Divides the left-hand-side operand by the right-hand-side operand and
@@ -232,6 +248,25 @@ def SsaWasm_TruncateFPToSIOp : SsaWasm_Op<"truncate_fp_to_si", [Pure]> {
   let arguments = (ins SsaWasm_WasmFloatType:$value);
   let results = (outs SsaWasm_WasmIntegerType:$result);
 }
+
+def SsaWasm_ShlOp : SsaWasm_Op<"shl", [Pure, SameOperandsAndResultType]> {
+  let description = [{
+    Shifts the left-hand-side operand left by the right-hand-side operand.
+  }];
+  let arguments = (ins SsaWasm_WasmIntegerType:$num, SsaWasm_WasmIntegerType:$by);
+  let results = (outs SsaWasm_WasmIntegerType:$result);
+  let assemblyFormat = "$num `,` $by attr-dict `:` type($num)";
+}
+
+def SsaWasm_ShrSOp : SsaWasm_Op<"shr_s", [Pure, SameOperandsAndResultType]> {
+  let description = [{
+    Shifts the left-hand-side operand right by the right-hand-side operand.
+  }];
+  let arguments = (ins SsaWasm_WasmIntegerType:$num, SsaWasm_WasmIntegerType:$by);
+  let results = (outs SsaWasm_WasmIntegerType:$result);
+  let assemblyFormat = "$num `,` $by attr-dict `:` type($num)";
+}
+
 
 def SsaWasm_SqrtOp : SsaWasm_Op<"sqrt", [Pure]> {
   let summary = "square root operation";

@@ -966,6 +966,14 @@ private:
                                        op->getContext()),
           convertSsaWasmTypeToWasmType(op->getOperand(0).getType(),
                                        op->getContext()));
+    } else if (isa<ShlOp>(op)) {
+      rewriter.create<wasm::IShlOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
+    } else if (isa<ShrSOp>(op)) {
+      rewriter.create<wasm::IShrSOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
     } else if (isa<SqrtOp>(op)) {
       rewriter.create<wasm::FSqrtOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
@@ -1009,6 +1017,14 @@ private:
                             op->getResult(0).getType(), op->getContext())));
     } else if (isa<LtSOp>(op)) {
       rewriter.create<wasm::LtSOp>(
+          op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
+                            op->getResult(0).getType(), op->getContext())));
+    } else if (isa<GeSOp>(op)) {
+      rewriter.create<wasm::GeSOp>(
+          op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
+                            op->getResult(0).getType(), op->getContext())));
+    } else if (isa<AndIOp>(op)) {
+      rewriter.create<wasm::AndIOp>(
           op->getLoc(), TypeAttr::get(convertSsaWasmTypeToWasmType(
                             op->getResult(0).getType(), op->getContext())));
     } else if (isa<DivSOp>(op)) {

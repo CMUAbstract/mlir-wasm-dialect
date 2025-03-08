@@ -33,6 +33,7 @@ using RemUIOpLowering = NumericBinaryOpLowering<arith::RemUIOp, RemUIOp>;
 using RemSIOpLowering = NumericBinaryOpLowering<arith::RemSIOp, RemSIOp>;
 using DivSIOpLowering = NumericBinaryOpLowering<arith::DivSIOp, DivSOp>;
 using DivFOpLowering = NumericBinaryOpLowering<arith::DivFOp, DivFOp>;
+using AndIOpLowering = NumericBinaryOpLowering<arith::AndIOp, AndIOp>;
 
 struct CmpFOpLowering : public OpConversionPattern<arith::CmpFOp> {
   using OpConversionPattern<arith::CmpFOp>::OpConversionPattern;
@@ -60,6 +61,9 @@ struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
       rewriter.replaceOpWithNewOp<EqOp>(op, adaptor.getLhs(), adaptor.getRhs());
     } else if (op.getPredicate() == arith::CmpIPredicate::slt) {
       rewriter.replaceOpWithNewOp<LtSOp>(op, adaptor.getLhs(),
+                                         adaptor.getRhs());
+    } else if (op.getPredicate() == arith::CmpIPredicate::sge) {
+      rewriter.replaceOpWithNewOp<GeSOp>(op, adaptor.getLhs(),
                                          adaptor.getRhs());
     } else {
       return rewriter.notifyMatchFailure(op,
@@ -144,6 +148,64 @@ struct FPToSIOpLowering : public OpConversionPattern<arith::FPToSIOp> {
     return success();
   }
 };
+
+struct TruncIOpLowering : public OpConversionPattern<arith::TruncIOp> {
+  using OpConversionPattern<arith::TruncIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::TruncIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Get source and result types
+    auto srcType = cast<IntegerType>(op.getIn().getType());
+    auto dstType = cast<IntegerType>(op.getOut().getType());
+
+    // Calculate bit width difference
+    unsigned srcWidth = srcType.getWidth();
+    unsigned dstWidth = dstType.getWidth();
+    assert(srcWidth > dstWidth && "srcWidth must be greater than dstWidth");
+    unsigned shiftAmount = srcWidth - dstWidth;
+
+    // Create a constant for the shift amount
+    auto shiftConstant = rewriter.create<ConstantOp>(
+        op.getLoc(), rewriter.getI32IntegerAttr(shiftAmount));
+
+    // First shift left to clear high bits
+    auto shiftLeft = rewriter.create<ShlOp>(
+        op.getLoc(), getTypeConverter()->convertType(srcType), adaptor.getIn(),
+        shiftConstant);
+
+    // Then shift right (arithmetic) to restore sign
+    // NOTE: The result of the shift right is
+    // still of type srcType, not dstType
+    auto shiftRight = rewriter.create<ShrSOp>(
+        op.getLoc(), getTypeConverter()->convertType(srcType), shiftLeft,
+        shiftConstant);
+
+    rewriter.replaceOp(op, shiftRight);
+    return success();
+  }
+};
+
+struct ExtSIOpLowering : public OpConversionPattern<arith::ExtSIOp> {
+  using OpConversionPattern<arith::ExtSIOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::ExtSIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // FIXME: For now we assume that this is already sign extended
+    // by previous operations, so we can just return the input
+    rewriter.replaceOp(op, adaptor.getIn());
+    return success();
+  }
+};
+struct ExtUIOpLowering : public OpConversionPattern<arith::ExtUIOp> {
+  using OpConversionPattern<arith::ExtUIOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::ExtUIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOp(op, adaptor.getIn());
+    return success();
+  }
+};
 } // namespace
 
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
@@ -154,6 +216,8 @@ void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                DivSIOpLowering, CmpIOpLowering, CmpFOpLowering,
                SelectOpLowering, RemUIOpLowering, RemSIOpLowering,
                ConstantOpLowering, IndexCastOpLowering, SIToFPOpLowering,
-               FPToSIOpLowering, DivFOpLowering>(typeConverter, context);
+               FPToSIOpLowering, DivFOpLowering, TruncIOpLowering,
+               ExtSIOpLowering, ExtUIOpLowering, AndIOpLowering>(typeConverter,
+                                                                 context);
 }
 } // namespace mlir::ssawasm
