@@ -20,6 +20,19 @@ struct NumericBinaryOpLowering : public OpConversionPattern<SrcOp> {
     return success();
   }
 };
+template <typename SrcOp, typename TgtOp>
+struct NumericUnaryOpLowering : public OpConversionPattern<SrcOp> {
+  using OpConversionPattern<SrcOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(SrcOp op, typename SrcOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType =
+        this->getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<TgtOp>(op, resultType, adaptor.getOperand());
+    return success();
+  }
+};
 
 using AddIOpLowering = NumericBinaryOpLowering<arith::AddIOp, AddOp>;
 using AddFOpLowering = NumericBinaryOpLowering<arith::AddFOp, AddOp>;
@@ -34,6 +47,8 @@ using RemSIOpLowering = NumericBinaryOpLowering<arith::RemSIOp, RemSIOp>;
 using DivSIOpLowering = NumericBinaryOpLowering<arith::DivSIOp, DivSOp>;
 using DivFOpLowering = NumericBinaryOpLowering<arith::DivFOp, DivFOp>;
 using AndIOpLowering = NumericBinaryOpLowering<arith::AndIOp, AndIOp>;
+
+using NegFOpLowering = NumericUnaryOpLowering<arith::NegFOp, NegFOp>;
 
 struct CmpFOpLowering : public OpConversionPattern<arith::CmpFOp> {
   using OpConversionPattern<arith::CmpFOp>::OpConversionPattern;
@@ -211,13 +226,13 @@ struct ExtUIOpLowering : public OpConversionPattern<arith::ExtUIOp> {
 void populateArithToSsaWasmPatterns(TypeConverter &typeConverter,
                                     RewritePatternSet &patterns) {
   MLIRContext *context = patterns.getContext();
-  patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-               MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
-               DivSIOpLowering, CmpIOpLowering, CmpFOpLowering,
-               SelectOpLowering, RemUIOpLowering, RemSIOpLowering,
-               ConstantOpLowering, IndexCastOpLowering, SIToFPOpLowering,
-               FPToSIOpLowering, DivFOpLowering, TruncIOpLowering,
-               ExtSIOpLowering, ExtUIOpLowering, AndIOpLowering>(typeConverter,
-                                                                 context);
+  patterns
+      .add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+           MulIOpLowering, MulFOpLowering, MinFOpLowering, MaxFOpLowering,
+           DivSIOpLowering, CmpIOpLowering, CmpFOpLowering, SelectOpLowering,
+           RemUIOpLowering, RemSIOpLowering, ConstantOpLowering,
+           IndexCastOpLowering, SIToFPOpLowering, FPToSIOpLowering,
+           DivFOpLowering, TruncIOpLowering, ExtSIOpLowering, ExtUIOpLowering,
+           AndIOpLowering, NegFOpLowering>(typeConverter, context);
 }
 } // namespace mlir::ssawasm

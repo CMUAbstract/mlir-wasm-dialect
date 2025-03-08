@@ -202,6 +202,9 @@ llvm::LogicalResult translateIShlOp(IShlOp iShlOp, raw_ostream &output) {
 llvm::LogicalResult translateIShrSOp(IShrSOp iShrSOp, raw_ostream &output) {
   return translateSimpleOp(iShrSOp, output, "shr_s");
 }
+llvm::LogicalResult translateNegFOp(NegFOp negFOp, raw_ostream &output) {
+  return translateSimpleOp(negFOp, output, "neg");
+}
 llvm::LogicalResult translateTruncateFPToSIOp(TruncateFPToSIOp truncateFPToSIOp,
                                               raw_ostream &output) {
   std::string opName;
@@ -663,6 +666,8 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateIShlOp(iShlOp, output);
   } else if (auto iShrSOp = dyn_cast<IShrSOp>(op)) {
     return translateIShrSOp(iShrSOp, output);
+  } else if (auto negFOp = dyn_cast<NegFOp>(op)) {
+    return translateNegFOp(negFOp, output);
   } else if (auto truncateFPToSIOp = dyn_cast<TruncateFPToSIOp>(op)) {
     return translateTruncateFPToSIOp(truncateFPToSIOp, output);
   } else if (auto convertSIToFPOp = dyn_cast<ConvertSIToFPOp>(op)) {
