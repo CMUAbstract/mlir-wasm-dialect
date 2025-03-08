@@ -163,6 +163,12 @@ llvm::LogicalResult translateEqOp(EqOp eqOp, raw_ostream &output) {
 llvm::LogicalResult translateLtSOp(LtSOp ltSOp, raw_ostream &output) {
   return translateSimpleOp(ltSOp, output, "lt_s");
 }
+llvm::LogicalResult translateGeSOp(GeSOp geSOp, raw_ostream &output) {
+  return translateSimpleOp(geSOp, output, "ge_s");
+}
+llvm::LogicalResult translateAndIOp(AndIOp andIOp, raw_ostream &output) {
+  return translateSimpleOp(andIOp, output, "and");
+}
 llvm::LogicalResult translateDivSOp(IDivSOp divSOp, raw_ostream &output) {
   return translateSimpleOp(divSOp, output, "div_s");
 }
@@ -189,6 +195,12 @@ llvm::LogicalResult translateFMaxOp(FMaxOp fMaxOp, raw_ostream &output) {
 }
 llvm::LogicalResult translateFSqrtOp(FSqrtOp fSqrtOp, raw_ostream &output) {
   return translateSimpleOp(fSqrtOp, output, "sqrt");
+}
+llvm::LogicalResult translateIShlOp(IShlOp iShlOp, raw_ostream &output) {
+  return translateSimpleOp(iShlOp, output, "shl");
+}
+llvm::LogicalResult translateIShrSOp(IShrSOp iShrSOp, raw_ostream &output) {
+  return translateSimpleOp(iShrSOp, output, "shr_s");
 }
 llvm::LogicalResult translateTruncateFPToSIOp(TruncateFPToSIOp truncateFPToSIOp,
                                               raw_ostream &output) {
@@ -625,6 +637,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateEqOp(eqOp, output);
   } else if (auto ltSOp = dyn_cast<LtSOp>(op)) {
     return translateLtSOp(ltSOp, output);
+  } else if (auto geSOp = dyn_cast<GeSOp>(op)) {
+    return translateGeSOp(geSOp, output);
+  } else if (auto andIOp = dyn_cast<AndIOp>(op)) {
+    return translateAndIOp(andIOp, output);
   } else if (auto divSOp = dyn_cast<IDivSOp>(op)) {
     return translateDivSOp(divSOp, output);
   } else if (auto divFOp = dyn_cast<FDivOp>(op)) {
@@ -643,6 +659,10 @@ llvm::LogicalResult translateOperation(Operation *op, raw_ostream &output) {
     return translateFMaxOp(fMaxOp, output);
   } else if (auto fSqrtOp = dyn_cast<FSqrtOp>(op)) {
     return translateFSqrtOp(fSqrtOp, output);
+  } else if (auto iShlOp = dyn_cast<IShlOp>(op)) {
+    return translateIShlOp(iShlOp, output);
+  } else if (auto iShrSOp = dyn_cast<IShrSOp>(op)) {
+    return translateIShrSOp(iShrSOp, output);
   } else if (auto truncateFPToSIOp = dyn_cast<TruncateFPToSIOp>(op)) {
     return translateTruncateFPToSIOp(truncateFPToSIOp, output);
   } else if (auto convertSIToFPOp = dyn_cast<ConvertSIToFPOp>(op)) {
