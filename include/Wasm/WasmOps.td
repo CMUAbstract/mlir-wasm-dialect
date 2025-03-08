@@ -111,7 +111,7 @@ def Wasm_ILeUOp : Wasm_IntegerBinaryOp<"le_u">;
 // floating-point unary operations
 
 def Wasm_FAbsOp : Wasm_FloatUnaryOp<"abs">;
-def Wasm_FNegOp : Wasm_FloatUnaryOp<"neg">;
+def Wasm_NegFOp : Wasm_FloatUnaryOp<"neg">;
 def Wasm_FSqrtOp : Wasm_FloatUnaryOp<"sqrt"> {
     let summary = "square root operation";
     let description = [{

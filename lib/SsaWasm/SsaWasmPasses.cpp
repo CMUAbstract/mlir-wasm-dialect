@@ -942,6 +942,10 @@ private:
       rewriter.create<wasm::IRemSOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
                                                      op->getContext()));
+    } else if (isa<NegFOp>(op)) {
+      rewriter.create<wasm::NegFOp>(
+          op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
+                                                     op->getContext()));
     } else if (auto constantOp = dyn_cast<ConstantOp>(op)) {
       if (isa<IndexType>(constantOp.getValue().getType())) {
         rewriter.create<wasm::ConstantOp>(
