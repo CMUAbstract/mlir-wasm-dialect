@@ -218,6 +218,31 @@ struct DeallocOpLowering : public OpConversionPattern<memref::DeallocOp> {
   }
 };
 
+struct AllocaOpLowering : public OpConversionPattern<memref::AllocaOp> {
+  using OpConversionPattern<memref::AllocaOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(memref::AllocaOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // ideally we should convert this to either a local variable
+    // or stack allocation
+    // for simplicity, we just treat this as AllocOp
+    Location loc = op.getLoc();
+    MemRefType memRefType = op.getType();
+    int64_t alignment = 1;
+    auto alignmentAttr = adaptor.getAlignment();
+    if (alignmentAttr.has_value()) {
+      alignment = alignmentAttr.value();
+    }
+    int64_t size = computeMemRefSize(memRefType, alignment);
+    auto constantOp =
+        rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(size));
+    rewriter.replaceOpWithNewOp<CallOp>(
+        op, "malloc",
+        TypeRange{WasmMemRefType::get(rewriter.getContext(), memRefType)},
+        ValueRange{constantOp.getResult()});
+    return success();
+  }
+};
 struct ExpandShapeLowering : public OpConversionPattern<memref::ExpandShapeOp> {
   using OpConversionPattern<memref::ExpandShapeOp>::OpConversionPattern;
   LogicalResult
@@ -253,7 +278,8 @@ void populateMemRefToSsaWasmPatterns(TypeConverter &typeConverter,
 
   patterns.add<GlobalOpLowering>(typeConverter, context, baseAddressAnalysis);
   patterns.add<GetGlobalOpLowering, LoadOpLowering, StoreOpLowering,
-               AllocOpLowering, DeallocOpLowering, ExpandShapeLowering,
-               CollapseShapeLowering>(typeConverter, context);
+               AllocOpLowering, DeallocOpLowering, AllocaOpLowering,
+               ExpandShapeLowering, CollapseShapeLowering>(typeConverter,
+                                                           context);
 }
 } // namespace mlir::ssawasm
