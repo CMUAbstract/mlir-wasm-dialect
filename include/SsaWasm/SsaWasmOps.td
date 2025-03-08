@@ -49,6 +49,22 @@ class SsaWasm_WasmNumericBinaryOp<string mnemonic, list<Trait> traits = []>
   let assemblyFormat = "attr-dict $lhs `,` $rhs `:` type($result)";
 }
 
+class SsaWasm_WasmNumericUnaryOp<string mnemonic, list<Trait> traits = []> 
+    : SsaWasm_Op<mnemonic, traits # [Pure, SameOperandsAndResultType]> {
+  let summary = "SSA-based numeric unary operation";
+  let description = [{
+    This is the base class for numeric unary operations in the SSA Wasm dialect.
+    The operand and the result are explicit, allowing for easier analysis and optimization.
+  }];
+
+  // One explicit operand and one result.
+  let arguments = (ins SsaWasm_WasmNumericLike:$operand);
+  let results = (outs SsaWasm_WasmNumericLike:$result);
+
+  // Assembly format shows the operand followed by the type of the result.
+  let assemblyFormat = "attr-dict $operand `:` type($result)";
+}
+
 ///////////////////////////////////////////////////////////////////////////
 // Addition Operation
 ///////////////////////////////////////////////////////////////////////////
@@ -190,6 +206,13 @@ def SsaWasm_DivFOp : SsaWasm_WasmNumericBinaryOp<"div_f"> {
     returns the result.
   }];
 
+  // TODO: Add folder
+}
+
+def SsaWasm_NegFOp : SsaWasm_WasmNumericUnaryOp<"neg"> {
+  let description = [{
+    Negates the operand.
+  }];
   // TODO: Add folder
 }
 
