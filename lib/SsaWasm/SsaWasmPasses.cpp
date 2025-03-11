@@ -782,10 +782,10 @@ public:
     }
 
     RewritePatternSet globalLoweringPattern(context);
-    globalLoweringPattern.add<DataOpLowering, TagOpLowering,
-                              RecContFuncDeclOpLowering, ElemDeclFuncOpLowering,
-                              ContTypeDeclOpLowering, ImportFuncOpLowering>(
-        context);
+    globalLoweringPattern
+        .add<DataOpLowering, TagOpLowering, RecContFuncDeclOpLowering,
+             ElemDeclFuncOpLowering, ContTypeDeclOpLowering,
+             ImportFuncOpLowering, FuncTypeDeclOpLowering>(context);
     target.addIllegalOp<DataOp>();
     target.addIllegalOp<TagOp>();
     target.addIllegalOp<RecContFuncDeclOp>();
@@ -914,7 +914,9 @@ private:
     }
 
     rewriter.setInsertionPoint(op);
-    if (isa<AddOp>(op)) {
+    if (isa<OnStackOp>(op)) {
+      // do nothing
+    } else if (isa<AddOp>(op)) {
       rewriter.create<wasm::AddOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
                                                      op->getContext()));
@@ -1181,16 +1183,13 @@ private:
         loc, rewriter.getStringAttr(innerBlockLabel));
     // if innerExitBlock has arguments, set return_types of innerBlockOp to the
     // argument types
-    if (innerExitBlock->getNumArguments() > 0) {
-      auto returnTypes = innerExitBlock->getArgumentTypes();
-      MLIRContext *context = innerBlockOp->getContext();
-      SmallVector<Attribute> typeAttrs;
-      for (Type t : returnTypes) {
-        typeAttrs.push_back(
-            TypeAttr::get(convertSsaWasmTypeToWasmType(t, context)));
-      }
-      innerBlockOp.setReturnTypesAttr(ArrayAttr::get(context, typeAttrs));
+    SmallVector<Attribute> typeAttrs;
+    for (Attribute attr : blockBlockOp.getInnerBlockResultTypes()) {
+      TypeAttr typeAttr = cast<TypeAttr>(attr);
+      typeAttrs.push_back(TypeAttr::get(convertSsaWasmTypeToWasmType(
+          typeAttr.getValue(), innerBlockOp.getContext())));
     }
+    innerBlockOp.setReturnTypesAttr(rewriter.getArrayAttr(typeAttrs));
 
     Block *tempBlock = new Block();
     moveAndMergeBlocksInBlockBlock(blockBlockOp, innerExitBlock, tempBlock,
