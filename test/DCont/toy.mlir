@@ -32,7 +32,7 @@ module {
       "dcont.resume"(%loaded) 
         ({ ^bb0(%suspended_cont: !dcont.cont<"ct">): 
           dcont.store %storage, %suspended_cont : !dcont.cont<"ct"> -> !dcont.storage<"ct">
-          "dcont.suspend_handler_terminator"() : () -> ()
+          dcont.suspend_handler_return : () -> ()
         }) : (!dcont.cont<"ct">) -> ()
       %x = ssawasm.constant 0 : i32 !ssawasm<integer 32>
       ssawasm.call @print_i32(%x) : (!ssawasm<integer 32>) -> ()

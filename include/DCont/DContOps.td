@@ -85,8 +85,10 @@ def DCont_ResumeOp : DCont_Op<"resume"> {
     let regions = (region SizedRegion<1>:$suspend_handler);
 }
 
-def DCont_SuspendHandlerTerminator : DCont_Op<"suspend_handler_terminator", [Terminator]>{
-    let summary = "terminator for suspend handler";
+def DCont_SuspendHandlerReturnOp : DCont_Op<"suspend_handler_return", [Terminator]>{
+    let summary = "return from suspend handler";
+    let results = (outs Variadic<AnyType>:$results);
+    let assemblyFormat = "attr-dict `:` type($results)";
 }
 
 
