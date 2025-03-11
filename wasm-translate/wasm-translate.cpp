@@ -1080,8 +1080,8 @@ LogicalResult translateGlobalOps(ModuleOp &moduleOp, raw_ostream &output) {
 }
 
 LogicalResult addLibc(ModuleOp &moduleOp, raw_ostream &output,
-                      bool hasMemoryOp) {
-  if (hasMemoryOp) {
+                      bool needMalloc) {
+  if (needMalloc) {
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> FileOrErr =
         llvm::MemoryBuffer::getFile("wasm-translate/libc.wat");
     if (std::error_code EC = FileOrErr.getError()) {
@@ -1100,11 +1100,13 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
   FuncSignatureList funcSignatureList =
       initializeFuncSignatureList(module, addDebugFunctions);
 
-  bool hasMemoryOp = false;
+  bool needMalloc = false;
 
   module.walk([&](Operation *op) {
-    if (isa<LoadOp>(op) || isa<StoreOp>(op)) {
-      hasMemoryOp = true;
+    if (auto callOp = dyn_cast<CallOp>(op)) {
+      if (callOp.getCallee() == "malloc") {
+        needMalloc = true;
+      }
     }
   });
 
@@ -1148,7 +1150,7 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
   }
 
   // define malloc and free
-  if (failed(addLibc(module, output, hasMemoryOp))) {
+  if (failed(addLibc(module, output, needMalloc))) {
     module.emitError("failed to add libc");
     return failure();
   }
@@ -1188,7 +1190,7 @@ LogicalResult translateModuleToWat(ModuleOp module, raw_ostream &output,
   (export "main" (func $main))
   )"""";
 
-  if (hasMemoryOp) {
+  if (needMalloc) {
     output << R""""(
     (export "malloc" (func $malloc))
     (export "free" (func $free))
