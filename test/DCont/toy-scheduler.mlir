@@ -82,7 +82,7 @@ module {
           } else {
             dcont.store %storage2, %suspended_cont : !dcont.cont<"ct"> -> !dcont.storage<"ct">
           }
-          "dcont.suspend_handler_terminator"() : () -> ()
+          dcont.suspend_handler_return : () -> ()
         }) : (!dcont.cont<"ct">) -> ()
     }
 

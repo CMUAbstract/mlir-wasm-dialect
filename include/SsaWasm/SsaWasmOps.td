@@ -534,6 +534,16 @@ def SsaWasm_LocalGetOp : SsaWasm_Op<"local_get"> {
   let assemblyFormat = "$local `:` type($local) `->` type($result) attr-dict";
 }
 
+
+def SsaWasm_OnStackOp : SsaWasm_Op<"on_stack"> {
+  let description = [{
+    This operation declares a variable on the stack.
+  }];
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
+}
+
+
 def SsaWasm_BlockLoopOp : SsaWasm_Op<"blockloop"> {
   let description = [{
     This is a temporary operation used to model 
@@ -592,6 +602,13 @@ def SsaWasm_BlockBlockOp : SsaWasm_Op<"block_block"> {
     // TODO: Convert this to a builder
     std::tuple<Block *, Block *, Block *, Block *> initialize(OpBuilder &builder);
   }];
+  let arguments = (ins TypeArrayAttr:$inner_block_result_types);
+
+  let builders = [
+    OpBuilder<(ins CArg<"ArrayRef<Type>", "{}">:$inner_block_result_types), [{
+      build($_builder, $_state, $_builder.getTypeArrayAttr(inner_block_result_types));
+    }]>
+  ];
 }
 
 def SsaWasm_BlockBlockTerminatorOp : SsaWasm_Op<"block_block.terminator", [Terminator]> {

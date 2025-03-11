@@ -274,7 +274,20 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     // 	        exit
     //
 
+    // create local variables for the results
+    SmallVector<Value> newResults;
+    for (auto result : op.getResults()) {
+      auto convertedType = getTypeConverter()->convertType(result.getType());
+      auto localOp =
+          rewriter.create<ssawasm::LocalOp>(loc, convertedType, result);
+      newResults.push_back(localOp.getResult());
+    }
+
+    // create a BlockBlockOp
     auto blockBlockOp = rewriter.create<ssawasm::BlockBlockOp>(loc);
+    blockBlockOp.setInnerBlockResultTypesAttr(
+        rewriter.getArrayAttr(ArrayRef<Attribute>{TypeAttr::get(
+            getTypeConverter()->convertType(op.getCont().getType()))}));
     auto [outerEntryBlock, innerEntryBlock2, innerExitBlock, outerExitBlock] =
         blockBlockOp.initialize(rewriter);
     auto innerEntryBlock1 =
@@ -284,45 +297,47 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     rewriter.create<ssawasm::TempBranchOp>(loc, innerEntryBlock1);
 
     rewriter.setInsertionPointToEnd(innerEntryBlock1);
-    rewriter.create<ssawasm::ResumeOp>(loc,
-                                       /*results=*/op.getResults().getType(),
-                                       /*tag=*/rewriter.getStringAttr("yield"),
-                                       /*cont=*/adaptor.getCont(),
-                                       /*args=*/adaptor.getArgs(),
-                                       /*on_yield=*/innerExitBlock,
-                                       /*fallback=*/innerEntryBlock2);
+    auto resumeOp = rewriter.create<ssawasm::ResumeOp>(
+        loc,
+        /*results=*/op.getResults().getType(),
+        /*tag=*/rewriter.getStringAttr("yield"),
+        /*cont=*/adaptor.getCont(),
+        /*args=*/adaptor.getArgs(),
+        /*on_yield=*/innerExitBlock,
+        /*fallback=*/innerEntryBlock2);
+
+    // if resumeOp returns a value, we need to store it in the local variables
+    if (resumeOp.getResults().size() > 0) {
+      for (auto [result, local] :
+           llvm::zip(resumeOp.getResults(), newResults)) {
+        rewriter.create<ssawasm::LocalSetOp>(loc, local, result);
+      }
+    }
 
     rewriter.setInsertionPointToEnd(innerEntryBlock2);
     rewriter.create<ssawasm::BlockBlockBranchOp>(loc, outerExitBlock);
 
     rewriter.setInsertionPointToEnd(innerExitBlock);
     // Copy block arguments to the innerExitBlock with type conversion
-    SmallVector<Value> newArguments;
-    if (!op.getSuspendHandler().empty()) { // Check if region has blocks
-      for (auto arg : op.getSuspendHandler().front().getArguments()) {
-        Type convertedType = getTypeConverter()->convertType(arg.getType());
-        newArguments.push_back(
-            innerExitBlock->addArgument(convertedType, arg.getLoc()));
-      }
-
-      // block parameters are in stack, so ideally we don't necessarily need to
-      // store them in locals, but we do it for now for simplicity
-      // TODO: We should fix this in the future
-      SmallVector<Value> newArgLocals;
-      for (auto it = innerExitBlock->getArguments().rbegin();
-           it != innerExitBlock->getArguments().rend(); ++it) {
-        auto arg = *it;
-        auto localOp =
-            rewriter.create<ssawasm::LocalOp>(op.getLoc(), arg.getType(), arg);
-        newArgLocals.push_back(localOp.getResult());
-      }
-
-      // Inline handler operations into innerExitBlock, except the terminator
-      Block &handlerBlock = op.getSuspendHandler().front();
-      auto *terminator = handlerBlock.getTerminator();
-      rewriter.mergeBlocks(&handlerBlock, innerExitBlock, newArgLocals);
-      rewriter.eraseOp(terminator);
+    SmallVector<Value> stackArgs;
+    for (auto arg : op.getSuspendHandler().front().getArguments()) {
+      auto onStackOp = rewriter.create<ssawasm::OnStackOp>(
+          loc, getTypeConverter()->convertType(arg.getType()));
+      stackArgs.push_back(onStackOp.getResult());
     }
+
+    // Inline handler operations into innerExitBlock, except the terminator
+    Block &handlerBlock = op.getSuspendHandler().front();
+    auto *handlerReturnOp = handlerBlock.getTerminator();
+    rewriter.mergeBlocks(&handlerBlock, innerExitBlock, stackArgs);
+
+    // if the handler returns a value, we need to save it in the local
+    // variables
+    for (auto [result, local] :
+         llvm::zip(handlerReturnOp->getResults(), newResults)) {
+      rewriter.create<ssawasm::LocalSetOp>(loc, local, result);
+    }
+    rewriter.eraseOp(handlerReturnOp);
 
     rewriter.setInsertionPointToEnd(innerExitBlock);
     rewriter.create<ssawasm::TempBranchOp>(op.getLoc(), outerExitBlock);
