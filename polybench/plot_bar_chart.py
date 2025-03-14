@@ -7,16 +7,15 @@ import numpy as np
 import sys
 from collections import defaultdict
 
-# Define benchmark categories based on your table of contents
+# Define benchmark categories with line breaks for long names
 BENCHMARK_CATEGORIES = {
     "Data\nMining": ["covariance", "correlation"],
-    "BLAS Routines": ["gemm", "gemver", "gesummv", "symm", "syrk", "syr2k", "trmm"],
-    "Linear Algebra Kernels": ["2mm", "3mm", "atax", "bicg", "doitgen", "mvt"],
-    "Linear Algebra Solvers": ["cholesky", "durbin", "gramschmidt", "lu", "ludcmp", "trisolv"],
+    "BLAS\nRoutines": ["gemm", "gemver", "gesummv", "symm", "syrk", "syr2k", "trmm"],
+    "Linear Algebra\nKernels": ["2mm", "3mm", "atax", "bicg", "doitgen", "mvt"],
+    "Linear Algebra\nSolvers": ["cholesky", "durbin", "gramschmidt", "lu", "ludcmp", "trisolv"],
     "Medley": ["deriche", "floyd-marshall", "nussinov"],
     "Stencils": ["adi", "fdtd-2d", "heat-3d", "jacobi-1d", "jacobi-2d", "seidel-2d"],
     "Dynamic\nProgramming": ["floyd-warshall"]
-
 }
 
 # Create reverse mapping for easy category lookup
@@ -123,23 +122,14 @@ def organize_by_category(data):
     return categorized_data
 
 def add_category_labels(ax, group_positions, category_labels):
+    """Add category labels above the plot."""
     for i, (pos, label) in enumerate(zip(group_positions, category_labels)):
         ax.text(pos, ax.get_ylim()[1] * 1.05, label, ha='center', va='bottom', fontsize=8, 
                 color='black', fontweight='bold', bbox=dict(facecolor='white', alpha=0.95, 
                 boxstyle='round,pad=0.5', edgecolor='lightgray'))
 
-
-def plot_data_with_grouped_categories(data, use_aot, binaryen_opt_level, output_file=None, show_speedup=True, normalize=False, only_speedup=False):
-    """Create bar plots with benchmarks grouped by category in a single plot."""
-
-    # Academic color scheme - colorblind friendly and prints well in grayscale
-    llvm_color = '#0072B2'  # Dark blue
-    mlir_color = '#009E73'  # Dark green
-    
-    # For speedup bars - using a better academic color scheme
-    speedup_positive = '#009E73'  # Dark green for MLIR better
-    speedup_negative = '#D55E00'  # Dark orange/rust for LLVM better
-
+def prepare_plot_data(data):
+    """Prepare data for plotting by organizing by category."""
     # Organize data by category
     categorized_data = organize_by_category(data)
     categories = sorted(categorized_data.keys())
@@ -186,25 +176,40 @@ def plot_data_with_grouped_categories(data, use_aot, binaryen_opt_level, output_
         group_positions.append(middle)
         category_labels.append(category)
     
-    # Create plots
-    if only_speedup:
-        fig = plt.figure(figsize=(max(15, len(benchmark_labels) * 0.5), 8))
-        gs = fig.add_gridspec(1, 1)
-        ax2 = fig.add_subplot(gs[0, 0])
-    elif show_speedup:
-        fig = plt.figure(figsize=(max(15, len(benchmark_labels) * 0.5), 12))
-        gs = fig.add_gridspec(2, 1, height_ratios=[2, 1])
-        ax1 = fig.add_subplot(gs[0, 0])
-        ax2 = fig.add_subplot(gs[1, 0])
-    else:
-        fig = plt.figure(figsize=(max(15, len(benchmark_labels) * 0.5), 8))
-        gs = fig.add_gridspec(1, 1)
-        ax1 = fig.add_subplot(gs[0, 0])
+    return {
+        'categorized_data': categorized_data,
+        'benchmark_positions': benchmark_positions,
+        'benchmark_labels': benchmark_labels,
+        'llvm_times': llvm_times,
+        'mlir_times': mlir_times,
+        'speedups': speedups,
+        'group_positions': group_positions,
+        'category_labels': category_labels,
+        'statistics': {
+            'geo_mean_speedup': geo_mean_speedup,
+            'mlir_wins': mlir_wins,
+            'llvm_wins': llvm_wins,
+            'total_benchmarks': len(all_speedups)
+        }
+    }
+
+# Modification to remove hatching from bars
+
+def plot_execution_time(data, use_aot, binaryen_opt_level, output_file=None, normalize=False):
+    """Plot execution time comparison chart."""
+    # Academic color scheme
+    llvm_color = '#0072B2'  # Dark blue
+    mlir_color = '#009E73'  # Dark green
     
-    # Set figure title
-    execution_mode = "Interpreter" if not use_aot else "AOT"
-    fig.suptitle(f'Speedup of WAMI over LLVM - {execution_mode}', 
-                 fontsize=16, y=0.95)
+    # Prepare data
+    plot_data = prepare_plot_data(data)
+    benchmark_positions = plot_data['benchmark_positions']
+    benchmark_labels = plot_data['benchmark_labels']
+    llvm_times = plot_data['llvm_times']
+    mlir_times = plot_data['mlir_times']
+    group_positions = plot_data['group_positions']
+    category_labels = plot_data['category_labels']
+    categorized_data = plot_data['categorized_data']
     
     # Normalize data if requested
     if normalize:
@@ -216,72 +221,179 @@ def plot_data_with_grouped_categories(data, use_aot, binaryen_opt_level, output_
         plot_mlir_times = mlir_times
         y_label = 'Execution Time (ms)'
     
-    # Plot execution times if not only showing speedup
-    if not only_speedup:
-        ax = ax1
-        width = 0.35
-        
-        ax.bar([p - width/2 for p in benchmark_positions], plot_llvm_times, width, label='LLVM', color='blue', alpha=0.7)
-        ax.bar([p + width/2 for p in benchmark_positions], plot_mlir_times, width, label='MLIR', color='green', alpha=0.7)
-        
-        # Add vertical lines to separate categories
-        for i in range(len(group_positions) - 1):
-            midpoint = (benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i]].keys())[-1])] + 
-                       benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i+1]].keys())[0])]) / 2
-            ax.axvline(x=midpoint, color='gray', linestyle='--', alpha=0.3)
-        
-        ax.set_ylabel(y_label)
-        ax.set_title('Execution Time Comparison')
-        ax.set_xticks(benchmark_positions)
-        ax.set_xticklabels(benchmark_labels, rotation=45, ha='right')
-        ax.legend()
-        
-        add_category_labels(ax, group_positions, category_labels)
+    # Create figure
+    fig = plt.figure(figsize=(max(15, len(benchmark_labels) * 0.5), 8))
+    ax = fig.add_subplot(1, 1, 1)
     
-    # Plot speedup if requested
-    if show_speedup or only_speedup:
-        ax = ax2
-        width = 0.5
-        
-        # Green for MLIR better (speedup > 1), red for LLVM better (speedup < 1)
-        colors = [speedup_positive if s > 1 else speedup_negative for s in speedups]
-        ax.bar(benchmark_positions, speedups, width, color=colors)
-        ax.axhline(y=1, color='black', linestyle='--')
-        
-        # Add vertical lines to separate categories
-        for i in range(len(group_positions) - 1):
-            midpoint = (benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i]].keys())[-1])] + 
-                       benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i+1]].keys())[0])]) / 2
-            ax.axvline(x=midpoint, color='gray', linestyle='--', alpha=0.3)
-        
-        ax.set_ylabel('Speedup (LLVM/WAMI)')
-        # ax.set_title('Speedup Ratio (> 1 means MLIR is better)')
-        ax.set_xticks(benchmark_positions)
-        ax.set_xticklabels(benchmark_labels, rotation=45, ha='right')
-        
-        # Add category labels above the plot
-        add_category_labels(ax, group_positions, category_labels)
+    # Set figure title
+    execution_mode = "Interpreter" if not use_aot else "AOT"
+    fig.suptitle(f'Execution Time Comparison - {execution_mode}', 
+                 fontsize=16, y=0.95)
     
-    # Add summary text
-    summary_text = (f"Geometric Mean Speedup (LLVM/MLIR): {geo_mean_speedup:.3f}\n"
-                   f"Benchmarks where MLIR outperforms LLVM: {mlir_wins} out of {len(all_speedups)}\n"
-                   f"Benchmarks where LLVM outperforms MLIR: {llvm_wins} out of {len(all_speedups)}")
+    # Plot execution times
+    width = 0.35
     
-    # Print summary to stdout
+    # Add bars WITHOUT hatching
+    llvm_bars = ax.bar([p - width/2 for p in benchmark_positions], plot_llvm_times, width, 
+                      label='LLVM', color=llvm_color, alpha=0.85)
+    mlir_bars = ax.bar([p + width/2 for p in benchmark_positions], plot_mlir_times, width, 
+                       label='WAMI', color=mlir_color, alpha=0.85)
+    
+    # Add vertical lines to separate categories
+    for i in range(len(group_positions) - 1):
+        midpoint = (benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i]].keys())[-1])] + 
+                   benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i+1]].keys())[0])]) / 2
+        ax.axvline(x=midpoint, color='gray', linestyle='--', alpha=0.3, linewidth=0.8)
+    
+    # Add gridlines for better readability
+    ax.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    ax.set_ylabel(y_label, fontsize=11)
+    ax.set_xticks(benchmark_positions)
+    ax.set_xticklabels(benchmark_labels, rotation=45, ha='right')
+    ax.legend(frameon=True, framealpha=0.95)
+    
+    add_category_labels(ax, group_positions, category_labels)
+    
+    # Add summary statistics to stdout
+    stats = plot_data['statistics']
+    summary_text = (f"Geometric Mean Speedup (LLVM/WAMI): {stats['geo_mean_speedup']:.3f}\n"
+                   f"Benchmarks where WAMI outperforms LLVM: {stats['mlir_wins']} out of {stats['total_benchmarks']}\n"
+                   f"Benchmarks where LLVM outperforms WAMI: {stats['llvm_wins']} out of {stats['total_benchmarks']}")
+    
     print("\nSummary Statistics:")
     print(summary_text)
-    
-    # Add a text box with the summary at the bottom of the figure
-    #fig.text(0.5, 0.01, summary_text, ha='center', va='bottom', bbox=dict(facecolor='white', alpha=0.5))
     
     plt.tight_layout(rect=[0, 0.05, 1, 0.90])
     
     if output_file:
+        # Save the plot
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         print(f"Plot saved to {output_file}")
+        
+        # Save PDF version if not already PDF
+        if not output_file.endswith('.pdf'):
+            pdf_file = f"{output_file.split('.')[0]}.pdf"
+            plt.savefig(pdf_file, format='pdf', bbox_inches='tight')
+            print(f"PDF version saved to {pdf_file}")
     
-    # Show the plot
     plt.show()
+
+def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None):
+    """Plot speedup comparison chart with a more compact vertical scale."""
+    # Academic color scheme for speedup
+    speedup_positive = '#009E73'  # Dark green for MLIR better
+    speedup_negative = '#D55E00'  # Dark orange/rust for LLVM better
+    
+    # Prepare data
+    plot_data = prepare_plot_data(data)
+    benchmark_positions = plot_data['benchmark_positions']
+    benchmark_labels = plot_data['benchmark_labels']
+    speedups = plot_data['speedups']
+    group_positions = plot_data['group_positions']
+    category_labels = plot_data['category_labels']
+    categorized_data = plot_data['categorized_data']
+    
+    # Create figure
+    fig = plt.figure(figsize=(max(15, len(benchmark_labels) * 0.5), 6))  # Reduced height
+    ax = fig.add_subplot(1, 1, 1)
+    
+    # Set figure title
+    execution_mode = "Interpreter" if not use_aot else "AOT"
+    fig.suptitle(f'Speedup of WAMI over LLVM - {execution_mode}', 
+                 fontsize=16, y=0.95)
+    
+    # Plot speedup bars
+    width = 0.5
+    
+    # Create bars WITHOUT hatching
+    for i, (pos, speedup) in enumerate(zip(benchmark_positions, speedups)):
+        color = speedup_positive if speedup > 1 else speedup_negative
+        ax.bar(pos, speedup, width, color=color, alpha=0.85)
+    
+    # Find the min and max speedup to set appropriate y-axis limits
+    min_speedup = min(speedups)
+    max_speedup = max(speedups)
+    
+    # Set compact y-axis limits
+    # Find rounded values that give us some padding but keep the scale compact
+    # Ensure 1.0 is always in the middle of the visible range for good reference
+    padding = 0.05  # Adjustable padding
+    
+    # Calculate distance from 1.0
+    distance_below = 1.0 - min_speedup
+    distance_above = max_speedup - 1.0
+    max_distance = max(distance_below, distance_above)
+    
+    # Set symmetric limits around 1.0 with a small padding
+    y_min = 1.0 - max_distance - padding
+    y_max = 1.0 + max_distance + padding
+    
+    # If we have a very narrow range, force a minimum range
+    if y_max - y_min < 0.5:
+        y_min = max(0.7, 1.0 - 0.25)  # Don't go below 0.7
+        y_max = min(1.4, 1.0 + 0.25)  # Default range of +/- 0.25 around 1.0
+    
+    ax.set_ylim(y_min, y_max)
+    
+    # Add reference line
+    ax.axhline(y=1, color='black', linestyle='--', linewidth=1)
+    
+    # Add vertical lines to separate categories
+    for i in range(len(group_positions) - 1):
+        midpoint = (benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i]].keys())[-1])] + 
+                   benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i+1]].keys())[0])]) / 2
+        ax.axvline(x=midpoint, color='gray', linestyle='--', alpha=0.3, linewidth=0.8)
+    
+    # Add gridlines with more frequent y ticks
+    ax.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    # Set more y ticks to better show small differences
+    y_ticks = np.arange(np.floor(y_min * 10) / 10, np.ceil(y_max * 10) / 10 + 0.01, 0.05)
+    ax.set_yticks(y_ticks)
+    
+    # Format y tick labels to show 2 decimal places
+    ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
+    
+    ax.set_ylabel('Speedup (LLVM/WAMI)', fontsize=11)
+    ax.set_title('Speedup Ratio (> 1 means WAMI is better)', fontsize=12, fontfamily='serif')
+    ax.set_xticks(benchmark_positions)
+    ax.set_xticklabels(benchmark_labels, rotation=45, ha='right')
+    
+    # Add legend for speedup plot WITHOUT hatching
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=speedup_positive, alpha=0.85, label='WAMI faster'),
+        Patch(facecolor=speedup_negative, alpha=0.85, label='LLVM faster')
+    ]
+    ax.legend(handles=legend_elements, loc='best', frameon=True, framealpha=0.95)
+    
+    add_category_labels(ax, group_positions, category_labels)
+    
+    # Add summary statistics to stdout
+    stats = plot_data['statistics']
+    summary_text = (f"Geometric Mean Speedup (LLVM/WAMI): {stats['geo_mean_speedup']:.3f}\n"
+                   f"Benchmarks where WAMI outperforms LLVM: {stats['mlir_wins']} out of {stats['total_benchmarks']}\n"
+                   f"Benchmarks where LLVM outperforms WAMI: {stats['llvm_wins']} out of {stats['total_benchmarks']}")
+    
+    print("\nSummary Statistics:")
+    print(summary_text)
+    
+    plt.tight_layout(rect=[0, 0.05, 1, 0.90])
+    
+    if output_file:
+        # Save the plot
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to {output_file}")
+        
+        # Save PDF version if not already PDF
+        if not output_file.endswith('.pdf'):
+            pdf_file = f"{output_file.split('.')[0]}.pdf"
+            plt.savefig(pdf_file, format='pdf', bbox_inches='tight')
+            print(f"PDF version saved to {pdf_file}")
+    
+    plt.show()
+
 
 def main():
     parser = argparse.ArgumentParser(description='Plot LLVM vs MLIR performance comparison grouped by category')
@@ -289,15 +401,10 @@ def main():
     parser.add_argument('--aot', dest='use_aot', action='store_true', help='Use AOT mode (default: interpreter mode)')
     parser.add_argument('--binaryen-opt-level', type=int, choices=[0, 2, 4], default=0,
                        help='Binaryen optimization level (0, 2, or 4, default: 0)')
-    parser.add_argument('--normalize', action='store_true', help='Normalize execution times')
-    parser.add_argument('--no-speedup', dest='show_speedup', action='store_false', 
-                        help='Disable speedup plot')
-    parser.add_argument('--only-speedup', action='store_true',
-                        help='Show only the speedup plot')
+    parser.add_argument('--normalize', action='store_true', help='Normalize execution times (only applies to time chart)')
+    parser.add_argument('--chart-type', choices=['time', 'speedup'], required=True,
+                        help='Type of chart to display: execution time or speedup')
     parser.add_argument('-o', '--output', help='Output file for the plot (optional)')
-    
-    # Set defaults for new arguments
-    parser.set_defaults(show_speedup=True)
     
     args = parser.parse_args()
     
@@ -307,11 +414,17 @@ def main():
     # Filter and prepare data based on the specified parameters
     filtered_data = filter_and_prepare_data(data, args.use_aot, args.binaryen_opt_level)
     
-    # Plot the data with grouped categories in a single plot
-    plot_data_with_grouped_categories(
-        filtered_data, args.use_aot, args.binaryen_opt_level, args.output,
-        args.show_speedup, args.normalize, args.only_speedup
-    )
+    # Plot the appropriate chart type
+    if args.chart_type == 'time':
+        plot_execution_time(
+            filtered_data, args.use_aot, args.binaryen_opt_level,
+            output_file=args.output, normalize=args.normalize
+        )
+    else:  # args.chart_type == 'speedup'
+        plot_speedup(
+            filtered_data, args.use_aot, args.binaryen_opt_level,
+            output_file=args.output
+        )
 
 if __name__ == "__main__":
     main()
