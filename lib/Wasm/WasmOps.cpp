@@ -26,46 +26,6 @@ llvm::LogicalResult ConstantOp::verify() {
   return success();
 }
 
-void TempLocalOp::build(OpBuilder &builder, OperationState &state,
-                        mlir::Type inner) {
-  auto context = inner.getContext();
-  auto localType = mlir::wasm::LocalType::get(context, inner);
-  state.addTypes(localType);
-  state.addAttribute("type", mlir::TypeAttr::get(inner));
-}
-
-ParseResult parseLocalOp(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::UnresolvedOperand local;
-  Type localInnerType;
-
-  if (parser.parseOperand(local) || parser.parseColonType(localInnerType))
-    return failure();
-
-  auto localType = LocalType::get(parser.getContext(), localInnerType);
-  if (parser.resolveOperand(local, localType, result.operands))
-    return failure();
-
-  return success();
-}
-
-ParseResult TempLocalGetOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseLocalOp(parser, result);
-}
-
-void TempLocalGetOp::print(OpAsmPrinter &p) {
-  p << " " << getLocal();
-  p << " : " << getLocal().getType().getInner();
-}
-
-ParseResult TempLocalSetOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseLocalOp(parser, result);
-}
-
-void TempLocalSetOp::print(OpAsmPrinter &p) {
-  p << " " << getLocal();
-  p << " : " << getLocal().getType().getInner();
-}
-
 void WasmFuncOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
                        llvm::StringRef name, mlir::FunctionType type,
                        llvm::ArrayRef<mlir::NamedAttribute> attrs) {
@@ -104,59 +64,6 @@ LogicalResult
 TempGetGlobalOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   // TODO: check if the symbol is a global variable
   return success();
-}
-
-void TempGlobalOp::build(OpBuilder &builder, OperationState &state,
-                         bool isMutable, mlir::Type inner) {
-  auto context = inner.getContext();
-  auto globalType = mlir::wasm::GlobalType::get(context, inner);
-  state.addTypes(globalType);
-  state.addAttribute("is_mutable", builder.getBoolAttr(isMutable));
-  state.addAttribute("type", mlir::TypeAttr::get(inner));
-}
-
-ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::UnresolvedOperand global;
-  Type globalInnerType;
-
-  if (parser.parseOperand(global) || parser.parseColonType(globalInnerType))
-    return failure();
-
-  auto globalType = GlobalType::get(parser.getContext(), globalInnerType);
-  if (parser.resolveOperand(global, globalType, result.operands))
-    return failure();
-
-  return success();
-}
-
-ParseResult TempGlobalGetOp::parse(OpAsmParser &parser,
-                                   OperationState &result) {
-  return parseGlobalOp(parser, result);
-}
-
-void TempGlobalGetOp::print(OpAsmPrinter &p) {
-  p << " " << getGlobal();
-  p << " : " << getGlobal().getType().getInner();
-}
-
-ParseResult TempGlobalSetOp::parse(OpAsmParser &parser,
-                                   OperationState &result) {
-  return parseGlobalOp(parser, result);
-}
-
-void TempGlobalSetOp::print(OpAsmPrinter &p) {
-  p << " " << getGlobal();
-  p << " : " << getGlobal().getType().getInner();
-}
-
-ParseResult TempGlobalIndexOp::parse(OpAsmParser &parser,
-                                     OperationState &result) {
-  return parseGlobalOp(parser, result);
-}
-
-void TempGlobalIndexOp::print(OpAsmPrinter &p) {
-  p << " " << getGlobal();
-  p << " : " << getGlobal().getType().getInner();
 }
 
 void BlockOp::build(mlir::OpBuilder &builder, mlir::OperationState &state,
