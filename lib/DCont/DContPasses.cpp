@@ -157,14 +157,13 @@ struct DContToSsaWasmTypeConverter : public TypeConverter {
     });
     addConversion([ctx](IntegerType type) -> Type {
       auto width = type.getWidth();
-      if (width == 1) {
-        return ssawasm::WasmIntegerType::get(ctx, 32);
+      if (width != 32 && width != 64) {
+        return IntegerType::get(ctx, 32);
       }
-      return ssawasm::WasmIntegerType::get(ctx, width);
+      return type;
     });
-    addConversion([ctx](IndexType type) -> Type {
-      return ssawasm::WasmIntegerType::get(ctx, 32);
-    });
+    addConversion(
+        [ctx](IndexType type) -> Type { return IntegerType::get(ctx, 32); });
     addConversion([ctx](StorageType type) -> Type {
       return ssawasm::WasmContinuationType::get(ctx, type.getId());
     });
@@ -191,7 +190,7 @@ struct NewOpLowering : public OpConversionPattern<NewOp> {
     auto funcRef =
         rewriter
             .create<ssawasm::FuncRefOp>(
-                op->getLoc(), ssawasm::WasmRefType::get(op.getContext()),
+                op->getLoc(), ssawasm::WasmFuncRefType::get(op.getContext()),
                 adaptor.getFunctionName())
             .getResult();
     rewriter.replaceOpWithNewOp<ssawasm::ContNewOp>(
