@@ -30,12 +30,31 @@ mlir-translate toy-llvm.mlir --mlir-to-llvmir -o toy-llvm.ll
 opt --passes="coro-early,function(coro-elide),coro-split,coro-cleanup" \
 toy-llvm.ll -o toy-llvm-lowered.bc
 
-llc toy-llvm-lowered.bc -filetype=obj -mtriple=wasm32-wasi -o toy-llvm-lowered.o
+opt -O3 toy-llvm-lowered.bc -o toy-llvm-lowered-opt.bc
+
+opt --passes="coro-early,function(coro-elide),coro-split,coro-cleanup" \
+toy-llvm-lowered-opt.bc -o toy-llvm-lowered-opt-processed.bc
+
+
+llc -O3 toy-llvm-lowered.bc -filetype=obj -mtriple=wasm32-wasi -o toy-llvm-lowered.o
 
 $WASI_SDK_PATH/bin/wasm-ld --no-entry \
-   --export=main --export=malloc --export=free --allow-undefined \
+   --export=main --allow-undefined \
     -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
     -o toy-llvm.wasm toy-llvm-lowered.o
+
+
+mlir-translate toy-scheduler-llvm.mlir --mlir-to-llvmir -o toy-scheduler-llvm.ll
+
+opt --passes="coro-early,function(coro-elide),coro-split,coro-cleanup" \
+toy-scheduler-llvm.ll -o toy-scheduler-llvm-lowered.bc
+
+llc -O3 toy-scheduler-llvm-lowered.bc -filetype=obj -mtriple=wasm32-wasi -o toy-scheduler-llvm-lowered.o
+
+$WASI_SDK_PATH/bin/wasm-ld --no-entry \
+   --export=main --allow-undefined \
+    -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
+    -o toy-scheduler-llvm.wasm toy-scheduler-llvm-lowered.o
 ```
 
 The output `toy-llvm.wasm` can be run on any Wasm runtime.
