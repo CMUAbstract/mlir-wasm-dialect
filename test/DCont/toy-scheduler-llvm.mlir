@@ -202,10 +202,6 @@ module {
   ^cleanup:
     %mem2 = llvm.call @llvm.coro.free(%id, %hdl)
                : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-<<<<<<< Updated upstream
-    llvm.call @free(%mem2) : (!llvm.ptr) -> ()
-=======
->>>>>>> Stashed changes
     llvm.br ^suspend
 
   ^suspend:
@@ -227,11 +223,7 @@ module {
     %c0  = llvm.mlir.constant(0 : i32) : i32
     %c1  = llvm.mlir.constant(1 : i32) : i32
     %c2  = llvm.mlir.constant(2 : i32) : i32
-<<<<<<< Updated upstream
-    %c20 = llvm.mlir.constant(20 : i32) : i32
-=======
     %c2000 = llvm.mlir.constant(2000 : i32) : i32
->>>>>>> Stashed changes
 
     // Create coroutines
     %hdl1 = llvm.call @task1() : () -> !llvm.ptr
@@ -241,11 +233,7 @@ module {
     llvm.br ^loop_main(%c0 : i32)
 
   ^loop_main(%i : i32):
-<<<<<<< Updated upstream
-    %cond = llvm.icmp "slt" %i, %c20 : i32
-=======
     %cond = llvm.icmp "slt" %i, %c2000 : i32
->>>>>>> Stashed changes
     llvm.cond_br %cond, ^body_main, ^exit_main
 
   ^body_main:
@@ -268,46 +256,7 @@ module {
     llvm.br ^loop_main(%i2 : i32)
 
   ^exit_main:
-    // print final array contents
-<<<<<<< Updated upstream
-    llvm.br ^loop_print(%c0 : i32)
-
-  ^loop_print(%ip : i32):
-    %cond2 = llvm.icmp "slt" %ip, %c20 : i32
-    llvm.cond_br %cond2, ^print_body, ^done
-
-  ^print_body:
-    %gbase = llvm.mlir.addressof @global_data : !llvm.ptr
-    %elem_ptr = llvm.getelementptr %gbase[%ip]
-                  : (!llvm.ptr, i32) -> !llvm.ptr, i32
-    %val = llvm.load %elem_ptr : !llvm.ptr -> i32
-    llvm.call @print_i32(%val) : (i32) -> ()
-
-    %ip1 = llvm.add %ip, %c1 : i32
-    llvm.br ^loop_print(%ip1 : i32)
-
-  ^done:
-    llvm.return
-=======
-//    llvm.br ^loop_print(%c0 : i32)
     llvm.return
 
-//  ^loop_print(%ip : i32):
-//    %cond2 = llvm.icmp "slt" %ip, %c20 : i32
-//    llvm.cond_br %cond2, ^print_body, ^done
-//
-//  ^print_body:
-//    %gbase = llvm.mlir.addressof @global_data : !llvm.ptr
-//    %elem_ptr = llvm.getelementptr %gbase[%ip]
-//                  : (!llvm.ptr, i32) -> !llvm.ptr, i32
-//    %val = llvm.load %elem_ptr : !llvm.ptr -> i32
-//    llvm.call @print_i32(%val) : (i32) -> ()
-//
-//    %ip1 = llvm.add %ip, %c1 : i32
-//    llvm.br ^loop_print(%ip1 : i32)
-
-//  ^done:
-//    llvm.return
->>>>>>> Stashed changes
   }
 }
