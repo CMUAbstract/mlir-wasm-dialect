@@ -471,65 +471,6 @@ def Wasm_IfElseEndOp : Wasm_Op<"if_else.end", [Terminator, HasParent<"IfElseOp">
 }
 
 
-def Wasm_BlockLoopOpDeprecated: Wasm_Op<"blockloop_deprecated"> {
-    let summary = "Wasm dialect-only operation to represent loop inside block";
-    let description = [{
-    Since Wasm block has control flow semantics that is not supported by MLIR yet,
-    we define a new temporary operation, which will be converetd to the following 
-    by the Wasm translator.
-
-    block {
-        loop {
-            ...
-        }
-    }
-    }];
-    let regions = (region AnyRegion:$body);
-}
-
-def Wasm_BlockLoopEndOpDeprecated: Wasm_Op<"blockloop_end_deprecated", [Terminator]> {
-    // TODO: HasParent<BlockLoopOp>
-}
-
-def Wasm_LoopOpDeprecated: Wasm_Op<"loop_deprecated"> {
-    let description = [{
-        The `loop` operation is used to represent a loop.
-        Since MLIR does not allow region entry blocks to have predecessors,
-        we maintain an invariant that a loop operation has a entry block
-        and main block, which is the entry block of the actual loop body.
-        The entry block contains a single instruction that branches to the main block,
-        and all operations should be in the main block.
-    }];
-    let arguments = (ins SymbolNameAttr:$name);
-    let regions = (region AnyRegion:$body);
-
-    // FIXME: Initializing loop blocks inside the build method doesn't seem to work.
-    // For now, we should call `initializeLoop` to make loop 
-    let extraClassDeclaration = [{
-        void initialize(OpBuilder &builder);
-        Block *getEntryBlock();
-        Block *getMainBlock();
-        LogicalResult inlineRegionToMainBlock(Region &sourceRegion, PatternRewriter &rewriter);
-    }];
-}
-
-def Wasm_LoopEndOpDeprecated: Wasm_Op<"loop_end_deprecated", [Terminator, HasParent<"LoopOpDeprecated">]> {
-    let summary = "Loop end operation";
-    let description = [{
-        The `loop_end` operation is used to indicate the end of a loop.
-        This is translated to a no-op in the final wasm output.
-        We need this operation because MLIR requires all blocks to have a terminator.
-    }];
-}
-
-def Wasm_BranchOpDeprecated: Wasm_Op<"br_deprecated", [Terminator]> {
-    let successors = (successor AnySuccessor:$dest);
-}
-
-def Wasm_CondBranchOpDeprecated: Wasm_Op<"cond_br_deprecated", [Terminator]> {
-    let successors = (successor AnySuccessor:$trueDest, AnySuccessor:$falseDest);
-}
-
 def Wasm_NoOp : Wasm_Op<"noop", []> {
     let summary = "No operation";
     let description = [{
