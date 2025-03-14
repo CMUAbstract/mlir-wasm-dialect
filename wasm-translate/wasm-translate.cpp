@@ -610,9 +610,8 @@ struct FuncSignature {
     paramTypes.reserve(funcOp.getNumArguments());
     for (Type argType : funcOp.getFunctionType().getInputs()) {
       // function arguments are always local variables
-      Type innerType = cast<LocalType>(argType).getInner();
       std::string watType;
-      if (failed(getWatType(innerType, watType))) {
+      if (failed(getWatType(argType, watType))) {
         funcOp.emitError("unsupported argument type");
         // TODO: handle error
       }

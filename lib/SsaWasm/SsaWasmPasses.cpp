@@ -549,19 +549,18 @@ class SsaWasmToWasmTypeConverter : public TypeConverter {
 public:
   SsaWasmToWasmTypeConverter(MLIRContext *ctx) {
     addConversion([ctx](IntegerType type) -> Type {
-      return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
+      return convertSsaWasmTypeToWasmType(type, ctx);
     });
     addConversion([ctx](FloatType type) -> Type {
-      return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
+      return convertSsaWasmTypeToWasmType(type, ctx);
     });
     addConversion([ctx](WasmMemRefType type) -> Type {
-      return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
+      return convertSsaWasmTypeToWasmType(type, ctx);
     });
     addConversion([ctx](WasmContinuationType type) -> Type {
       // FIXME: We should not hardcode this
       assert(type.getId() == "ct");
-      return wasm::LocalType::get(ctx,
-                                  wasm::ContinuationType::get(ctx, "ct", "ft"));
+      return wasm::ContinuationType::get(ctx, "ct", "ft");
     });
   }
 };

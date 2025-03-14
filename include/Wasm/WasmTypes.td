@@ -22,12 +22,6 @@ class Wasm_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
-// Define a container type that holds elements of a specified type.
-def Local : Wasm_Type<"Local", "local"> {
-   let parameters = (ins AnyType:$inner);
-   let assemblyFormat = "`<` $inner `>`";
-}
-
 def Continuation : Wasm_Type<"Continuation", "continuation"> {
   let parameters = (ins "StringAttr":$name,
                            "StringAttr":$funcId);
