@@ -76,22 +76,6 @@ def PolygeistToIntermittent : Pass<"polygeist-to-intermittent", "ModuleOp"> {
   ];
 }
 
-def PreprocessIntermittentToWasm : Pass<"preprocess-intermittent-to-wasm", "ModuleOp"> {
-  let summary = "Add preludes";
-  let dependentDialects = [
-    "intermittent::IntermittentDialect",
-    "wasm::WasmDialect"
-  ];
-}
-
-def ConvertIntermittentToWasm : Pass<"convert-intermittent-to-wasm", "ModuleOp"> {
-  let summary = "Converts Intermittent dialect to Wasm dialect";
-  let dependentDialects = [
-    "intermittent::IntermittentDialect",
-    "wasm::WasmDialect"
-  ];
-}
-
 // intermittent to async passes
 
 def PreprocessIntermittentToStd
