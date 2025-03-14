@@ -8,20 +8,9 @@ module {
   llvm.func @print_i32(i32)
     attributes { llvm.linkage = #llvm.linkage<external> }
 
-  // void* @malloc(i32)
-  llvm.func @malloc(i32) -> !llvm.ptr
-    attributes { llvm.linkage = #llvm.linkage<external> }
-
-  // void @free(void*)
-  llvm.func @free(!llvm.ptr)
-    attributes { llvm.linkage = #llvm.linkage<external> }
-
   // The coroutine intrinsics we’ll use:
   // token @llvm.coro.id(i32, ptr, ptr, ptr)
   llvm.func @llvm.coro.id(i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
-    attributes { llvm.linkage = #llvm.linkage<external> }
-  // i32 @llvm.coro.size.i32()
-  llvm.func @llvm.coro.size.i32() -> i32
     attributes { llvm.linkage = #llvm.linkage<external> }
   // void* @llvm.coro.begin(token, void*)
   llvm.func @llvm.coro.begin(!llvm.token, !llvm.ptr) -> !llvm.ptr
@@ -60,12 +49,8 @@ module {
     %null_ptr = llvm.mlir.zero : !llvm.ptr
     %id = llvm.call @llvm.coro.id(%c_zero_i32, %null_ptr, %null_ptr, %null_ptr)
       : (i32, !llvm.ptr, !llvm.ptr, !llvm.ptr) -> !llvm.token
-    // 2) coro.size.i32
-    %sz = llvm.call @llvm.coro.size.i32() : () -> i32
-    // 3) malloc
-    %mem = llvm.call @malloc(%sz) : (i32) -> !llvm.ptr
     // 4) coro.begin
-    %hdl = llvm.call @llvm.coro.begin(%id, %mem)
+    %hdl = llvm.call @llvm.coro.begin(%id, %null_ptr)
       : (!llvm.token, !llvm.ptr) -> !llvm.ptr
 
     // We'll start iteration count at 0
@@ -110,8 +95,6 @@ module {
     // 1) call coro.free
     %mem2 = llvm.call @llvm.coro.free(%id, %hdl)
       : (!llvm.token, !llvm.ptr) -> !llvm.ptr
-    // 2) free
-    llvm.call @free(%mem2) : (!llvm.ptr) -> ()
     // branch to ^suspend
     llvm.br ^suspend
 
