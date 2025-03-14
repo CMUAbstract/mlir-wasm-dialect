@@ -19,11 +19,9 @@
 #include "SsaWasm/SsaWasmDialect.h"
 #include "SsaWasm/SsaWasmPasses.h"
 #include "Wasm/WasmDialect.h"
-#include "Wasm/WasmPasses.h"
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
-  mlir::wasm::registerPasses();
   mlir::intermittent::registerPasses();
   mlir::ssawasm::registerPasses();
   mlir::dcont::registerPasses();

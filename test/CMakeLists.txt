@@ -14,7 +14,6 @@ set(WASM_TEST_DEPENDS
         wasm-capi-test
         wasm-opt
         wasm-translate
-        WasmPlugin
         )
 if(MLIR_ENABLE_BINDINGS_PYTHON)
   list(APPEND WASM_TEST_DEPENDS WasmPythonModules)
