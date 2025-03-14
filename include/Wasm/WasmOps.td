@@ -159,60 +159,6 @@ def Wasm_SelectOp : Wasm_Op<"select", []> {
     let assemblyFormat = [{ attr-dict `:` $type }];
 }
 
-// temporary instructions
-
-def Wasm_TempLocalOp : Wasm_Op<"temp.local", []> {
-    let arguments = (ins TypeAttr:$type);
-    let results = (outs Local:$local);
-    // TODO: Improve assembly format
-    let assemblyFormat = [{ `<` $type `>` attr-dict `:` type(results) }];
-
-    let builders = [
-        OpBuilder<(ins "Type": $inner)>,
-    ];
-}
-
-def Wasm_TempLocalGetOp : Wasm_Op<"temp.local.get", []> {
-    let arguments = (ins Local:$local);
-    let hasCustomAssemblyFormat = 1;
-}
-
-def Wasm_TempLocalSetOp : Wasm_Op<"temp.local.set", []> {
-    let arguments = (ins Local:$local);
-    let hasCustomAssemblyFormat = 1;
-}
-
-def Wasm_TempGlobalOp : Wasm_Op<"temp.global", []> {
-    let arguments = (ins BoolAttr:$is_mutable, TypeAttr:$type);
-    let results = (outs Global:$global);
-    // TODO: Improve assembly format
-    let assemblyFormat = [{ `<` $type `>` attr-dict `:` `mut` `:` $is_mutable `,` type(results) }];
-
-    let builders = [
-        OpBuilder<(ins "bool": $is_mutable, "Type": $inner)>,
-    ];
-}
-
-def Wasm_TempGlobalGetOp : Wasm_Op<"temp.global.get", []> {
-    let arguments = (ins Global:$global);
-    let hasCustomAssemblyFormat = 1;
-}
-
-def Wasm_TempGlobalSetOp : Wasm_Op<"temp.global.set", []> {
-    let arguments = (ins Global:$global);
-    let hasCustomAssemblyFormat = 1;
-}
-
-def Wasm_TempGlobalIndexOp : Wasm_Op<"temp.global.index", []> {
-    let description = [{
-        The `temp.global.index` operation indexes into a global variable.
-        This operation will be converted to wasm.constant x : i32 by the
-        wasm-finalize pass, where x is the index of the global variable.
-    }];
-    let arguments = (ins Global:$global);
-    let hasCustomAssemblyFormat = 1;
-}
-
 // local instructions
 
 def Wasm_LocalOp : Wasm_Op<"local", []> {
