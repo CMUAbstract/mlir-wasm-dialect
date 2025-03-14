@@ -28,13 +28,6 @@ def Local : Wasm_Type<"Local", "local"> {
    let assemblyFormat = "`<` $inner `>`";
 }
 
-def Global : Wasm_Type<"Global", "global"> {
-   let parameters = (ins AnyType:$inner);
-   let assemblyFormat = "`<` $inner `>`";
-}
-
-def RefType : Type<CPred<"true">, "reference type">;
-
 def Continuation : Wasm_Type<"Continuation", "continuation"> {
   let parameters = (ins "StringAttr":$name,
                            "StringAttr":$funcId);
