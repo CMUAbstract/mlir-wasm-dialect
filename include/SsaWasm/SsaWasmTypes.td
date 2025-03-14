@@ -19,27 +19,6 @@ class SsaWasm_Type<string name, string typeMnemonic, list<Trait> traits = []>
   let mnemonic = typeMnemonic;
 }
 
-/// SSA Wasm integer type. The parameter 'bitWidth' should be set to 32 or 64.
-def SsaWasm_WasmIntegerType : SsaWasm_Type<"WasmInteger", "integer"> {
-    let description = [{
-        Represents an integer type in the SSA Wasm dialect.
-    }];
-    let parameters = (ins "unsigned": $bitWidth);
-    // NOTE: assemblyFormat = "`i`$bitWidth" prints `i 32` instead of `i32` so
-    let assemblyFormat = "$bitWidth";
-}
-
-/// SSA Wasm floating-point type. The parameter 'bitWidth' should be 32, 64.
-def SsaWasm_WasmFloatType : SsaWasm_Type<"WasmFloat", "float"> {
-    let description = [{
-        Represents a floating-point type in the SSA Wasm dialect.
-    }];
-    let parameters = (ins "unsigned": $bitWidth);
-    // NOTE: assemblyFormat = "`f`$bitWidth" prints `f 32` instead of `f32` so
-    // we use the following format
-    let assemblyFormat = "$bitWidth";
-}
-
 // We treat this as i32 type with meta information.
 def SsaWasm_WasmMemRefType : SsaWasm_Type<"WasmMemRef", "memref"> {
     let description = [{
@@ -53,21 +32,33 @@ def SsaWasm_WasmMemRefType : SsaWasm_Type<"WasmMemRef", "memref"> {
 /// SSA Wasm numeric type constraint, representing the union of integer and
 /// floating-point types. 
 def SsaWasm_WasmNumericLike : TypeConstraint<
-    Or<[SsaWasm_WasmIntegerType.predicate,
-        SsaWasm_WasmFloatType.predicate,
+    Or<[I<32>.predicate,
+        I<64>.predicate,
+        F<32>.predicate,
+        F<64>.predicate,
         SsaWasm_WasmMemRefType.predicate]>,
     "ssawasm integer or float type">;
 
+def SsaWasm_WasmIntegerLike : TypeConstraint<
+    Or<[I<32>.predicate,
+        I<64>.predicate]>,
+    "ssawasm integer type">;
+
+def SsaWasm_WasmFloatLike : TypeConstraint<
+    Or<[F<32>.predicate,
+        F<64>.predicate]>,
+    "ssawasm float type">;
+
 def SsaWasm_WasmPointerLike : TypeConstraint<
     Or<[SsaWasm_WasmMemRefType.predicate,
-        SsaWasm_WasmIntegerType.predicate]>,
+        I<32>.predicate,
+        I<64>.predicate]>,
     "ssawasm memref or integer type">;
 
-def SsaWasm_WasmRefType : SsaWasm_Type<"WasmRef", "ref"> {
+def SsaWasm_WasmFuncRefType : SsaWasm_Type<"WasmFuncRef", "funcref"> {
     let description = [{
-        Represents a reference type in the SSA Wasm dialect.
+        Represents a function reference type in the SSA Wasm dialect.
     }];
-    // TODO: Add parameters
 }
 
 // stack switching related types

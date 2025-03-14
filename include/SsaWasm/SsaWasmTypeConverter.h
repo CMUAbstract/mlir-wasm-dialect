@@ -9,20 +9,21 @@ public:
   SsaWasmTypeConverter(MLIRContext *ctx) {
     addConversion([ctx](IntegerType type) -> Type {
       auto width = type.getWidth();
-      if (width == 1) {
-        return WasmIntegerType::get(ctx, 32);
+      if (width != 32 && width != 64) {
+        return IntegerType::get(ctx, 32);
       }
-      return WasmIntegerType::get(ctx, width);
+      return type;
     });
-    addConversion([ctx](FloatType type) -> Type {
-      return WasmFloatType::get(ctx, type.getWidth());
+    addConversion([](FloatType type) -> Type {
+      auto width = type.getWidth();
+      assert((width == 32 || width == 64) && "Unsupported float type");
+      return type;
     });
     addConversion([ctx](MemRefType type) -> Type {
       return WasmMemRefType::get(ctx, type);
     });
-    addConversion([ctx](IndexType type) -> Type {
-      return WasmIntegerType::get(ctx, 32);
-    });
+    addConversion(
+        [ctx](IndexType type) -> Type { return IntegerType::get(ctx, 32); });
     addConversion([ctx](dcont::ContType type) -> Type {
       return WasmContinuationType::get(ctx, type.getId());
     });
