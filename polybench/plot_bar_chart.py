@@ -356,7 +356,6 @@ def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None):
     ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
     
     ax.set_ylabel('Speedup (LLVM/WAMI)', fontsize=11)
-    ax.set_title('Speedup Ratio (> 1 means WAMI is better)', fontsize=12, fontfamily='serif')
     ax.set_xticks(benchmark_positions)
     ax.set_xticklabels(benchmark_labels, rotation=45, ha='right')
     
@@ -394,16 +393,145 @@ def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None):
     
     plt.show()
 
+def plot_percentage_improvement(data, use_aot, binaryen_opt_level, output_file=None):
+    """
+    Plot percentage improvement chart showing how much better/worse WAMI performs compared to LLVM.
+    Positive percentages indicate WAMI is faster, negative percentages indicate LLVM is faster.
+    """
+    # Color scheme for improvements
+    improvement_positive = '#009E73'  # Dark green for WAMI better
+    improvement_negative = '#D55E00'  # Dark orange/rust for LLVM better
+    
+    # Prepare data
+    plot_data = prepare_plot_data(data)
+    benchmark_positions = plot_data['benchmark_positions']
+    benchmark_labels = plot_data['benchmark_labels']
+    speedups = plot_data['speedups']
+    group_positions = plot_data['group_positions']
+    category_labels = plot_data['category_labels']
+    categorized_data = plot_data['categorized_data']
+    
+    # Calculate percentage improvements from speedups
+    # Formula: (speedup - 1) * 100% for WAMI faster (speedup > 1)
+    # Formula: (1 - 1/speedup) * 100% for LLVM faster (speedup < 1)
+    percentage_improvements = []
+    for speedup in speedups:
+        if speedup >= 1:
+            # WAMI is faster - calculate how much faster as percentage
+            percentage = (speedup - 1) * 100
+        else:
+            # LLVM is faster - calculate how much faster as a negative percentage
+            percentage = (1 - 1/speedup) * 100
+        percentage_improvements.append(percentage)
+    
+    # Create figure
+    fig = plt.figure(figsize=(max(15, len(benchmark_labels) * 0.5), 6))
+    ax = fig.add_subplot(1, 1, 1)
+    
+    # Set figure title
+    execution_mode = "Interpreter" if not use_aot else "AOT"
+    fig.suptitle(f'Percentage Improvement of WAMI vs LLVM - {execution_mode}', 
+                 fontsize=16, y=0.95)
+    
+    # Plot percentage improvement bars
+    width = 0.5
+    
+    # Create bars with colors based on whether improvement is positive or negative
+    for i, (pos, percentage) in enumerate(zip(benchmark_positions, percentage_improvements)):
+        color = improvement_positive if percentage >= 0 else improvement_negative
+        ax.bar(pos, percentage, width, color=color, alpha=0.85)
+    
+    # Find reasonable y-axis limits
+    min_percentage = min(percentage_improvements)
+    max_percentage = max(percentage_improvements)
+    padding = 5  # 5% padding
+    
+    # Set y limits with padding
+    y_min = min_percentage - padding if min_percentage < 0 else -padding
+    y_max = max_percentage + padding if max_percentage > 0 else padding
+    
+    # Ensure zero is visible
+    if y_min > 0:
+        y_min = -padding
+    if y_max < 0:
+        y_max = padding
+        
+    # Ensure there's some reasonable separation from zero for small values
+    if abs(y_max - y_min) < 20:
+        y_min = min(-10, y_min)
+        y_max = max(10, y_max)
+    
+    ax.set_ylim(y_min, y_max)
+    
+    # Add zero line
+    ax.axhline(y=0, color='black', linestyle='--', linewidth=1)
+    
+    # Add vertical lines to separate categories
+    for i in range(len(group_positions) - 1):
+        midpoint = (benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i]].keys())[-1])] + 
+                   benchmark_positions[benchmark_labels.index(sorted(categorized_data[category_labels[i+1]].keys())[0])]) / 2
+        ax.axvline(x=midpoint, color='gray', linestyle='--', alpha=0.3, linewidth=0.8)
+    
+    # Add gridlines
+    ax.grid(axis='y', linestyle='--', alpha=0.3)
+    
+    ax.set_ylabel('Percentage Improvement (%)', fontsize=11)
+    ax.set_xticks(benchmark_positions)
+    ax.set_xticklabels(benchmark_labels, rotation=45, ha='right')
+    
+    # Add percentage sign to y-axis tick labels
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.0f}%'))
+    
+    # Add legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor=improvement_positive, alpha=0.85, label='WAMI faster'),
+        Patch(facecolor=improvement_negative, alpha=0.85, label='LLVM faster')
+    ]
+    ax.legend(handles=legend_elements, loc='best', frameon=True, framealpha=0.95)
+    
+    add_category_labels(ax, group_positions, category_labels)
+    
+    # Calculate average improvement
+    avg_improvement = sum(percentage_improvements) / len(percentage_improvements)
+    
+    # Add summary statistics to stdout
+    stats = plot_data['statistics']
+    summary_text = (
+        f"Average Percentage Improvement: {avg_improvement:.2f}%\n"
+        f"Geometric Mean Speedup (LLVM/WAMI): {stats['geo_mean_speedup']:.3f}\n"
+        f"Benchmarks where WAMI outperforms LLVM: {stats['mlir_wins']} out of {stats['total_benchmarks']}\n"
+        f"Benchmarks where LLVM outperforms WAMI: {stats['llvm_wins']} out of {stats['total_benchmarks']}"
+    )
+    
+    print("\nSummary Statistics:")
+    print(summary_text)
+    
+    plt.tight_layout(rect=[0, 0.05, 1, 0.90])
+    
+    if output_file:
+        # Save the plot
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to {output_file}")
+        
+        # Save PDF version if not already PDF
+        if not output_file.endswith('.pdf'):
+            pdf_file = f"{output_file.split('.')[0]}.pdf"
+            plt.savefig(pdf_file, format='pdf', bbox_inches='tight')
+            print(f"PDF version saved to {pdf_file}")
+    
+    plt.show()
 
+# Update main function to include the new chart type
 def main():
-    parser = argparse.ArgumentParser(description='Plot LLVM vs MLIR performance comparison grouped by category')
+    parser = argparse.ArgumentParser(description='Plot LLVM vs WAMI performance comparison grouped by category')
     parser.add_argument('filename', help='Input data file')
     parser.add_argument('--aot', dest='use_aot', action='store_true', help='Use AOT mode (default: interpreter mode)')
     parser.add_argument('--binaryen-opt-level', type=int, choices=[0, 2, 4], default=0,
                        help='Binaryen optimization level (0, 2, or 4, default: 0)')
     parser.add_argument('--normalize', action='store_true', help='Normalize execution times (only applies to time chart)')
-    parser.add_argument('--chart-type', choices=['time', 'speedup'], required=True,
-                        help='Type of chart to display: execution time or speedup')
+    parser.add_argument('--chart-type', choices=['time', 'speedup', 'percentage'], required=True,
+                        help='Type of chart to display: execution time, speedup, or percentage improvement')
     parser.add_argument('-o', '--output', help='Output file for the plot (optional)')
     
     args = parser.parse_args()
@@ -420,11 +548,18 @@ def main():
             filtered_data, args.use_aot, args.binaryen_opt_level,
             output_file=args.output, normalize=args.normalize
         )
-    else:  # args.chart_type == 'speedup'
+    elif args.chart_type == 'speedup':
         plot_speedup(
             filtered_data, args.use_aot, args.binaryen_opt_level,
             output_file=args.output
         )
+    elif args.chart_type == 'percentage':
+        plot_percentage_improvement(
+            filtered_data, args.use_aot, args.binaryen_opt_level,
+            output_file=args.output
+        )
+    else:
+        print("Invalid chart type. Please use 'time', 'speedup', or 'percentage'.")
 
 if __name__ == "__main__":
     main()
