@@ -118,8 +118,8 @@ def SsaWasm_FLeOp : SsaWasm_Op<"fle", [Pure, AllTypesMatch<["lhs", "rhs"]>,]> {
   let description = [{
     Compares two operands explicitly and yields the result of the comparison.
   }];
-  let arguments = (ins SsaWasm_WasmFloatType:$lhs, SsaWasm_WasmFloatType:$rhs);
-  let results = (outs SsaWasm_WasmIntegerType:$result);
+  let arguments = (ins SsaWasm_WasmFloatLike:$lhs, SsaWasm_WasmFloatLike:$rhs);
+  let results = (outs I<32>:$result);
 
   let assemblyFormat = "attr-dict $lhs `,` $rhs `:` type($lhs) `->` type($result)";
 }
@@ -220,7 +220,7 @@ def SsaWasm_NegFOp : SsaWasm_WasmNumericUnaryOp<"neg"> {
 // Constant Operation
 ///////////////////////////////////////////////////////////////////////////
 
-def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure, ConstantLike]> {
+def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure, ConstantLike, AllTypesMatch<["value", "result"]>]> {
   let summary = "SSA-based constant operation";
   let description = [{
     The `ssawasm.constant` operation produces an SSA value equal to some
@@ -234,23 +234,6 @@ def SsaWasm_ConstantOp : SsaWasm_Op<"constant", [Pure, ConstantLike]> {
   // FIXME: Make this pretty
   let assemblyFormat = "$value type($result) attr-dict";
 
-  let builders = [
-    OpBuilder<(ins "mlir::TypedAttr":$value), [{
-      auto type = value.getType();
-      if (type.isInteger(32) || type.isIndex()) {
-        build($_builder, $_state, WasmIntegerType::get($_builder.getContext(), 32), value);
-      } else if (type.isInteger(64)) {
-        build($_builder, $_state, WasmIntegerType::get($_builder.getContext(), 64), value);
-      } else if (type.isF32()) {
-        build($_builder, $_state, WasmFloatType::get($_builder.getContext(), 32), value);
-      } else if (type.isF64()) {
-        build($_builder, $_state, WasmFloatType::get($_builder.getContext(), 64), value);
-      } else {
-        // TODO: handle error
-      }
-    }]>
-  ];
-
   let hasFolder = 1;
 }
 
@@ -259,8 +242,8 @@ def SsaWasm_ConvertSIToFPOp : SsaWasm_Op<"convert_si_to_fp", [Pure]> {
   let description = [{
     Converts a signed integer to a floating-point value.
   }];
-  let arguments = (ins SsaWasm_WasmIntegerType:$value);
-  let results = (outs SsaWasm_WasmFloatType:$result);
+  let arguments = (ins SsaWasm_WasmIntegerLike:$value);
+  let results = (outs SsaWasm_WasmFloatLike:$result);
 }
 
 def SsaWasm_TruncateFPToSIOp : SsaWasm_Op<"truncate_fp_to_si", [Pure]> {
@@ -268,16 +251,16 @@ def SsaWasm_TruncateFPToSIOp : SsaWasm_Op<"truncate_fp_to_si", [Pure]> {
   let description = [{
     Converts a floating-point value to a signed integer.
   }];
-  let arguments = (ins SsaWasm_WasmFloatType:$value);
-  let results = (outs SsaWasm_WasmIntegerType:$result);
+  let arguments = (ins SsaWasm_WasmFloatLike:$value);
+  let results = (outs SsaWasm_WasmIntegerLike:$result);
 }
 
 def SsaWasm_ShlOp : SsaWasm_Op<"shl", [Pure, SameOperandsAndResultType]> {
   let description = [{
     Shifts the left-hand-side operand left by the right-hand-side operand.
   }];
-  let arguments = (ins SsaWasm_WasmIntegerType:$num, SsaWasm_WasmIntegerType:$by);
-  let results = (outs SsaWasm_WasmIntegerType:$result);
+  let arguments = (ins SsaWasm_WasmIntegerLike:$num, SsaWasm_WasmIntegerLike:$by);
+  let results = (outs SsaWasm_WasmIntegerLike:$result);
   let assemblyFormat = "$num `,` $by attr-dict `:` type($num)";
 }
 
@@ -285,8 +268,8 @@ def SsaWasm_ShrSOp : SsaWasm_Op<"shr_s", [Pure, SameOperandsAndResultType]> {
   let description = [{
     Shifts the left-hand-side operand right by the right-hand-side operand.
   }];
-  let arguments = (ins SsaWasm_WasmIntegerType:$num, SsaWasm_WasmIntegerType:$by);
-  let results = (outs SsaWasm_WasmIntegerType:$result);
+  let arguments = (ins SsaWasm_WasmIntegerLike:$num, SsaWasm_WasmIntegerLike:$by);
+  let results = (outs SsaWasm_WasmIntegerLike:$result);
   let assemblyFormat = "$num `,` $by attr-dict `:` type($num)";
 }
 
@@ -296,8 +279,8 @@ def SsaWasm_SqrtOp : SsaWasm_Op<"sqrt", [Pure]> {
   let description = [{
     Computes the square root of the operand.
   }];
-  let arguments = (ins SsaWasm_WasmFloatType:$value);
-  let results = (outs SsaWasm_WasmFloatType:$result);
+  let arguments = (ins SsaWasm_WasmFloatLike:$value);
+  let results = (outs SsaWasm_WasmFloatLike:$result);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -468,24 +451,19 @@ def SsaWasm_GetDataOp : SsaWasm_Op<"get_data", [Pure]> {
 }
 
 def SsaWasm_LoadOp : SsaWasm_Op<"load"> {
-  let arguments = (ins SsaWasm_WasmIntegerType:$addr);
+  let arguments = (ins SsaWasm_WasmIntegerLike:$addr);
   let results = (outs AnyType:$result);
   let hasCustomAssemblyFormat = 1;
 }
 
 def SsaWasm_StoreOp : SsaWasm_Op<"store"> {
-  let arguments = (ins SsaWasm_WasmIntegerType:$addr, AnyType:$value);
+  let arguments = (ins SsaWasm_WasmIntegerLike:$addr, AnyType:$value);
 }
 
 def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer", [Pure]> {
   let arguments = (ins SsaWasm_WasmPointerLike:$value);
-  let results = (outs SsaWasm_WasmIntegerType:$result);
+  let results = (outs I<32>:$result);
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
-
-  let builders = [OpBuilder<(ins "Value":$value), [{
-    $_state.addOperands(value);
-    $_state.addTypes(WasmIntegerType::get($_builder.getContext(), 32));
-  }]>];
 }
 
 def SsaWasm_AsMemRefOp : SsaWasm_Op<"as_memref", [Pure]> {
@@ -575,7 +553,7 @@ def SsaWasm_BlockLoopBranchOp : SsaWasm_Op<"blockloop.br",
 
 def SsaWasm_BlockLoopCondBranchOp : SsaWasm_Op<"blockloop.cond_br", 
   [Terminator, HasParent<"BlockLoopOp">]> {
-  let arguments = (ins SsaWasm_WasmIntegerType:$condition);
+  let arguments = (ins SsaWasm_WasmIntegerLike:$condition);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$falseDest);
   let extraClassDeclaration = [{
     bool isBranchingToBegin();
@@ -628,7 +606,7 @@ def SsaWasm_SelectOp : SsaWasm_Op<"select", [AllTypesMatch<["true_value", "false
   let description = [{
     This operation selects between two values based on a condition.
   }];
-  let arguments = (ins AnyType:$true_value, AnyType:$false_value, SsaWasm_WasmIntegerType:$condition);
+  let arguments = (ins AnyType:$true_value, AnyType:$false_value, SsaWasm_WasmIntegerLike:$condition);
   let results = (outs AnyType:$result);
   let assemblyFormat = "$condition `:` type($condition) `,` $true_value `,` $false_value  `->` type($result) attr-dict";
 }
@@ -638,7 +616,7 @@ def SsaWasm_IfElseOp : SsaWasm_Op<"if_else"> {
     This operation is used to model an if-else construct.
   }];
   // TODO: Support arguments
-  let arguments = (ins SsaWasm_WasmIntegerType:$condition);
+  let arguments = (ins SsaWasm_WasmIntegerLike:$condition);
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$then_region, SizedRegion<1>:$else_region);
 }
@@ -665,7 +643,7 @@ def SsaWasm_FuncRefOp : SsaWasm_Op<"func_ref"> {
     This operation creates a function reference.
   }];
   let arguments = (ins FlatSymbolRefAttr:$func);
-  let results = (outs SsaWasm_WasmRefType:$result);
+  let results = (outs SsaWasm_WasmFuncRefType:$result);
   let assemblyFormat = "attr-dict $func `->` type($result)";
 }
 
@@ -681,7 +659,7 @@ def SsaWasm_ContNewOp : SsaWasm_Op<"cont_new"> {
   let description = [{
     This operation creates a new continuation.
   }];
-  let arguments = (ins SsaWasm_WasmRefType:$func_ref);
+  let arguments = (ins SsaWasm_WasmFuncRefType:$func_ref);
   let results = (outs SsaWasm_WasmContinuationType:$result);
   let assemblyFormat = "attr-dict $func_ref `->` type($result)";
 }

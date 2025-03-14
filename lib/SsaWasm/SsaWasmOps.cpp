@@ -479,7 +479,7 @@ ParseResult LoadOp::parse(OpAsmParser &parser, OperationState &result) {
   if (parser.parseOperand(addr))
     return failure();
 
-  Type addrType = WasmIntegerType::get(parser.getContext(), 32);
+  Type addrType = parser.getBuilder().getI32Type();
   if (parser.resolveOperand(addr, addrType, result.operands))
     return failure();
 

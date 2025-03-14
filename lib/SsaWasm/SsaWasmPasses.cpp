@@ -412,10 +412,10 @@ struct IntroduceLocalGetPattern : public RewritePattern {
         auto underlyingValue = getUnderlyingValue(op->getOperand(operandIdx));
         Type localType = underlyingValue.getType();
         // if the underlying value is of sswawasm<memref> type,
-        // we convert it to ssawasm<integer> type to make operations
+        // we convert it to integer type to make operations
         // on it legal
         if (isa<WasmMemRefType>(localType)) {
-          localType = ssawasm::WasmIntegerType::get(op->getContext(), 32);
+          localType = IntegerType::get(op->getContext(), 32);
         }
 
         rewriter.setInsertionPoint(op);
@@ -463,11 +463,11 @@ public:
 };
 
 Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
-  if (isa<WasmIntegerType>(type)) {
-    auto bitWidth = cast<WasmIntegerType>(type).getBitWidth();
+  if (isa<IntegerType>(type)) {
+    auto bitWidth = cast<IntegerType>(type).getWidth();
     return IntegerType::get(ctx, bitWidth);
-  } else if (isa<WasmFloatType>(type)) {
-    auto bitWidth = cast<WasmFloatType>(type).getBitWidth();
+  } else if (isa<FloatType>(type)) {
+    auto bitWidth = cast<FloatType>(type).getWidth();
     if (bitWidth == 32) {
       return FloatType::getF32(ctx);
     } else if (bitWidth == 64) {
@@ -548,10 +548,10 @@ private:
 class SsaWasmToWasmTypeConverter : public TypeConverter {
 public:
   SsaWasmToWasmTypeConverter(MLIRContext *ctx) {
-    addConversion([ctx](WasmIntegerType type) -> Type {
+    addConversion([ctx](IntegerType type) -> Type {
       return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
     });
-    addConversion([ctx](WasmFloatType type) -> Type {
+    addConversion([ctx](FloatType type) -> Type {
       return wasm::LocalType::get(ctx, convertSsaWasmTypeToWasmType(type, ctx));
     });
     addConversion([ctx](WasmMemRefType type) -> Type {
@@ -720,22 +720,6 @@ public:
     SmallVector<Type, 4> convertedResultTypes;
 
     auto convertType = [&](Type type) -> Type {
-      if (auto wasmIntegerType = dyn_cast<WasmIntegerType>(type)) {
-        if (wasmIntegerType.getBitWidth() == 32) {
-          return rewriter.getI32Type();
-        }
-        if (wasmIntegerType.getBitWidth() == 64) {
-          return rewriter.getI64Type();
-        }
-      }
-      if (auto wasmFloatType = dyn_cast<WasmFloatType>(type)) {
-        if (wasmFloatType.getBitWidth() == 32) {
-          return rewriter.getF32Type();
-        }
-        if (wasmFloatType.getBitWidth() == 64) {
-          return rewriter.getF64Type();
-        }
-      }
       if (isa<WasmMemRefType>(type)) {
         return rewriter.getI32Type();
       }
