@@ -36,6 +36,7 @@ FILENAME = {
 
 def cmd(
     device: str,
+    size: str,
     tag: str,
     compiler: str,
     use_aot: bool,
@@ -52,17 +53,29 @@ def cmd(
         else ""
     )
     file_name = FILENAME[tag]
-    cmd_parts = [
-        'echo "cd .. && ./run-mcu.sh',
-        f"polybench/{file_name}",
-        f"--compiler={compiler}",
-        f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
-        f"--binaryen-opt-flags={binaryen_opt_flags}",
-        f'--use-aot={"true" if use_aot else "false"}',
-        # "--silent",
-        aot_str,
-        '" | pipenv run ./measure.py',
-    ]
+
+    if device == "mcu":
+        cmd_parts = [
+            'echo "cd .. && ./run-mcu.sh',
+            f"polybench/{size}/{file_name}",
+            f"--compiler={compiler}",
+            f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+            f"--binaryen-opt-flags={binaryen_opt_flags}",
+            f'--use-aot={"true" if use_aot else "false"}',
+            # "--silent",
+            aot_str,
+            '" | pipenv run ./measure.py',
+        ]
+    else:
+        cmd_parts = [
+            'cd .. & ./run-mcu.sh',
+            f"polybench/{size}/{file_name}",
+            f"--compiler={compiler}",
+            f"--compiler={compiler}",
+            f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+            f"--binaryen-opt-flags={binaryen_opt_flags}",
+            f'--use-aot={"true" if use_aot else "false"}',
+        ]
 
     cmd_template = " ".join(filter(bool, cmd_parts))
     return cmd_template
@@ -70,6 +83,7 @@ def cmd(
 
 def make_row(
     device: str,
+    size: str,
     tag: str,
     compiler: str,
     use_aot: bool,
@@ -83,6 +97,7 @@ def make_row(
         "tag": tag,
         "cmd": cmd(
             device,
+            size,
             tag,
             compiler,
             use_aot,
@@ -147,11 +162,13 @@ if __name__ == "__main__":
     ]
 
     devices = ["local", "mcu"]
+    sizes = ["small", "extralarge"]
 
     tests = [
         filter_unique(
             make_row(
                 device,
+                size,
                 tag,
                 compiler,
                 use_aot,
@@ -162,6 +179,7 @@ if __name__ == "__main__":
         )
         for device in devices
         for tag in tags
+        for size in ["small", "extralarge"]
         for compiler in ["mlir", "llvm"]
         for use_aot in [True, False]
         for llvm_opt_level in [0, 1, 2, 3]
