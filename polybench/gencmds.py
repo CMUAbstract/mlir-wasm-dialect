@@ -47,35 +47,44 @@ def cmd(
 ) -> str:
     llvm_opt_flags = f"-O{llvm_opt_level}"
     binaryen_opt_flags = f"-O{binaryen_opt_level}"
-    aot_str = (
-        f"-- --opt-level={aot_opt_level} --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4"
-        if use_aot
-        else ""
-    )
+
+    if device == "mcu":
+        aot_str = (
+            f"-- --opt-level={aot_opt_level} --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4"
+            if use_aot
+            else ""
+        )
+    else:
+        aot_str = f"-- --opt-level={aot_opt_level} --target=aarch64v8 --cpu=apple-m1"
+
     file_name = FILENAME[tag]
 
     if device == "mcu":
         cmd_parts = [
             'echo "cd .. && ./run-mcu.sh',
+            f"--device={device}",
             f"polybench/{size}/{file_name}",
             f"--compiler={compiler}",
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f'--use-aot={"true" if use_aot else "false"}',
-            # "--silent",
+            "--silent",
             aot_str,
             '" | pipenv run ./measure.py',
         ]
-    else:
+    elif device == "local":
         cmd_parts = [
-            'cd .. & ./run-mcu.sh',
+            "cd .. && ./run-mcu.sh",
+            f"--device={device}",
             f"polybench/{size}/{file_name}",
-            f"--compiler={compiler}",
             f"--compiler={compiler}",
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f'--use-aot={"true" if use_aot else "false"}',
+            aot_str,
         ]
+    else:
+        raise ValueError(f"Invalid device: {device}")
 
     cmd_template = " ".join(filter(bool, cmd_parts))
     return cmd_template
@@ -94,6 +103,7 @@ def make_row(
 ) -> dict:
     row = {
         "device": device,
+        "size": size,
         "tag": tag,
         "cmd": cmd(
             device,
@@ -162,7 +172,7 @@ if __name__ == "__main__":
     ]
 
     devices = ["local", "mcu"]
-    sizes = ["small", "extralarge"]
+    sizes = ["small", "medium", "extralarge"]
 
     tests = [
         filter_unique(
@@ -179,7 +189,7 @@ if __name__ == "__main__":
         )
         for device in devices
         for tag in tags
-        for size in ["small", "extralarge"]
+        for size in sizes
         for compiler in ["mlir", "llvm"]
         for use_aot in [True, False]
         for llvm_opt_level in [0, 1, 2, 3]

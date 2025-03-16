@@ -20,30 +20,27 @@
 
 #define WARMUP 20
 #define ITERATIONS 100
-// Array to store the elapsed time (in milliseconds) for ITERATIONS pairs.
-static long measurements[ITERATIONS];
 
-// Global variables to track the measurement state.
-static int pair_count =
-    0;                // Number of completed pairs (first call and second call)
-static int phase = 0; // 0 = waiting for first call, 1 = waiting for second call
-static struct timespec start_time; // Stores start time for the current pair
+// Array to store elapsed times in milliseconds with sub-millisecond precision.
+static double measurements[ITERATIONS];
 
-// This function should be called 2*(WARMUP + ITERATIONS) times in total.
-// It measures the elapsed time between the first and second call of each pair.
-// The first WARMUP pairs are ignored; for the remaining ITERATIONS pairs,
-// the elapsed time is stored in the measurements array.
+// Global state variables.
+static int pair_count = 0; // Number of completed pairs.
+static int phase =
+    0; // 0 = waiting for first call, 1 = waiting for second call.
+static struct timespec start_time; // Start time for the current pair.
+
 void toggle_gpio(wasm_exec_env_t exec_env) {
   struct timespec current_time;
 
-  // Get the current time using a monotonic clock.
+  // Get current time using a monotonic clock.
   if (clock_gettime(CLOCK_MONOTONIC, &current_time) != 0) {
     perror("clock_gettime");
     return;
   }
 
   if (phase == 0) {
-    // First call of the pair: record the start time.
+    // First call of the pair: record start time.
     start_time = current_time;
     phase = 1;
   } else {
@@ -54,32 +51,29 @@ void toggle_gpio(wasm_exec_env_t exec_env) {
       sec_diff--;
       nsec_diff += 1000000000L;
     }
-    // Convert elapsed time to milliseconds.
-    long elapsed_ms = sec_diff * 1000 + nsec_diff / 1000000;
+    // Use floating point arithmetic to retain the fraction.
+    double elapsed_ms = sec_diff * 1000.0 + nsec_diff / 1000000.0;
 
-    // For warmup pairs, do nothing; for iterations, store the measurement.
+    // Only store measurements after the warmup phase.
     if (pair_count >= WARMUP && pair_count < (WARMUP + ITERATIONS)) {
       measurements[pair_count - WARMUP] = elapsed_ms;
     }
-    pair_count++; // One pair is completed.
+    pair_count++; // One pair is complete.
     phase = 0;    // Reset phase for the next pair.
   }
 }
 
-// This function computes and prints timing statistics for the ITERATIONS
-// measurements. It calculates the mean, minimum, maximum, and standard
-// deviation.
 void print_timing_statistics() {
   if (ITERATIONS <= 0) {
     printf("No iterations to report.\n");
     return;
   }
 
-  long sum = 0;
-  long min = measurements[0];
-  long max = measurements[0];
+  double sum = 0.0;
+  double min = measurements[0];
+  double max = measurements[0];
   for (int i = 0; i < ITERATIONS; i++) {
-    long t = measurements[i];
+    double t = measurements[i];
     sum += t;
     if (t < min) {
       min = t;
@@ -88,7 +82,7 @@ void print_timing_statistics() {
       max = t;
     }
   }
-  double mean = (double)sum / ITERATIONS;
+  double mean = sum / ITERATIONS;
 
   // Calculate standard deviation.
   double sum_sq_diff = 0.0;
@@ -99,16 +93,18 @@ void print_timing_statistics() {
   double stddev = sqrt(sum_sq_diff / ITERATIONS);
 
   printf("Timing statistics over %d iterations:\n", ITERATIONS);
-  printf("[execution time] %.2f miliseconds\n", mean);
-  printf("Min: %ld ms\n", min);
-  printf("Max: %ld ms\n", max);
+  printf("Mean: %.2f ms\n", mean);
+  printf("Min: %.2f ms\n", min);
+  printf("Max: %.2f ms\n", max);
   printf("Standard Deviation: %.2f ms\n", stddev);
 }
 
+#define PRINT_COUNT 0
+
 void print_i32(wasm_exec_env_t exec_env, int32_t i) {
-  // print only first 10 times
+  // For brevity, print only the first PRINT_COUNT times
   static int print_count = 0;
-  if (print_count < 10) {
+  if (print_count < PRINT_COUNT) {
     printf("%d\n", i);
     print_count++;
   }

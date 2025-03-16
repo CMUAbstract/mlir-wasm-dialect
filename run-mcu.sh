@@ -96,7 +96,7 @@ fi
 
 # Step 3: Conditionally compile Wasm to AOT based on --use-aot
 if [ "$USE_AOT" = true ]; then
-    AOT_COMPILE_CMD="./mcu-wasm-executor/aot-compiler/compile_aot.sh -i $TEMP_DIR/$BASENAME.wasm -o $TEMP_DIR/$BASENAME.aot -- $AOT_FLAGS"
+    AOT_COMPILE_CMD="./aot-compiler/compile_aot.sh -i $TEMP_DIR/$BASENAME.wasm -o $TEMP_DIR/$BASENAME.aot -- $AOT_FLAGS"
 
     echo "Compiling Wasm to AOT with command: $AOT_COMPILE_CMD"
     eval "$AOT_COMPILE_CMD"
@@ -120,7 +120,7 @@ run_local() {
     echo "Running on mac using $file..."
 
     COMMAND_GROUP='
-        cd mac-executor && \
+        cd local-executor && \
         xxd -i -n wasm_file "../$file" src/wasm.h && \
         cmake --build build && \
         ./build/app
