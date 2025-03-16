@@ -14,6 +14,7 @@ fi
 # Initialize variables
 MLIR_FILE=""
 COMPILER="mlir"  # Default type is mlir
+DEVICE="local"  # Default device is local
 LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
 USE_AOT=false  # Default is to use interpreter
@@ -23,6 +24,10 @@ SILENT=false
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
+        --device=*)
+            DEVICE="${1#*=}"
+            shift
+            ;;
         --compiler=*)
             COMPILER="${1#*=}"
             shift
@@ -109,6 +114,28 @@ else
     EXEC_FILE="$TEMP_DIR/$BASENAME.wasm"
 fi
 
+run_local() {
+    local file=$1
+
+    echo "Running on mac using $file..."
+
+    COMMAND_GROUP='
+        cd mac-executor && \
+        xxd -i -n wasm_file "../$file" src/wasm.h && \
+        cmake --build build && \
+        ./build/app
+    '
+
+    if [ "$SILENT" = true ]; then
+        (eval "$COMMAND_GROUP") > /dev/null 2>&1
+    else
+        (eval "$COMMAND_GROUP")
+    fi
+
+    
+    
+}
+
 # Step 4: Function to run the compiled file on the device
 run_on_device() {
     local file=$1
@@ -144,4 +171,11 @@ run_on_device() {
 }
 
 # Step 5: Run the compiled file (either AOT or Wasm) on the device
-run_on_device "$EXEC_FILE"
+if [ "$DEVICE" = "local" ]; then
+    run_local "$EXEC_FILE"
+elif [ "$DEVICE" = "mcu" ]; then
+    run_on_device "$EXEC_FILE"
+else
+    echo "Error: Invalid device specified. Use 'local' or 'mcu'."
+fi
+
