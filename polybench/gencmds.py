@@ -69,7 +69,7 @@ def cmd(
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f'--use-aot={"true" if use_aot else "false"}',
             "--silent",
-            aot_str,
+            aot_str if use_aot else "",
             '" | pipenv run ./measure.py',
         ]
     elif device == "local":
@@ -81,7 +81,7 @@ def cmd(
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f'--use-aot={"true" if use_aot else "false"}',
-            aot_str,
+            aot_str if use_aot else "",
         ]
     else:
         raise ValueError(f"Invalid device: {device}")
