@@ -35,6 +35,7 @@ FILENAME = {
 
 
 def cmd(
+    device: str,
     tag: str,
     compiler: str,
     use_aot: bool,
@@ -68,6 +69,7 @@ def cmd(
 
 
 def make_row(
+    device: str,
     tag: str,
     compiler: str,
     use_aot: bool,
@@ -77,8 +79,10 @@ def make_row(
     aot_opt_level=-1,
 ) -> dict:
     row = {
+        "device": device,
         "tag": tag,
         "cmd": cmd(
+            device,
             tag,
             compiler,
             use_aot,
@@ -142,9 +146,12 @@ if __name__ == "__main__":
         "trmm",
     ]
 
+    devices = ["local", "mcu"]
+
     tests = [
         filter_unique(
             make_row(
+                device,
                 tag,
                 compiler,
                 use_aot,
@@ -153,6 +160,7 @@ if __name__ == "__main__":
                 aot_opt_level=aot_opt_level,
             )
         )
+        for device in devices
         for tag in tags
         for compiler in ["mlir", "llvm"]
         for use_aot in [True, False]
