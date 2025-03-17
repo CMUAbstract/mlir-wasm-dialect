@@ -15,11 +15,11 @@
 #include "polybench.h"
 
 #define CONFIG_APP_STACK_SIZE 10240000
-#define CONFIG_APP_HEAP_SIZE 10240000
+#define CONFIG_APP_HEAP_SIZE 20480000
 #define CONFIG_GLOBAL_HEAP_BUF_SIZE WASM_GLOBAL_HEAP_SIZE
 
-#define WARMUP 20
-#define ITERATIONS 100
+#define WARMUP 5
+#define ITERATIONS 20
 
 // Array to store elapsed times in milliseconds with sub-millisecond precision.
 static double measurements[ITERATIONS];
@@ -93,10 +93,10 @@ void print_timing_statistics() {
   double stddev = sqrt(sum_sq_diff / ITERATIONS);
 
   printf("Timing statistics over %d iterations:\n", ITERATIONS);
-  printf("Mean: %.2f ms\n", mean);
-  printf("Min: %.2f ms\n", min);
-  printf("Max: %.2f ms\n", max);
-  printf("Standard Deviation: %.2f ms\n", stddev);
+  printf("[execution time] %.2f miliseconds\n", mean);
+  printf("[min] %.2f miliseconds\n", min);
+  printf("[max] %.2f miliseconds\n", max);
+  printf("[standard deviation] %.2f miliseconds\n", stddev);
 }
 
 #define PRINT_COUNT 0

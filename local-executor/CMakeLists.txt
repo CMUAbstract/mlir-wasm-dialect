@@ -25,7 +25,7 @@ set(WAMR_BUILD_LIBC_BUILTIN 1)
 set(WAMR_BUILD_LIBC_WASI 0)
 set(WAMR_BUILD_LIB_PTHREAD 0)
 set(WAMR_BUILD_GLOBAL_HEAP_POOL 1)
-set(WAMR_BUILD_GLOBAL_HEAP_SIZE 16389120)
+set(WAMR_BUILD_GLOBAL_HEAP_SIZE 32778420)
 
 include(${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 include(${WAMR_ROOT_DIR}/core/shared/platform/common/math/platform_api_math.cmake)
