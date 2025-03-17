@@ -179,6 +179,7 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     # We always use -O3 optimization level
     $WASI_SDK_PATH/bin/wasm-ld --no-entry --allow-undefined \
     --export-memory --export=main --export=malloc --export=free \
+    --export=__heap_end -export=__data_base \
     -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
     -O3 --lto-CGO3 --lto-O3 -o "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_OBJ"
 fi
