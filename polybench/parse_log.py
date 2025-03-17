@@ -22,6 +22,9 @@ def parse_data(filename):
             # Extract execution time from stdout using regex
             time_match = re.search(r'\[execution time\] ([\d.]+) miliseconds', entry.get('stdout', ''))
             exec_time = float(time_match.group(1)) if time_match else None
+            if exec_time is None:
+                print(entry.get('stdout', ''))
+                exec_time = 0
             
             data.append({
                 'tag': tag,
