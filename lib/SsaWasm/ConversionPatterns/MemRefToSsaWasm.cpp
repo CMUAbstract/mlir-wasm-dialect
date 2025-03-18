@@ -85,8 +85,7 @@ struct GetGlobalOpLowering : public OpConversionPattern<memref::GetGlobalOp> {
   LogicalResult
   matchAndRewrite(memref::GetGlobalOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    WasmMemRefType memRefType =
-        WasmMemRefType::get(rewriter.getContext(), op.getResult().getType());
+    MemRefType memRefType = op.getResult().getType();
 
     rewriter.replaceOpWithNewOp<GetDataOp>(op, memRefType, adaptor.getName());
     return success();
@@ -199,10 +198,8 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
     int64_t size = computeMemRefSize(memRefType, alignment);
     auto constantOp =
         rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(size));
-    rewriter.replaceOpWithNewOp<CallOp>(
-        op, "malloc",
-        TypeRange{WasmMemRefType::get(rewriter.getContext(), memRefType)},
-        ValueRange{constantOp.getResult()});
+    rewriter.replaceOpWithNewOp<CallOp>(op, "malloc", TypeRange{memRefType},
+                                        ValueRange{constantOp.getResult()});
     return success();
   }
 };
@@ -236,10 +233,8 @@ struct AllocaOpLowering : public OpConversionPattern<memref::AllocaOp> {
     int64_t size = computeMemRefSize(memRefType, alignment);
     auto constantOp =
         rewriter.create<ConstantOp>(loc, rewriter.getI32IntegerAttr(size));
-    rewriter.replaceOpWithNewOp<CallOp>(
-        op, "malloc",
-        TypeRange{WasmMemRefType::get(rewriter.getContext(), memRefType)},
-        ValueRange{constantOp.getResult()});
+    rewriter.replaceOpWithNewOp<CallOp>(op, "malloc", TypeRange{memRefType},
+                                        ValueRange{constantOp.getResult()});
     return success();
   }
 };

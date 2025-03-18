@@ -419,7 +419,7 @@ def MemRefTypeAttr
 
 def SsaWasm_DataOp : SsaWasm_Op<"data", [Symbol]> {
    let arguments = (ins SymbolNameAttr:$sym_name,
-                       MemRefTypeAttr:$type,
+                       MemRefTypeAttr:$memref,
                        AnyAttr:$initial_value,
                        UnitAttr:$constant,
                        I32Attr:$base_addr);
@@ -427,7 +427,7 @@ def SsaWasm_DataOp : SsaWasm_Op<"data", [Symbol]> {
   let assemblyFormat = [{
        (`constant` $constant^)?
        $sym_name `:`
-       custom<GlobalMemrefOpTypeAndInitialValue>($type, $initial_value)
+       custom<GlobalMemrefOpTypeAndInitialValue>($memref, $initial_value)
        `at` $base_addr
        attr-dict
   }];
@@ -446,7 +446,7 @@ def SsaWasm_GetDataOp : SsaWasm_Op<"get_data", [Pure]> {
   let summary = "similar to memref::GetGlobalOp";
 
   let arguments = (ins FlatSymbolRefAttr:$name);
-  let results = (outs SsaWasm_WasmMemRefType:$result);
+  let results = (outs AnyMemRef:$result);
   let assemblyFormat = "$name `:` type($result) attr-dict";
 }
 
@@ -468,7 +468,7 @@ def SsaWasm_AsPointerOp : SsaWasm_Op<"as_pointer", [Pure]> {
 
 def SsaWasm_AsMemRefOp : SsaWasm_Op<"as_memref", [Pure]> {
   let arguments = (ins SsaWasm_WasmPointerLike:$value);
-  let results = (outs SsaWasm_WasmMemRefType:$result);
+  let results = (outs AnyMemRef:$result);
   let assemblyFormat = "$value `:` type($value) `->` type($result) attr-dict";
 }
 

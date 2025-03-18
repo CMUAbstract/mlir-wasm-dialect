@@ -19,9 +19,7 @@ public:
       assert((width == 32 || width == 64) && "Unsupported float type");
       return type;
     });
-    addConversion([ctx](MemRefType type) -> Type {
-      return WasmMemRefType::get(ctx, type);
-    });
+    addConversion([](MemRefType type) -> Type { return type; });
     addConversion(
         [ctx](IndexType type) -> Type { return IntegerType::get(ctx, 32); });
     addConversion([ctx](dcont::ContType type) -> Type {
