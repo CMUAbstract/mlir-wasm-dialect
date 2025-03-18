@@ -7,8 +7,7 @@ module {
 
       scf.for %i = %c0_index to %c10_index step %c1_index {
         %i_i32 = arith.index_cast %i : index to i32
-        %i_i32_2 = builtin.unrealized_conversion_cast %i_i32 : i32 to !ssawasm<integer 32>
-        ssawasm.call @print_i32(%i_i32_2) : (!ssawasm<integer 32>) -> ()
+        ssawasm.call @print_i32(%i_i32) : (i32) -> ()
 
         dcont.suspend () : () -> ()
       }
@@ -34,8 +33,8 @@ module {
           dcont.store %storage, %suspended_cont : !dcont.cont<"ct"> -> !dcont.storage<"ct">
           dcont.suspend_handler_return : () -> ()
         }) : (!dcont.cont<"ct">) -> ()
-      %x = ssawasm.constant 0 : i32 !ssawasm<integer 32>
-      ssawasm.call @print_i32(%x) : (!ssawasm<integer 32>) -> ()
+      %x = ssawasm.constant 0 : i32  i32
+      ssawasm.call @print_i32(%x) : (i32) -> ()
     }
 
     // Return from main

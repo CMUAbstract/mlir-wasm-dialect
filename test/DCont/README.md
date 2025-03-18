@@ -15,6 +15,14 @@ $BUILD_DIR/bin/wasm-opt --convert-dcont-to-ssawasm test/DCont/toy.mlir \
 -o toy-wasm.mlir
 
 $BUILD_DIR/bin/wasm-translate --mlir-to-wat toy-wasm.mlir -o toy.wat
+
+$BUILD_DIR/bin/wasm-opt --convert-dcont-to-ssawasm test/DCont/toy-scheduler.mlir \
+--convert-arith-to-ssawasm --convert-func-to-ssawasm --convert-memref-to-ssawasm \
+--convert-scf-to-ssawasm --reconcile-unrealized-casts \
+--convert-ssawasm-global-to-wasm --introduce-locals --convert-ssawasm-to-wasm \
+-o toy-scheduler-wasm.mlir
+
+$BUILD_DIR/bin/wasm-translate --mlir-to-wat toy-scheduler-wasm.mlir -o toy-scheduler.wat
 ```
 
 The output `toy.wat` can be run on [wasmfxtime](https://github.com/wasmfx/wasmfxtime),
