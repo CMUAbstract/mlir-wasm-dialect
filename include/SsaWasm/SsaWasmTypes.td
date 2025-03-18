@@ -20,14 +20,6 @@ class SsaWasm_Type<string name, string typeMnemonic, list<Trait> traits = []>
 }
 
 // We treat this as i32 type with meta information.
-def SsaWasm_WasmMemRefType : SsaWasm_Type<"WasmMemRef", "memref"> {
-    let description = [{
-        Represents a memory reference type in the SSA Wasm dialect.
-        This is an i32 type with meta information.
-    }];
-    let parameters = (ins AnyMemRef:$memRefType);
-    let assemblyFormat = "$memRefType";
-}
 
 /// SSA Wasm numeric type constraint, representing the union of integer and
 /// floating-point types. 
@@ -36,7 +28,7 @@ def SsaWasm_WasmNumericLike : TypeConstraint<
         I<64>.predicate,
         F<32>.predicate,
         F<64>.predicate,
-        SsaWasm_WasmMemRefType.predicate]>,
+        AnyMemRef.predicate]>,
     "ssawasm integer or float type">;
 
 def SsaWasm_WasmIntegerLike : TypeConstraint<
@@ -50,7 +42,7 @@ def SsaWasm_WasmFloatLike : TypeConstraint<
     "ssawasm float type">;
 
 def SsaWasm_WasmPointerLike : TypeConstraint<
-    Or<[SsaWasm_WasmMemRefType.predicate,
+    Or<[AnyMemRef.predicate,
         I<32>.predicate,
         I<64>.predicate]>,
     "ssawasm memref or integer type">;

@@ -414,7 +414,7 @@ struct IntroduceLocalGetPattern : public RewritePattern {
         // if the underlying value is of sswawasm<memref> type,
         // we convert it to integer type to make operations
         // on it legal
-        if (isa<WasmMemRefType>(localType)) {
+        if (isa<MemRefType>(localType)) {
           localType = IntegerType::get(op->getContext(), 32);
         }
 
@@ -475,7 +475,7 @@ Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
     } else {
       assert(false && "Unsupported float type");
     }
-  } else if (isa<WasmMemRefType>(type)) {
+  } else if (isa<MemRefType>(type)) {
     return IntegerType::get(ctx, 32);
   } else if (isa<WasmContinuationType>(type)) {
     // TODO: We should not hardcode this
@@ -554,7 +554,7 @@ public:
     addConversion([ctx](FloatType type) -> Type {
       return convertSsaWasmTypeToWasmType(type, ctx);
     });
-    addConversion([ctx](WasmMemRefType type) -> Type {
+    addConversion([ctx](MemRefType type) -> Type {
       return convertSsaWasmTypeToWasmType(type, ctx);
     });
     addConversion([ctx](WasmContinuationType type) -> Type {
@@ -616,7 +616,7 @@ public:
       rewriter.replaceOpWithNewOp<wasm::DataOp>(
           op, adaptor.getSymName(), adaptor.getBaseAddr(),
           rewriter.getStringAttr(bytes.c_str()),
-          TypeAttr::get(adaptor.getType()));
+          TypeAttr::get(adaptor.getMemref()));
 
       return success();
     }
@@ -719,7 +719,7 @@ public:
     SmallVector<Type, 4> convertedResultTypes;
 
     auto convertType = [&](Type type) -> Type {
-      if (isa<WasmMemRefType>(type)) {
+      if (isa<MemRefType>(type)) {
         return rewriter.getI32Type();
       }
       return type;
