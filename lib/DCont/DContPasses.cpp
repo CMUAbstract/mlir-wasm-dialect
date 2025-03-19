@@ -277,9 +277,9 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     SmallVector<Value> newResults;
     for (auto result : op.getResults()) {
       auto convertedType = getTypeConverter()->convertType(result.getType());
-      auto localOp =
-          rewriter.create<ssawasm::LocalOp>(loc, convertedType, result);
-      newResults.push_back(localOp.getResult());
+      auto local = rewriter.create<ssawasm::LocalDeclOp>(loc, convertedType);
+      rewriter.create<ssawasm::LocalSetOp>(loc, local, result);
+      newResults.push_back(local);
     }
 
     // create a BlockBlockOp
@@ -372,15 +372,8 @@ struct StorageOpLowering : public OpConversionPattern<StorageOp> {
   LogicalResult
   matchAndRewrite(StorageOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-
-    // create a local variable initialized to null
-    auto nullContRef =
-        rewriter
-            .create<ssawasm::NullContRefOp>(
-                op.getLoc(),
-                getTypeConverter()->convertType(op.getStorage().getType()))
-            .getResult();
-    rewriter.replaceOpWithNewOp<ssawasm::LocalOp>(op, nullContRef);
+    rewriter.replaceOpWithNewOp<ssawasm::LocalDeclOp>(
+        op, op.getStorage().getType());
     return success();
   }
 };

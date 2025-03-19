@@ -66,9 +66,17 @@ def SsaWasm_WasmContinuationType : SsaWasm_Type<"WasmContinuation", "cont"> {
     let assemblyFormat = "$id";
 }
 
-def SsaWasm_LocalLike : TypeConstraint<
+def SsaWasm_LocalAllocable : TypeConstraint<
     Or<[SsaWasm_WasmNumericLike.predicate,
         SsaWasm_WasmContinuationType.predicate]>,
     "ssawasm numeric or continuation type">;
+
+def SsaWasm_LocalType : SsaWasm_Type<"Local", "local"> {
+    let description = [{
+        Represents a local variable type in the SSA Wasm dialect.
+    }];
+    let parameters = (ins AnyType:$inner_type);
+    let assemblyFormat = "$inner_type";
+}
 
 #endif // SSAWASM_TYPES

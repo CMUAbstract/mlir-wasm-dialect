@@ -15,7 +15,8 @@ struct FuncOpLowering : public OpConversionPattern<func::FuncOp> {
     for (const auto &inputType : enumerate(op.getFunctionType().getInputs())) {
       signatureConverter.addInputs(
           inputType.index(),
-          getTypeConverter()->convertType(inputType.value()));
+          LocalType::get(op.getContext(),
+                         getTypeConverter()->convertType(inputType.value())));
     }
     // handle memref?
     // TODO

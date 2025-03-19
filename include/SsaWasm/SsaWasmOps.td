@@ -475,16 +475,12 @@ def SsaWasm_AsMemRefOp : SsaWasm_Op<"as_memref", [Pure]> {
 ///////////////////////////////////////////////////////////////////////////
 // Local Operations
 ///////////////////////////////////////////////////////////////////////////
-def SsaWasm_LocalOp : SsaWasm_Op<"local", [SameOperandsAndResultType]> {
-    let summary = "SSA-based local variable operation";
-    let description = [{
-        This is the base class for local variable operations in the SSA Wasm dialect.
-    }];
-
-    let arguments = (ins SsaWasm_LocalLike:$value);
-    let results = (outs SsaWasm_LocalLike:$result);
-
-    let assemblyFormat = "attr-dict $value `:` type($result)";
+def SsaWasm_LocalDeclOp : SsaWasm_Op<"local_decl"> {
+  let description = [{
+    This operation declares a local variable.
+  }];
+  let results = (outs SsaWasm_LocalType:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
 }
 
 // TODO: Enforce that local and value have the same type
@@ -492,10 +488,8 @@ def SsaWasm_LocalSetOp : SsaWasm_Op<"local_set"> {
   let summary = "local variable set operation";
   let description = [{
     This operation sets the value of a local variable.
-    The definingOp of `local` must be LocalOp.
   }];
-  // TODO: Type-level enforcement of the above constraint
-  let arguments = (ins SsaWasm_LocalLike:$local, SsaWasm_LocalLike:$value);
+  let arguments = (ins SsaWasm_LocalType:$local, SsaWasm_LocalAllocable:$value);
   let assemblyFormat = "$local `,` $value `:` type($local) `->` type($value) attr-dict";
 }
 
@@ -504,11 +498,9 @@ def SsaWasm_LocalGetOp : SsaWasm_Op<"local_get"> {
   let summary = "local variable get operation";
   let description = [{
     This operation gets the value of a local variable.
-    The definingOp of `local` must be LocalOp.
   }];
-  // TODO: Type-level enforcement of the above constraint
-  let arguments = (ins SsaWasm_LocalLike:$local);
-  let results = (outs SsaWasm_LocalLike:$result);
+  let arguments = (ins SsaWasm_LocalType:$local);
+  let results = (outs SsaWasm_LocalAllocable:$result);
   let assemblyFormat = "$local `:` type($local) `->` type($result) attr-dict";
 }
 

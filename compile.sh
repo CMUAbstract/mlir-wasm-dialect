@@ -112,6 +112,7 @@ if [[ "$COMPILER" == "mlir" ]]; then
     --reconcile-unrealized-casts \
     --convert-ssawasm-global-to-wasm \
     --introduce-locals \
+    --reconcile-unrealized-casts \
     --convert-ssawasm-to-wasm \
         "$INPUT_MLIR" \
         -o "${OUTPUT_MLIR}"
