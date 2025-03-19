@@ -95,38 +95,51 @@ struct ForOpLowering : public RewritePattern {
     rewriter.setInsertionPoint(blockLoopOp);
     SmallVector<Value, 4> iterationLocals;
     for (Value initArg : initArgs) {
+      auto convertedType = typeConverter.convertType(initArg.getType());
       auto castedInitArg =
           rewriter
-              .create<UnrealizedConversionCastOp>(
-                  loc, typeConverter.convertType(initArg.getType()), initArg)
+              .create<UnrealizedConversionCastOp>(loc, convertedType, initArg)
               .getResult(0);
-      auto local = rewriter.create<LocalOp>(loc, castedInitArg).getResult();
-      auto castedLocal =
+      auto local =
           rewriter
-              .create<UnrealizedConversionCastOp>(loc, initArg.getType(), local)
-              .getResult(0);
-      iterationLocals.push_back(castedLocal);
+              .create<LocalDeclOp>(
+                  loc, LocalType::get(rewriter.getContext(), convertedType))
+              .getResult();
+      rewriter.create<LocalSetOp>(loc, local, castedInitArg);
+      iterationLocals.push_back(local);
     }
     // create local for induction variable
     auto inductionLocal =
-        rewriter.create<LocalOp>(loc, castedLowerBound).getResult();
+        rewriter
+            .create<LocalDeclOp>(loc,
+                                 LocalType::get(rewriter.getContext(),
+                                                castedLowerBound.getType()))
+            .getResult();
+    rewriter.create<LocalSetOp>(loc, inductionLocal, castedLowerBound);
     auto castedInductionLocal =
         rewriter
-            .create<UnrealizedConversionCastOp>(loc, lowerBound.getType(),
-                                                inductionLocal)
+            .create<UnrealizedConversionCastOp>(
+                loc, typeConverter.convertType(lowerBound.getType()),
+                inductionLocal)
             .getResult(0);
 
     // replace uses of iteration variables and induction variable with
     // locals
     rewriter.replaceAllUsesWith(bodyArgs[0], castedInductionLocal);
     for (unsigned i = 0; i < initArgs.size(); ++i) {
-      rewriter.replaceAllUsesWith(bodyArgs[i + 1], iterationLocals[i]);
+      auto convertedType = typeConverter.convertType(bodyArgs[i + 1].getType());
+      auto castedIterationLocal =
+          rewriter
+              .create<UnrealizedConversionCastOp>(loc, convertedType,
+                                                  iterationLocals[i])
+              .getResult(0);
+      rewriter.replaceAllUsesWith(bodyArgs[i + 1], castedIterationLocal);
     }
 
     // Condition Block: evaluate loop condition
     rewriter.setInsertionPointToStart(conditionBlock);
     auto comparisonOp =
-        rewriter.create<ILeUOp>(loc, castedUpperBound, inductionLocal);
+        rewriter.create<ILeUOp>(loc, castedUpperBound, castedInductionLocal);
 
     rewriter.create<BlockLoopCondBranchOp>(loc, comparisonOp.getResult(),
                                            blockEndLabel, bodyBlock);
@@ -139,17 +152,8 @@ struct ForOpLowering : public RewritePattern {
     if (isa<scf::YieldOp>(terminator)) {
       // store the results of the yield op to iteration locals using LocalSetOp
       for (unsigned i = 0; i < initArgs.size(); ++i) {
-        auto castedIterationLocal =
-            rewriter
-                .create<UnrealizedConversionCastOp>(
-                    loc, iterationLocals[i].getType(), iterationLocals[i])
-                .getResult(0);
-        auto castedResult = rewriter
-                                .create<UnrealizedConversionCastOp>(
-                                    loc, iterationLocals[i].getType(),
-                                    terminator->getOperand(i))
-                                .getResult(0);
-        rewriter.create<LocalSetOp>(loc, castedIterationLocal, castedResult);
+        rewriter.create<LocalSetOp>(loc, iterationLocals[i],
+                                    terminator->getOperand(i));
       }
     }
     rewriter.eraseOp(terminator);
@@ -157,7 +161,7 @@ struct ForOpLowering : public RewritePattern {
 
     // Induction Variable Update Block
     rewriter.setInsertionPointToStart(inductionVariableUpdateBlock);
-    auto addOp = rewriter.create<AddOp>(loc, inductionLocal, castedStep);
+    auto addOp = rewriter.create<AddOp>(loc, castedInductionLocal, castedStep);
     rewriter.create<LocalSetOp>(loc, inductionLocal, addOp.getResult());
     rewriter.create<BlockLoopBranchOp>(loc, loopStartLabel);
 

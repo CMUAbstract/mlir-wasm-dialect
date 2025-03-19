@@ -8,6 +8,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -202,25 +203,14 @@ private:
 // Example:
 //   %1 = some_op ... : memref<...>
 //   %2 = ssawasm.as_pointer %1 : memref<...> to ptr
-//   getUnderlyingDefiningOp(%2) returns the operation defining %1
-Operation *getUnderlyingDefiningOp(Value value) {
-  auto definingOp = value.getDefiningOp();
-  if (!definingOp) {
-    return nullptr;
-  }
-  if (auto asPointerOp = dyn_cast<AsPointerOp>(definingOp)) {
-    return getUnderlyingDefiningOp(asPointerOp.getValue());
-  }
-  if (auto asMemRefOp = dyn_cast<AsMemRefOp>(definingOp)) {
-    return getUnderlyingDefiningOp(asMemRefOp.getValue());
-  }
-  return definingOp;
-}
-
+//   getUnderlyingValue(%2) returns %1
 Value getUnderlyingValue(Value value) {
   auto definingOp = value.getDefiningOp();
   if (!definingOp) {
     return value;
+  }
+  if (isa<UnrealizedConversionCastOp>(definingOp)) {
+    return getUnderlyingValue(definingOp->getOperand(0));
   }
   if (auto asPointerOp = dyn_cast<AsPointerOp>(definingOp)) {
     return getUnderlyingValue(asPointerOp.getValue());
@@ -274,18 +264,21 @@ private:
 
     // skip as_pointer operations
     // we should not introduce locals for these operations
-    if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op)) {
+    if (isa<AsPointerOp>(op) || isa<AsMemRefOp>(op) ||
+        isa<UnrealizedConversionCastOp>(op)) {
       return;
     }
 
     for (int operandIdx = op->getNumOperands() - 1; operandIdx >= 0;
          operandIdx--) {
       Value operand = op->getOperand(operandIdx);
-      Operation *definingOp = getUnderlyingDefiningOp(operand);
+      Value underlyingValue = getUnderlyingValue(operand);
+      Operation *definingOp = underlyingValue.getDefiningOp();
       if (!definingOp) {
-        assert((isa<BlockArgument>(operand) ||
-                isa<AsPointerOp>(operand.getDefiningOp()) ||
-                isa<AsMemRefOp>(operand.getDefiningOp())) &&
+        // FIX THIS: go to definingOp as far as possible
+        assert((isa<BlockArgument>(underlyingValue) ||
+                isa<AsPointerOp>(underlyingValue.getDefiningOp()) ||
+                isa<AsMemRefOp>(underlyingValue.getDefiningOp())) &&
                "Expected a block argument or an AsPointerOp or AsMemRefOp");
 
         if (auto blockArg = dyn_cast<BlockArgument>(operand)) {
@@ -300,7 +293,7 @@ private:
         if (!isa<LocalSetOp>(op) || operandIdx != 0) {
           localGetRequiredOps[op].push_back(operandIdx);
         }
-      } else if (isa<LocalOp>(definingOp)) {
+      } else if (isa<LocalDeclOp>(definingOp)) {
         // if the defining operation is already a local, we do not need to
         // introduce a new local
         // let's introduce a local_get for the operand only
@@ -315,7 +308,7 @@ private:
         // We should introduce a local for this operation.
         if (std::find(localRequiredOps.begin(), localRequiredOps.end(),
                       definingOp) == localRequiredOps.end() &&
-            !isa<LocalOp>(definingOp)) {
+            !isa<LocalDeclOp>(definingOp)) {
           localRequiredOps.push_back(definingOp);
         }
         if (!isa<LocalSetOp>(op) || operandIdx != 0) {
@@ -344,7 +337,9 @@ struct IntroduceLocalPattern : public RewritePattern {
     if (op->getDialect() !=
             op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>() &&
         op->getDialect() !=
-            op->getContext()->getLoadedDialect<wasm::WasmDialect>()) {
+            op->getContext()->getLoadedDialect<wasm::WasmDialect>() &&
+        op->getName().getDialectNamespace() !=
+            BuiltinDialect::getDialectNamespace()) {
       llvm::errs() << "Unsupported operation: ";
       op->dump();
       llvm::errs() << "\n";
@@ -359,10 +354,20 @@ struct IntroduceLocalPattern : public RewritePattern {
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     rewriter.setInsertionPointAfter(op);
-    auto localOp = rewriter.create<LocalOp>(op->getLoc(), op->getResult(0));
+    auto local =
+        rewriter
+            .create<LocalDeclOp>(
+                op->getLoc(),
+                LocalType::get(op->getContext(), op->getResult(0).getType()))
+            .getResult();
+    auto castedLocal = rewriter
+                           .create<UnrealizedConversionCastOp>(
+                               op->getLoc(), op->getResult(0).getType(), local)
+                           .getResult(0);
+    auto localSetOp =
+        rewriter.create<LocalSetOp>(op->getLoc(), local, op->getResult(0));
     // we assume that the op has one operand
-    rewriter.replaceAllUsesExcept(op->getResult(0), localOp.getResult(),
-                                  localOp);
+    rewriter.replaceAllUsesExcept(op->getResult(0), castedLocal, localSetOp);
   }
 
 private:
@@ -370,7 +375,8 @@ private:
 };
 
 unsigned computeOffset(Operation *op, int operandIdx) {
-  auto definingOp = getUnderlyingDefiningOp(op->getOperand(operandIdx));
+  Value underlyingValue = getUnderlyingValue(op->getOperand(operandIdx));
+  Operation *definingOp = underlyingValue.getDefiningOp();
   if (!definingOp) {
     return 0;
   }
@@ -395,7 +401,9 @@ struct IntroduceLocalGetPattern : public RewritePattern {
     assert(op->getDialect() ==
                op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>() ||
            op->getDialect() ==
-               op->getContext()->getLoadedDialect<wasm::WasmDialect>());
+               op->getContext()->getLoadedDialect<wasm::WasmDialect>() ||
+           op->getName().getDialectNamespace() ==
+               BuiltinDialect::getDialectNamespace());
 
     if (introduceLocal.getLocalGetRequiredOperandIndices(op).size() > 0) {
       return success();
@@ -410,25 +418,38 @@ struct IntroduceLocalGetPattern : public RewritePattern {
          operandIdx--) {
       if (introduceLocal.isLocalGetRequired(op, operandIdx)) {
         auto underlyingValue = getUnderlyingValue(op->getOperand(operandIdx));
-        Type localType = underlyingValue.getType();
-        // if the underlying value is of sswawasm<memref> type,
-        // we convert it to integer type to make operations
-        // on it legal
-        if (isa<MemRefType>(localType)) {
-          localType = IntegerType::get(op->getContext(), 32);
-        }
+        Type underlyingValueType = underlyingValue.getType();
 
         rewriter.setInsertionPoint(op);
         auto ip = rewriter.getInsertionPoint();
         for (unsigned i = 0; i < offset; i++) {
           rewriter.setInsertionPoint(rewriter.getInsertionBlock(), --ip);
         }
-        auto local = rewriter
-                         .create<ssawasm::LocalGetOp>(op->getLoc(), localType,
-                                                      underlyingValue)
-                         .getResult();
-        // replace the operand with the local
-        op->setOperand(operandIdx, local);
+        Value castedUnderlyingValue;
+        Type resultType;
+        if (auto localType = dyn_cast<LocalType>(underlyingValueType)) {
+          castedUnderlyingValue = underlyingValue;
+          resultType = localType.getInnerType();
+        } else {
+          castedUnderlyingValue =
+              rewriter
+                  .create<UnrealizedConversionCastOp>(
+                      op->getLoc(),
+                      LocalType::get(op->getContext(), underlyingValueType),
+                      underlyingValue)
+                  .getResult(0);
+          resultType = underlyingValueType;
+        }
+        // if the result type is memref,
+        // we convert it to integer type to make operations
+        // on it legal
+        if (isa<MemRefType>(resultType)) {
+          resultType = IntegerType::get(op->getContext(), 32);
+        }
+        auto localGet = rewriter.create<ssawasm::LocalGetOp>(
+            op->getLoc(), resultType, castedUnderlyingValue);
+        // replace the operand with the
+        op->setOperand(operandIdx, localGet.getResult());
         offset += 1;
 
       } else {
@@ -500,11 +521,12 @@ public:
 
       std::function<void(Block *)> traverse = [&](Block *block) {
         for (auto &op : *block) {
-          if (isa<LocalOp>(op)) {
+          if (isa<LocalDeclOp>(op)) {
             localIndex[funcOp.getName().str()][op.getResult(0)] = index;
             localTypes[funcOp.getName().str()].push_back(
-                convertSsaWasmTypeToWasmType(op.getResult(0).getType(),
-                                             op.getContext()));
+                convertSsaWasmTypeToWasmType(
+                    cast<LocalType>(op.getResult(0).getType()).getInnerType(),
+                    op.getContext()));
             index++;
           }
           // Recursively traverse any nested regions
@@ -529,7 +551,7 @@ public:
 
     auto valueIt = funcIt->second.find(underlyingValue);
     if (valueIt == funcIt->second.end()) {
-      llvm::errs() << "Value not found in local index map for function:\n";
+      llvm::errs() << "value not found in local index map for function:\n";
       funcOp.dump();
       value.dump();
       assert(false && "Value not found in local index map");
@@ -556,6 +578,9 @@ public:
     });
     addConversion([ctx](MemRefType type) -> Type {
       return convertSsaWasmTypeToWasmType(type, ctx);
+    });
+    addConversion([ctx](LocalType type) -> Type {
+      return convertSsaWasmTypeToWasmType(type.getInnerType(), ctx);
     });
     addConversion([ctx](WasmContinuationType type) -> Type {
       // FIXME: We should not hardcode this
@@ -635,9 +660,8 @@ public:
         op, rewriter.getStringAttr(op.getName()));
     auto addressConstantOp = rewriter.create<ConstantOp>(
         loc, rewriter.getI32IntegerAttr(dataOp.getBaseAddr()));
-    auto localOp = rewriter.create<LocalOp>(loc, addressConstantOp.getResult());
-    auto asMemRefOp = rewriter.create<AsMemRefOp>(loc, op.getResult().getType(),
-                                                  localOp.getResult());
+    auto asMemRefOp = rewriter.create<AsMemRefOp>(
+        loc, op.getResult().getType(), addressConstantOp.getResult());
 
     rewriter.replaceOp(op, asMemRefOp.getResult());
 
@@ -718,19 +742,13 @@ public:
     SmallVector<Type, 4> convertedInputTypes;
     SmallVector<Type, 4> convertedResultTypes;
 
-    auto convertType = [&](Type type) -> Type {
-      if (isa<MemRefType>(type)) {
-        return rewriter.getI32Type();
-      }
-      return type;
-    };
-
     for (auto inputType : funcType.getInputs()) {
-      convertedInputTypes.push_back(convertType(inputType));
+      convertedInputTypes.push_back(getTypeConverter()->convertType(inputType));
     }
 
     for (auto resultType : funcType.getResults()) {
-      convertedResultTypes.push_back(convertType(resultType));
+      convertedResultTypes.push_back(
+          getTypeConverter()->convertType(resultType));
     }
 
     auto newFuncType =
@@ -752,6 +770,7 @@ public:
     auto module = getOperation();
     MLIRContext *context = module.getContext();
     RewritePatternSet globalDependencyLoweringPattern(context);
+    SsaWasmToWasmTypeConverter typeConverter(context);
     globalDependencyLoweringPattern.add<GetDataOpLowering>(context);
 
     ConversionTarget target(*context);
@@ -768,7 +787,8 @@ public:
     globalLoweringPattern
         .add<DataOpLowering, TagOpLowering, RecContFuncDeclOpLowering,
              ElemDeclFuncOpLowering, ContTypeDeclOpLowering,
-             ImportFuncOpLowering, FuncTypeDeclOpLowering>(context);
+             ImportFuncOpLowering, FuncTypeDeclOpLowering>(typeConverter,
+                                                           context);
     target.addIllegalOp<DataOp>();
     target.addIllegalOp<TagOp>();
     target.addIllegalOp<RecContFuncDeclOp>();
@@ -891,6 +911,11 @@ private:
                         LocalIndexAnalysis &localIndexAnalysis,
                         IRRewriter &rewriter, int &newLabelIndex) {
 
+    if (isa<UnrealizedConversionCastOp>(op)) {
+      rewriter.eraseOp(op);
+      return;
+    }
+
     if (op->getDialect() !=
         op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>()) {
       return;
@@ -967,10 +992,8 @@ private:
       rewriter.create<wasm::FSqrtOp>(
           op->getLoc(), convertSsaWasmTypeToWasmType(op->getResult(0).getType(),
                                                      op->getContext()));
-    } else if (isa<LocalOp>(op)) {
-      rewriter.create<wasm::LocalSetOp>(
-          op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
-                            funcOp, op->getResult(0))));
+    } else if (isa<LocalDeclOp>(op)) {
+      // This is handled by ConvertSsaWasmToWasm. Do nothing.
     } else if (auto localSetOp = dyn_cast<LocalSetOp>(op)) {
       rewriter.create<wasm::LocalSetOp>(
           op->getLoc(), rewriter.getIndexAttr(localIndexAnalysis.getLocalIndex(
