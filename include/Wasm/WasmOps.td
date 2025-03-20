@@ -546,7 +546,7 @@ def Wasm_TagOp : Wasm_Op<"tag", [Pure]> {
   let description = [{
     Declares a control tag with specified parameter and result types.
   }];
-  let arguments = (ins SymbolNameAttr:$name);
+  let arguments = (ins SymbolNameAttr:$name, TypeAttrOf<FunctionType>:$func_type);
   let assemblyFormat = "$name attr-dict";
 }
 

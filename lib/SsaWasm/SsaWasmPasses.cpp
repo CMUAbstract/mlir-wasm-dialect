@@ -675,7 +675,8 @@ public:
   LogicalResult
   matchAndRewrite(TagOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<wasm::TagOp>(op, op.getSymName());
+    rewriter.replaceOpWithNewOp<wasm::TagOp>(op, op.getSymName(),
+                                             adaptor.getFuncType());
     return success();
   }
 };

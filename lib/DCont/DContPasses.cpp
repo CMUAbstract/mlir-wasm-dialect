@@ -21,133 +21,9 @@
 using namespace std;
 
 namespace mlir::dcont {
-#define GEN_PASS_DEF_CONVERTINTERMITTENTTODCONT
-#define GEN_PASS_DEF_INTRODUCEMAINFUNCTION
 #define GEN_PASS_DEF_CONVERTDCONTTOSSAWASM
 #include "DCont/DContPasses.h.inc"
 
-// Intermittent to DCont passes
-
-class IntroduceMainFunction
-    : public impl::IntroduceMainFunctionBase<IntroduceMainFunction> {
-  using impl::IntroduceMainFunctionBase<
-      IntroduceMainFunction>::IntroduceMainFunctionBase;
-  void runOnOperation() override {
-    ModuleOp module = getOperation();
-    MLIRContext *context = &getContext();
-    IRRewriter rewriter(context);
-    Location loc = module.getLoc();
-
-    // introduce main function
-    rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
-    auto mainFuncOp = rewriter.create<func::FuncOp>(
-        loc, "main", rewriter.getFunctionType({}, {}));
-    auto &entryRegion = mainFuncOp.getBody();
-    auto *entryBlock = rewriter.createBlock(&entryRegion);
-    rewriter.setInsertionPointToEnd(entryBlock);
-
-    // run the initial task
-    StringRef initialTaskName = "task1";
-    auto contType = ContType::get(context, StringAttr::get(context, "ct"));
-    // each task will be converted to a function
-    // that takes a continuation as an argument
-    auto handle =
-        rewriter
-            .create<NewOp>(loc, contType,
-                           FlatSymbolRefAttr::get(context, initialTaskName))
-            .getResult();
-    auto nullCont = rewriter.create<NullContOp>(loc, contType).getResult();
-    rewriter.create<ResumeSwitchOp>(loc,
-                                    /*return continuation type=*/contType,
-                                    /*returned results*/ TypeRange{},
-                                    /*continuation*/ handle,
-                                    /*arguments*/ ValueRange{nullCont});
-    rewriter.create<func::ReturnOp>(loc, TypeRange{}, ValueRange{});
-  }
-};
-
-namespace {
-struct IdempotentTaskOpLowering
-    : public OpConversionPattern<intermittent::IdempotentTaskOp> {
-  using OpConversionPattern<
-      intermittent::IdempotentTaskOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(intermittent::IdempotentTaskOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    // IdempotentTaskOp is lowered to a function that takes a continuation as an
-    // argument
-    MLIRContext *context = op.getContext();
-    auto contType = ContType::get(context, StringAttr::get(context, "ct"));
-    auto funcOp = rewriter.create<func::FuncOp>(
-        op.getLoc(), op.getSymName(),
-        rewriter.getFunctionType(/*inputs=*/{contType}, /*results=*/{}));
-
-    // Create an continuation argument to the function entry block
-    TypeConverter::SignatureConversion signatureConversion(1);
-    signatureConversion.addInputs(0, contType);
-    if (failed(rewriter.convertRegionTypes(&op.getRegion(), *getTypeConverter(),
-                                           &signatureConversion))) {
-      return failure();
-    }
-    // Inline the region into the function body
-    rewriter.inlineRegionBefore(op.getRegion(), funcOp.getBody(),
-                                funcOp.getBody().end());
-
-    // Replace the original op
-    rewriter.eraseOp(op);
-
-    return success();
-  }
-};
-
-struct TransitionToOpLowering
-    : public OpConversionPattern<intermittent::TransitionToOp> {
-  using OpConversionPattern<intermittent::TransitionToOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(intermittent::TransitionToOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    // TODO: Save nonvolatile variables here
-    Location loc = op.getLoc();
-    MLIRContext *context = op.getContext();
-    auto nextTaskName = op.getNextTask().str();
-    auto contType = ContType::get(context, StringAttr::get(context, "ct"));
-    auto handle = rewriter.create<NewOp>(
-        loc, contType, FlatSymbolRefAttr::get(context, nextTaskName));
-    rewriter.create<SwitchOp>(loc,
-                              /*returedCont=*/contType,
-                              /*results=*/TypeRange{},
-                              /*cont=*/handle,
-                              /*args=*/ValueRange{});
-    rewriter.create<func::ReturnOp>(loc, TypeRange{}, ValueRange{});
-    rewriter.eraseOp(op);
-
-    return success();
-  }
-};
-} // namespace
-class ConvertIntermittentToDCont
-    : public impl::ConvertIntermittentToDContBase<ConvertIntermittentToDCont> {
-  using impl::ConvertIntermittentToDContBase<
-      ConvertIntermittentToDCont>::ConvertIntermittentToDContBase;
-
-  void runOnOperation() override {
-    ModuleOp module = getOperation();
-    MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
-    patterns.add<IdempotentTaskOpLowering, TransitionToOpLowering>(context);
-
-    ConversionTarget target(getContext());
-    target.addLegalDialect<dcont::DContDialect>();
-    target.addLegalDialect<func::FuncDialect>();
-    target.addIllegalOp<intermittent::IdempotentTaskOp>();
-
-    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
-      signalPassFailure();
-    }
-  }
-};
 namespace {
 
 struct DContToSsaWasmTypeConverter : public TypeConverter {
@@ -273,15 +149,6 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     // 	        exit
     //
 
-    // create local variables for the results
-    SmallVector<Value> newResults;
-    for (auto result : op.getResults()) {
-      auto convertedType = getTypeConverter()->convertType(result.getType());
-      auto local = rewriter.create<ssawasm::LocalDeclOp>(loc, convertedType);
-      rewriter.create<ssawasm::LocalSetOp>(loc, local, result);
-      newResults.push_back(local);
-    }
-
     // create a BlockBlockOp
     auto blockBlockOp = rewriter.create<ssawasm::BlockBlockOp>(loc);
     blockBlockOp.setInnerBlockResultTypesAttr(
@@ -296,22 +163,13 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     rewriter.create<ssawasm::TempBranchOp>(loc, innerEntryBlock1);
 
     rewriter.setInsertionPointToEnd(innerEntryBlock1);
-    auto resumeOp = rewriter.create<ssawasm::ResumeOp>(
-        loc,
-        /*results=*/op.getResults().getType(),
-        /*tag=*/rewriter.getStringAttr("yield"),
-        /*cont=*/adaptor.getCont(),
-        /*args=*/adaptor.getArgs(),
-        /*on_yield=*/innerExitBlock,
-        /*fallback=*/innerEntryBlock2);
-
-    // if resumeOp returns a value, we need to store it in the local variables
-    if (resumeOp.getResults().size() > 0) {
-      for (auto [result, local] :
-           llvm::zip(resumeOp.getResults(), newResults)) {
-        rewriter.create<ssawasm::LocalSetOp>(loc, local, result);
-      }
-    }
+    rewriter.create<ssawasm::ResumeOp>(loc,
+                                       /*results=*/TypeRange(),
+                                       /*tag=*/rewriter.getStringAttr("yield"),
+                                       /*cont=*/adaptor.getCont(),
+                                       /*args=*/adaptor.getArgs(),
+                                       /*on_yield=*/innerExitBlock,
+                                       /*fallback=*/innerEntryBlock2);
 
     rewriter.setInsertionPointToEnd(innerEntryBlock2);
     rewriter.create<ssawasm::BlockBlockBranchOp>(loc, outerExitBlock);
@@ -330,12 +188,6 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     auto *handlerReturnOp = handlerBlock.getTerminator();
     rewriter.mergeBlocks(&handlerBlock, innerExitBlock, stackArgs);
 
-    // if the handler returns a value, we need to save it in the local
-    // variables
-    for (auto [result, local] :
-         llvm::zip(handlerReturnOp->getResults(), newResults)) {
-      rewriter.create<ssawasm::LocalSetOp>(loc, local, result);
-    }
     rewriter.eraseOp(handlerReturnOp);
 
     rewriter.setInsertionPointToEnd(innerExitBlock);
@@ -373,7 +225,9 @@ struct StorageOpLowering : public OpConversionPattern<StorageOp> {
   matchAndRewrite(StorageOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.replaceOpWithNewOp<ssawasm::LocalDeclOp>(
-        op, op.getStorage().getType());
+        op, ssawasm::LocalType::get(
+                op.getContext(),
+                getTypeConverter()->convertType(op.getStorage().getType())));
     return success();
   }
 };
@@ -405,7 +259,16 @@ struct StoreOpLowering : public OpConversionPattern<StoreOp> {
   LogicalResult
   matchAndRewrite(StoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<ssawasm::LocalSetOp>(op, adaptor.getStorage(),
+    auto castedStorage =
+        rewriter
+            .create<UnrealizedConversionCastOp>(
+                op.getLoc(),
+                ssawasm::LocalType::get(
+                    op.getContext(),
+                    getTypeConverter()->convertType(op.getStorage().getType())),
+                adaptor.getStorage())
+            .getResult(0);
+    rewriter.replaceOpWithNewOp<ssawasm::LocalSetOp>(op, castedStorage,
                                                      adaptor.getCont());
     return success();
   }
@@ -424,7 +287,9 @@ class ConvertDContToSsaWasm
     IRRewriter rewriter(context);
     rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
     rewriter.create<ssawasm::TagOp>(module.getLoc(),
-                                    rewriter.getStringAttr("yield"));
+                                    rewriter.getStringAttr("yield"),
+                                    rewriter.getFunctionType({}, {}));
+    // TODO: Do not hardcode function type
 
     // search for all functions that are called by `dcont.new`
 
@@ -502,7 +367,6 @@ class ConvertDContToSsaWasm
     patterns.add<NewOpLowering, NullContOpLowering, ResumeOpLowering,
                  SuspendOpLowering, StorageOpLowering, LoadOpLowering,
                  StoreOpLowering>(typeConverter, context);
-    // TODO: Fix and add ResumeSwitchOpLowering and SwitchOpLowering
 
     ConversionTarget target(getContext());
     target.addLegalDialect<ssawasm::SsaWasmDialect>();

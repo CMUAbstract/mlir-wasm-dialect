@@ -80,15 +80,14 @@ def DCont_ResumeOp : DCont_Op<"resume"> {
         The `resume` operation resumes a delimited continuation.
     }];
     let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
-    let results = (outs Variadic<AnyType>:$results);
+
     // TODO: We should support suspend handler with multiple blocks
     let regions = (region SizedRegion<1>:$suspend_handler);
 }
 
 def DCont_SuspendHandlerReturnOp : DCont_Op<"suspend_handler_return", [Terminator]>{
     let summary = "return from suspend handler";
-    let results = (outs Variadic<AnyType>:$results);
-    let assemblyFormat = "attr-dict `:` type($results)";
+    let assemblyFormat = "attr-dict";
 }
 
 
@@ -103,29 +102,6 @@ def DCont_SuspendOp : DCont_Op<"suspend"> {
         `(` $args `)` attr-dict `:` functional-type($args, $results)
   }];
   
-}
-
-// FIXME: This is not a good modeling
-def DCont_ResumeSwitchOp : DCont_Op<"resume_switch"> {
-    let summary = "resume a delimited continuation so that childs can switch to each other";
-    let description = [{
-        The `resume_switch` operation resumes a delimited continuation.
-        The resumed continuation can switch to other continuations.
-    }];
-    let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
-    // TODO: add assembly format
-}
-
-// FIXME: This is not a good modeling
-def DCont_SwitchOp : DCont_Op<"switch"> {
-    let summary = "switch to a different delimited continuation";
-    let description = [{
-        The `switch` operation switches to a different delimited continuation.
-    }];
-    let arguments = (ins DCont_ContType:$cont, Variadic<AnyType>:$args);
-    let results = (outs DCont_ContType:$returned_cont, Variadic<AnyType>:$results);
-    // TODO: add assembly format
 }
 
 #endif // DCONT_OPS
