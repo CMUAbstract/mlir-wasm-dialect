@@ -841,8 +841,38 @@ LogicalResult translateImportOps(ModuleOp &moduleOp, raw_ostream &output,
 }
 
 LogicalResult translateTagOps(ModuleOp &moduleOp, raw_ostream &output) {
-  moduleOp.walk(
-      [&](TagOp tagOp) { output << "(tag $" << tagOp.getName() << ")\n"; });
+  moduleOp.walk([&](TagOp tagOp) {
+    auto funcType = tagOp.getFuncType();
+
+    output << "(tag $" << tagOp.getName() << " ";
+    if (!funcType.getInputs().empty()) {
+      output << "(param ";
+      for (auto paramType : funcType.getInputs()) {
+        std::string watType;
+        if (failed(getWatType(paramType, watType))) {
+          tagOp.emitError("unsupported parameter type");
+          return;
+        }
+        output << watType;
+        output << " ";
+      }
+      output << ")";
+    }
+    if (!funcType.getResults().empty()) {
+      output << "(result ";
+      for (auto resultType : funcType.getResults()) {
+        std::string watType;
+        if (failed(getWatType(resultType, watType))) {
+          tagOp.emitError("unsupported result type");
+          return;
+        }
+        output << watType;
+        output << " ";
+      }
+      output << ")";
+    }
+    output << ")\n";
+  });
   return success();
 }
 

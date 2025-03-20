@@ -626,7 +626,7 @@ def SsaWasm_TagOp : SsaWasm_Op<"tag", [Symbol]> {
   let description = [{
     This operation declares a tag.
   }];
-  let arguments = (ins SymbolNameAttr:$sym_name);
+  let arguments = (ins SymbolNameAttr:$sym_name, TypeAttrOf<FunctionType>:$func_type);
   let assemblyFormat = "attr-dict $sym_name";
 }
 
