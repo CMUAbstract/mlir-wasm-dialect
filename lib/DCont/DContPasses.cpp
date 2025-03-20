@@ -26,10 +26,13 @@ namespace mlir::dcont {
 
 namespace {
 
+// We only support one continuation type for now
+// The name of the continuation type is hardcoded to "ct"
 struct DContToSsaWasmTypeConverter : public TypeConverter {
   DContToSsaWasmTypeConverter(MLIRContext *ctx) {
     addConversion([ctx](ContType type) -> Type {
-      return ssawasm::WasmContinuationType::get(ctx, type.getId());
+      return ssawasm::WasmContinuationType::get(ctx,
+                                                StringAttr::get(ctx, "ct"));
     });
     addConversion([ctx](IntegerType type) -> Type {
       auto width = type.getWidth();
@@ -41,7 +44,8 @@ struct DContToSsaWasmTypeConverter : public TypeConverter {
     addConversion(
         [ctx](IndexType type) -> Type { return IntegerType::get(ctx, 32); });
     addConversion([ctx](StorageType type) -> Type {
-      return ssawasm::WasmContinuationType::get(ctx, type.getId());
+      return ssawasm::WasmContinuationType::get(ctx,
+                                                StringAttr::get(ctx, "ct"));
     });
     addSourceMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) -> Value {
@@ -86,43 +90,6 @@ struct NullContOpLowering : public OpConversionPattern<NullContOp> {
     return success();
   }
 };
-
-// FIXME
-// struct ResumeSwitchOpLowering : public OpConversionPattern<ResumeSwitchOp> {
-//   using OpConversionPattern<ResumeSwitchOp>::OpConversionPattern;
-//
-//   LogicalResult
-//   matchAndRewrite(ResumeSwitchOp op, OpAdaptor adaptor,
-//                   ConversionPatternRewriter &rewriter) const override {
-//     rewriter.replaceOpWithNewOp<ssawasm::ResumeSwitchOp>(
-//         op,
-//         /*returnedCont=*/
-//         getTypeConverter()->convertType(op.getReturnedCont().getType()),
-//         /*results=*/op.getResults().getType(),
-//         /*tag=*/rewriter.getStringAttr("yield"),
-//         /*cont=*/adaptor.getCont(),
-//         /*args=*/adaptor.getArgs());
-//     return success();
-//   }
-// };
-
-// struct SwitchOpLowering : public OpConversionPattern<SwitchOp> {
-//   using OpConversionPattern<SwitchOp>::OpConversionPattern;
-//
-//   LogicalResult
-//   matchAndRewrite(SwitchOp op, OpAdaptor adaptor,
-//                   ConversionPatternRewriter &rewriter) const override {
-//     rewriter.replaceOpWithNewOp<ssawasm::SwitchOp>(
-//         op,
-//         /*returnedCont=*/
-//         getTypeConverter()->convertType(op.getReturnedCont().getType()),
-//         /*results=*/op.getResults().getType(),
-//         /*tag=*/rewriter.getStringAttr("yield"),
-//         /*cont=*/adaptor.getCont(),
-//         /*args=*/adaptor.getArgs());
-//     return success();
-//   }
-// };
 
 struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
   using OpConversionPattern<ResumeOp>::OpConversionPattern;
@@ -334,33 +301,9 @@ class ConvertDContToSsaWasm
     rewriter.create<ssawasm::FuncTypeDeclOp>(
         module.getLoc(), rewriter.getStringAttr("ft"), firstFuncType);
 
-    // check if the cont type is recursive
-    bool isRecursive = false;
-    if (!contFunctions.empty()) {
-      auto funcOp = *contFunctions.begin();
-      FunctionType funcType = funcOp.getFunctionType();
-
-      // Check if any of the input types matches the function type
-      for (Type inputType : funcType.getInputs()) {
-        if (auto contType = dyn_cast<ContType>(inputType)) {
-          if (contType.getId() == "ct") {
-            isRecursive = true;
-            break;
-          }
-        }
-      }
-    }
-
-    if (isRecursive) {
-      // FIXME: We should not hardcode this
-      rewriter.create<ssawasm::RecContFuncDeclOp>(module.getLoc(),
-                                                  rewriter.getStringAttr("ft"),
-                                                  rewriter.getStringAttr("ct"));
-    } else {
-      rewriter.create<ssawasm::ContTypeDeclOp>(module.getLoc(),
-                                               rewriter.getStringAttr("ct"),
-                                               rewriter.getStringAttr("ft"));
-    }
+    rewriter.create<ssawasm::ContTypeDeclOp>(module.getLoc(),
+                                             rewriter.getStringAttr("ct"),
+                                             rewriter.getStringAttr("ft"));
 
     RewritePatternSet patterns(context);
     DContToSsaWasmTypeConverter typeConverter(context);

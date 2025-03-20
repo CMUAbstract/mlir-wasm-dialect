@@ -53,12 +53,12 @@ module {
   
   // func.func @main
   func.func @main() {
-    %task1_handle = dcont.new @task1 : !dcont.cont<"ct">
-    %task2_handle = dcont.new @task2 : !dcont.cont<"ct">
-    %storage1 = dcont.storage : !dcont.storage<"ct">
-    %storage2 = dcont.storage : !dcont.storage<"ct">
-    dcont.store %storage1, %task1_handle : !dcont.cont<"ct"> -> !dcont.storage<"ct">
-    dcont.store %storage2, %task2_handle : !dcont.cont<"ct"> -> !dcont.storage<"ct">
+    %task1_handle = dcont.new @task1 : !dcont.cont<()->()>
+    %task2_handle = dcont.new @task2 : !dcont.cont<()->()>
+    %storage1 = dcont.storage : !dcont.storage<()->()>
+    %storage2 = dcont.storage : !dcont.storage<()->()>
+    dcont.store %storage1, %task1_handle : !dcont.cont<()->()> -> !dcont.storage<()->()>
+    dcont.store %storage2, %task2_handle : !dcont.cont<()->()> -> !dcont.storage<()->()>
     
     %c0_index  = arith.constant 0 : index
     %c2000_index = arith.constant 2000 : index
@@ -69,23 +69,23 @@ module {
       %rem = arith.remui %i, %c2_index : index
       %cond = arith.cmpi eq, %rem, %c0_index : index
 
-      %loaded = scf.if %cond -> (!dcont.cont<"ct">) {
-        %loaded = dcont.load %storage1 : !dcont.storage<"ct"> -> !dcont.cont<"ct">
-        scf.yield %loaded : !dcont.cont<"ct">
+      %loaded = scf.if %cond -> (!dcont.cont<()->()>) {
+        %loaded = dcont.load %storage1 : !dcont.storage<()->()> -> !dcont.cont<()->()>
+        scf.yield %loaded : !dcont.cont<()->()>
       } else {
-        %loaded = dcont.load %storage2 : !dcont.storage<"ct"> -> !dcont.cont<"ct">
-        scf.yield %loaded : !dcont.cont<"ct">
+        %loaded = dcont.load %storage2 : !dcont.storage<()->()> -> !dcont.cont<()->()>
+        scf.yield %loaded : !dcont.cont<()->()>
       }
 
       "dcont.resume"(%loaded) 
-        ({ ^bb0(%suspended_cont: !dcont.cont<"ct">): 
+        ({ ^bb0(%suspended_cont: !dcont.cont<()->()>): 
           scf.if %cond {
-            dcont.store %storage1, %suspended_cont : !dcont.cont<"ct"> -> !dcont.storage<"ct">
+            dcont.store %storage1, %suspended_cont : !dcont.cont<()->()> -> !dcont.storage<()->()>
           } else {
-            dcont.store %storage2, %suspended_cont : !dcont.cont<"ct"> -> !dcont.storage<"ct">
+            dcont.store %storage2, %suspended_cont : !dcont.cont<()->()> -> !dcont.storage<()->()>
           }
-          dcont.suspend_handler_return : () -> ()
-        }) : (!dcont.cont<"ct">) -> ()
+          dcont.suspend_handler_return
+        }) : (!dcont.cont<()->()>) -> ()
     }
 
    // %global_memref = memref.get_global @global_data : memref<20xi32>

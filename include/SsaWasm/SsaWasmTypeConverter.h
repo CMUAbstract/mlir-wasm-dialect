@@ -23,10 +23,12 @@ public:
     addConversion(
         [ctx](IndexType type) -> Type { return IntegerType::get(ctx, 32); });
     addConversion([ctx](dcont::ContType type) -> Type {
-      return WasmContinuationType::get(ctx, type.getId());
+      return WasmContinuationType::get(ctx, StringAttr::get(ctx, "ct"));
     });
+    // We only support one dcont continuation type for now
+    // The name of the continuation type is hardcoded to "ct"
     addConversion([ctx](dcont::StorageType type) -> Type {
-      return WasmContinuationType::get(ctx, type.getId());
+      return WasmContinuationType::get(ctx, StringAttr::get(ctx, "ct"));
     });
 
     addSourceMaterialization([](OpBuilder &builder, Type type,
