@@ -17,22 +17,22 @@ module {
 
   // func.func @main
   func.func @main() {
-    %task1_handle = dcont.new @task1 : !dcont.cont<"ct">
+    %task1_handle = dcont.new @task1 : !dcont.cont<()->()>
 
-    %storage = dcont.storage : !dcont.storage<"ct">
-    dcont.store %storage, %task1_handle : !dcont.cont<"ct"> -> !dcont.storage<"ct">
+    %storage = dcont.storage : !dcont.storage<()->()>
+    dcont.store %storage, %task1_handle : !dcont.cont<()->()> -> !dcont.storage<()->()>
 
     %c0_index  = arith.constant 0 : index
     %c10_index = arith.constant 1000 : index
     %c1_index  = arith.constant 1 : index
 
     scf.for %i = %c0_index to %c10_index step %c1_index {
-      %loaded = dcont.load %storage : !dcont.storage<"ct"> -> !dcont.cont<"ct">
+      %loaded = dcont.load %storage : !dcont.storage<()->()> -> !dcont.cont<()->()>
       "dcont.resume"(%loaded) 
-        ({ ^bb0(%suspended_cont: !dcont.cont<"ct">): 
-          dcont.store %storage, %suspended_cont : !dcont.cont<"ct"> -> !dcont.storage<"ct">
+        ({ ^bb0(%suspended_cont: !dcont.cont<()->()>): 
+          dcont.store %storage, %suspended_cont : !dcont.cont<()->()> -> !dcont.storage<()->()>
           dcont.suspend_handler_return 
-        }) : (!dcont.cont<"ct">) -> ()
+        }) : (!dcont.cont<()->()>) -> ()
       %x = ssawasm.constant 0 : i32  i32
       ssawasm.call @print_i32(%x) : (i32) -> ()
     }

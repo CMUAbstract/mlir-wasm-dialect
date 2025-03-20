@@ -23,13 +23,13 @@ def DCont_ContType : DCont_Type<"Cont", "cont"> {
     // Ideally, we should use FunctionType as the parameter, but then we cannot
     // define types recursively
     // Instead, we use a string attribute to identify the continuation type
-    let parameters = (ins "StringAttr":$id);
-    let assemblyFormat = "`<` $id `>`";
+    let parameters = (ins FunctionType:$cont_type);
+    let assemblyFormat = "`<` $cont_type `>`";
 }
 
 def DCont_StorageType : DCont_Type<"Storage", "storage"> {
-    let parameters = (ins "StringAttr":$id);
-    let assemblyFormat = "`<` $id `>`";
+    let parameters = (ins FunctionType:$cont_type);
+    let assemblyFormat = "`<` $cont_type `>`";
 }
 
 
