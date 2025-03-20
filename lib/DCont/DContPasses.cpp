@@ -117,10 +117,16 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     //
 
     // create a BlockBlockOp
+    Block &handlerBlock = op.getSuspendHandler().front();
+    auto resultTypes = SmallVector<Attribute>();
+    for (auto arg : op.getSuspendHandler().front().getArguments()) {
+      resultTypes.push_back(
+          TypeAttr::get(getTypeConverter()->convertType(arg.getType())));
+    }
+
     auto blockBlockOp = rewriter.create<ssawasm::BlockBlockOp>(loc);
     blockBlockOp.setInnerBlockResultTypesAttr(
-        rewriter.getArrayAttr(ArrayRef<Attribute>{TypeAttr::get(
-            getTypeConverter()->convertType(op.getCont().getType()))}));
+        rewriter.getArrayAttr(resultTypes));
     auto [outerEntryBlock, innerEntryBlock2, innerExitBlock, outerExitBlock] =
         blockBlockOp.initialize(rewriter);
     auto innerEntryBlock1 =
@@ -144,14 +150,14 @@ struct ResumeOpLowering : public OpConversionPattern<ResumeOp> {
     rewriter.setInsertionPointToEnd(innerExitBlock);
     // Copy block arguments to the innerExitBlock with type conversion
     SmallVector<Value> stackArgs;
-    for (auto arg : op.getSuspendHandler().front().getArguments()) {
+    for (auto arg = op.getSuspendHandler().front().getArguments().rbegin();
+         arg != op.getSuspendHandler().front().getArguments().rend(); ++arg) {
       auto onStackOp = rewriter.create<ssawasm::OnStackOp>(
-          loc, getTypeConverter()->convertType(arg.getType()));
-      stackArgs.push_back(onStackOp.getResult());
+          loc, getTypeConverter()->convertType((*arg).getType()));
+      stackArgs.insert(stackArgs.begin(), onStackOp.getResult());
     }
 
     // Inline handler operations into innerExitBlock, except the terminator
-    Block &handlerBlock = op.getSuspendHandler().front();
     auto *handlerReturnOp = handlerBlock.getTerminator();
     rewriter.mergeBlocks(&handlerBlock, innerExitBlock, stackArgs);
 
@@ -251,11 +257,16 @@ class ConvertDContToSsaWasm
     ModuleOp module = getOperation();
     MLIRContext *context = &getContext();
 
+    FunctionType contType = nullptr;
+    module.walk([&](dcont::NewOp newOp) {
+      contType = cast<ContType>(newOp.getResult().getType()).getContType();
+    });
+    assert(contType && "No continuation type found");
+
     IRRewriter rewriter(context);
     rewriter.setInsertionPoint(module.getBody(), module.getBody()->begin());
     rewriter.create<ssawasm::TagOp>(module.getLoc(),
-                                    rewriter.getStringAttr("yield"),
-                                    rewriter.getFunctionType({}, {}));
+                                    rewriter.getStringAttr("yield"), contType);
     // TODO: Do not hardcode function type
 
     // search for all functions that are called by `dcont.new`
