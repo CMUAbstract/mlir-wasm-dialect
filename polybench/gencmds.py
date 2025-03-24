@@ -72,7 +72,7 @@ def cmd(
             aot_str if use_aot else "",
             '" | pipenv run ./measure.py',
         ]
-    elif device == "local":
+    elif device == "local_wamr":
         cmd_parts = [
             "cd .. && ./run-mcu.sh",
             f"--device={device}",
@@ -82,6 +82,16 @@ def cmd(
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f'--use-aot={"true" if use_aot else "false"}',
             aot_str if use_aot else "",
+        ]
+    elif device == "local_wasmtime":
+        cmd_parts = [
+            "cd .. && ./run-mcu.sh",
+            f"--device={device}",
+            f"polybench/{size}/{file_name}",
+            f"--compiler={compiler}",
+            f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+            f"--binaryen-opt-flags={binaryen_opt_flags}",
+            f'--use-aot={"true" if use_aot else "false"}',
         ]
     else:
         raise ValueError(f"Invalid device: {device}")
@@ -171,8 +181,8 @@ if __name__ == "__main__":
         "trmm",
     ]
 
-    devices = ["local", "mcu"]
-    sizes = ["small", "medium", "extralarge"]
+    devices = ["local_wamr", "local_wasmtime", "mcu"]
+    sizes = ["small", "medium", "large", "extralarge"]
 
     tests = [
         filter_unique(

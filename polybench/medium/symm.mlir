@@ -45,8 +45,6 @@ module {
     }
     call @toggle_gpio() : () -> ()
     %alloca = memref.alloca() : memref<f64>
-    %0 = llvm.mlir.undef : f64
-    affine.store %0, %alloca[] : memref<f64>
     affine.for %arg0 = 0 to 200 {
       %1 = arith.index_cast %arg0 : index to i32
       %2 = arith.addi %1, %c240_i32 : i32

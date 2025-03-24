@@ -13,12 +13,8 @@ module {
     %alloc = memref.alloc() : memref<400xf64>
     call @toggle_gpio() : () -> ()
     %alloca = memref.alloca() : memref<f64>
-    %0 = llvm.mlir.undef : f64
-    affine.store %0, %alloca[] : memref<f64>
     %alloca_2 = memref.alloca() : memref<f64>
-    affine.store %0, %alloca_2[] : memref<f64>
     %alloca_3 = memref.alloca() : memref<f64>
-    affine.store %0, %alloca_3[] : memref<f64>
     %alloca_4 = memref.alloca() : memref<400xf64>
     affine.store %cst, %alloc[0] : memref<400xf64>
     affine.store %cst_0, %alloca_2[] : memref<f64>
