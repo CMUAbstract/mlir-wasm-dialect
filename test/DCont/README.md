@@ -8,13 +8,13 @@ simple yield-style generator.
 We can compile this using our Wasm dialect and dialect conversion passes.
 
 ```sh
-$BUILD_DIR/bin/wasm-opt --convert-dcont-to-ssawasm test/DCont/toy.mlir \
+$BUILD_DIR/bin/wasm-opt --convert-dcont-to-ssawasm test/DCont/generator.mlir \
 --convert-arith-to-ssawasm --convert-func-to-ssawasm --convert-memref-to-ssawasm \
 --convert-scf-to-ssawasm --reconcile-unrealized-casts \
 --convert-ssawasm-global-to-wasm --introduce-locals --convert-ssawasm-to-wasm \
--o toy-wasm.mlir
+-o generator-wasm.mlir
 
-$BUILD_DIR/bin/wasm-translate --mlir-to-wat toy-wasm.mlir -o toy.wat
+$BUILD_DIR/bin/wasm-translate --mlir-to-wat generator-wasm.mlir -o generator.wat
 
 $BUILD_DIR/bin/wasm-opt --convert-dcont-to-ssawasm test/DCont/toy-scheduler.mlir \
 --convert-arith-to-ssawasm --convert-func-to-ssawasm --convert-memref-to-ssawasm \
@@ -33,23 +33,17 @@ which is the reference runtime implementation for the stack switching proposal.
 This uses LLVM coroutine intrinsics and passes to implement an yield-style generator.
 
 ```sh
-mlir-translate toy-llvm.mlir --mlir-to-llvmir -o toy-llvm.ll
+mlir-translate generator-llvm.mlir --mlir-to-llvmir -o generator-llvm.ll
 
 opt --passes="coro-early,function(coro-elide),coro-split,coro-cleanup" \
-toy-llvm.ll -o toy-llvm-lowered.bc
+toy-llvm.ll -o generator-llvm-lowered.bc
 
-opt -O3 toy-llvm-lowered.bc -o toy-llvm-lowered-opt.bc
-
-opt --passes="coro-early,function(coro-elide),coro-split,coro-cleanup" \
-toy-llvm-lowered-opt.bc -o toy-llvm-lowered-opt-processed.bc
-
-
-llc -O3 toy-llvm-lowered.bc -filetype=obj -mtriple=wasm32-wasi -o toy-llvm-lowered.o
+llc -O3 generator-llvm-lowered.bc -filetype=obj -mtriple=wasm32-wasi -o generator-llvm-lowered.o
 
 $WASI_SDK_PATH/bin/wasm-ld --no-entry \
    --export=main --allow-undefined \
     -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
-    -o toy-llvm.wasm toy-llvm-lowered.o
+    -o generator-llvm.wasm generator-llvm-lowered.o
 
 
 mlir-translate toy-scheduler-llvm.mlir --mlir-to-llvmir -o toy-scheduler-llvm.ll

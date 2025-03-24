@@ -14,7 +14,7 @@ fi
 # Initialize variables
 MLIR_FILE=""
 COMPILER="mlir"  # Default type is mlir
-DEVICE="local"  # Default device is local
+DEVICE="mcu"  # Default device is mcu
 LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
 USE_AOT=false  # Default is to use interpreter
@@ -95,7 +95,7 @@ if [ ! -f "$TEMP_DIR/$BASENAME.wasm" ]; then
 fi
 
 # Step 3: Conditionally compile Wasm to AOT based on --use-aot
-if [ "$USE_AOT" = true ]; then
+if [ "$USE_AOT" = true ] && [ "$DEVICE" = "mcu" -o "$DEVICE" = "local_wamr" ]; then
     AOT_COMPILE_CMD="./aot-compiler/compile_aot.sh -i $TEMP_DIR/$BASENAME.wasm -o $TEMP_DIR/$BASENAME.aot -- $AOT_FLAGS"
 
     echo "Compiling Wasm to AOT with command: $AOT_COMPILE_CMD"
@@ -114,7 +114,34 @@ else
     EXEC_FILE="$TEMP_DIR/$BASENAME.wasm"
 fi
 
-run_local() {
+run_local_wasmtime() {
+    local file=$1
+
+    echo "Running on mac using $file..."
+
+    if [ "$USE_AOT" = true ]; then
+        COMMAND_GROUP='
+            cd wasmtime-executor && \
+            cargo +nightly run --release -- --use-aot --input "../$file"
+        '
+    else
+        COMMAND_GROUP='
+            cd wasmtime-executor && \
+            cargo +nightly run --release -- --input "../$file"
+        '
+    fi
+
+    if [ "$SILENT" = true ]; then
+        (eval "$COMMAND_GROUP") > /dev/null 2>&1
+    else
+        (eval "$COMMAND_GROUP")
+    fi
+
+    
+    
+}
+
+run_local_wamr() {
     local file=$1
 
     echo "Running on mac using $file..."
@@ -171,8 +198,10 @@ run_on_device() {
 }
 
 # Step 5: Run the compiled file (either AOT or Wasm) on the device
-if [ "$DEVICE" = "local" ]; then
-    run_local "$EXEC_FILE"
+if [ "$DEVICE" = "local_wamr" ]; then
+    run_local_wamr "$EXEC_FILE"
+elif [ "$DEVICE" = "local_wasmtime" ]; then
+    run_local_wasmtime "$EXEC_FILE"
 elif [ "$DEVICE" = "mcu" ]; then
     run_on_device "$EXEC_FILE"
 else

@@ -14,9 +14,8 @@
 
 #include "polybench.h"
 
-#define CONFIG_APP_STACK_SIZE 10240000
+#define CONFIG_APP_STACK_SIZE 20480000
 #define CONFIG_APP_HEAP_SIZE 20480000
-#define CONFIG_GLOBAL_HEAP_BUF_SIZE WASM_GLOBAL_HEAP_SIZE
 
 #define WARMUP 5
 #define ITERATIONS 20
@@ -110,10 +109,6 @@ void print_i32(wasm_exec_env_t exec_env, int32_t i) {
   }
 }
 
-#if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
-static char global_heap_buf[CONFIG_GLOBAL_HEAP_BUF_SIZE] = {0};
-#endif
-
 void iwasm_main() {
   uint8 *wasm_file_buf = NULL;
   uint32 wasm_file_size;
@@ -128,17 +123,7 @@ void iwasm_main() {
 
   memset(&init_args, 0, sizeof(RuntimeInitArgs));
 
-#if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
-  init_args.mem_alloc_type = Alloc_With_Pool;
-  init_args.mem_alloc_option.pool.heap_buf = global_heap_buf;
-  init_args.mem_alloc_option.pool.heap_size = sizeof(global_heap_buf);
-#elif (defined(CONFIG_COMMON_LIBC_MALLOC) &&                                   \
-       CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE != 0) ||                           \
-    defined(CONFIG_NEWLIB_LIBC)
   init_args.mem_alloc_type = Alloc_With_System_Allocator;
-#else
-#error "memory allocation scheme is not defined."
-#endif
 
   /* initialize runtime environment */
   if (!wasm_runtime_full_init(&init_args)) {

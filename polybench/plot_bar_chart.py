@@ -36,6 +36,7 @@ def parse_data_from_file(filename):
             for line in lines:
                 try:
                     entry = json.loads(line.strip())
+                    print("entry", entry)
                     
                     # Extract relevant information
                     benchmark = entry.get('tag')
@@ -45,7 +46,7 @@ def parse_data_from_file(filename):
                     
                     # Extract execution time from stdout
                     stdout = entry.get('stdout', '')
-                    match = re.search(r'\[execution time\] (\d+\.\d+) miliseconds', stdout)
+                    match = re.search(r'\[execution time\] (\d+) miliseconds', stdout)
                     if match:
                         execution_time = float(match.group(1))
                         
@@ -57,6 +58,7 @@ def parse_data_from_file(filename):
                             'execution_time': execution_time
                         })
                 except json.JSONDecodeError:
+                    print(f"Error processing line: {line}", file=sys.stderr)
                     continue
                 except Exception as e:
                     print(f"Error processing line: {e}", file=sys.stderr)
@@ -96,7 +98,7 @@ def filter_and_prepare_data(data, use_aot, binaryen_opt_level):
     
     # Calculate speedup for each benchmark
     for benchmark, values in result.items():
-        values['speedup'] = values['llvm'] / values['mlir']
+        values['speedup'] = (values['llvm'] / values['mlir']) if values['mlir'] > 0.001 else 0.0
     
     return result
 
@@ -323,7 +325,9 @@ def main():
     
     args = parser.parse_args()
     
+    print("args.filename", args.filename)
     data = parse_data_from_file(args.filename)
+    print("data", data)
     filtered_data = filter_and_prepare_data(data, args.use_aot, args.binaryen_opt_level)
     
     plot_speedup(filtered_data, args.use_aot, args.binaryen_opt_level, output_file=args.output)
