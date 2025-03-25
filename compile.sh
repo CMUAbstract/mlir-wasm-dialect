@@ -96,6 +96,9 @@ if [[ "$COMPILER" == "mlir" ]]; then
     # Convert MLIR file to the Wasm dialect
     echo "Converting $INPUT_MLIR to Wasm dialect..."
     build/bin/wasm-opt \
+    --affine-loop-coalescing \
+    --affine-loop-invariant-code-motion \
+    --affine-loop-normalize \
     --lower-affine \
     --convert-math-to-ssawasm \
     --convert-arith-to-ssawasm \
@@ -140,6 +143,9 @@ elif [[ "$COMPILER" == "llvm" ]]; then
 
     echo "Converting $INPUT_MLIR to LLVM dialect..."
     mlir-opt "$INPUT_MLIR" \
+    --affine-loop-coalescing \
+    --affine-loop-invariant-code-motion \
+    --affine-loop-normalize \
     --lower-affine \
     --canonicalize \
     --sccp \

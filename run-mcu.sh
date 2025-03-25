@@ -75,8 +75,10 @@ fi
 # Get the base name of the input file (without directory and extension)
 BASENAME=$(basename "$MLIR_FILE" .mlir)
 
-# Step 1: Create a temporary directory with the current datetime
-TEMP_DIR=$(mktemp -d "./tmp_${BASENAME}_$(date +%Y%m%d_%H%M%S)")
+# Step 1: Create a temporary directory with a random hash
+RANDOM_HASH=$(openssl rand -hex 4)  # generates 8-character random hex string
+TEMP_DIR="./tmp_${BASENAME}_${RANDOM_HASH}"
+mkdir -p "$TEMP_DIR"
 
 echo "Temporary directory created: $TEMP_DIR"
 
