@@ -17,10 +17,10 @@ usage() {
     echo "Usage: $0 -i <input_mlir_file> -o <output_base_name> [--binaryen-opt-flags]"
     echo "  -i, --input      Input MLIR file"
     echo "  -o, --output     Output base name"
-    echo "  --compiler       Compiler to use (mlir or llvm)"
+    echo "  --compiler       Compiler to use (wami or llvm)"
     echo "  --binaryen-opt-flags    Perform WebAssembly optimization (optional)"
     echo "  --llvm-opt-flags        Perform LLVM optimization (optional, only supported in --compiler=llvm)"
-    echo "  --add-debug-functions   Add debug functions to the output (optional, only supported in --compiler=mlir)"
+    echo "  --add-debug-functions   Add debug functions to the output (optional, only supported in --compiler=wami)"
     echo "  --clean                 Remove temporary files after completion"
     exit 1
 }
@@ -70,10 +70,10 @@ if [[ -z "$INPUT_MLIR" || -z "$OUTPUT_BASE" ]]; then
 fi
 
 if [[ -z "$COMPILER" ]]; then
-    echo "Error: compiler option is required. Use --compiler to specify 'mlir' or 'llvm'."
+    echo "Error: compiler option is required. Use --compiler to specify 'wami' or 'llvm'."
     usage
-elif [[ "$COMPILER" != "mlir" && "$COMPILER" != "llvm" ]]; then
-    echo "Error: Invalid compiler option '$COMPILER'. It must be either 'mlir' or 'llvm'."
+elif [[ "$COMPILER" != "wami" && "$COMPILER" != "llvm" ]]; then
+    echo "Error: Invalid compiler option '$COMPILER'. It must be either 'wami' or 'llvm'."
     usage
 fi
 
@@ -87,7 +87,7 @@ echo "Building the project..."
 cmake --build build 
 echo "Building the project... done"
 
-if [[ "$COMPILER" == "mlir" ]]; then
+if [[ "$COMPILER" == "wami" ]]; then
     OUTPUT_MLIR="${OUTPUT_BASE}-wasm-1.mlir" # MLIR wasm dialect
     OUTPUT_RAW_WAT="${OUTPUT_BASE}-raw-2.wat" # 1 followed by by wasm-translate
     OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-3.wasm" # 2 followed by wat2wasm
@@ -207,7 +207,7 @@ fi
 
 # Print the produced files
 echo "Produced files:"
-if [[ "$COMPILER" == "mlir" ]]; then
+if [[ "$COMPILER" == "wami" ]]; then
     echo "  - $OUTPUT_MLIR (MLIR Wasm dialect)"
     echo "  - $OUTPUT_RAW_WAT (Raw WAT format)"
     echo "  - $OUTPUT_BEFOREOPT_WASM (Unoptimized WebAssembly)"

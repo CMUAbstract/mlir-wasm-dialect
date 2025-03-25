@@ -7,13 +7,13 @@ CMDARGS="$@"
 
 # Check if the minimum number of arguments is provided
 if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <mlir_file> --type=[mlir|llvm] [--optimize] [--use-aot=<true|false>] --silent -- <aot_flags>"
+    echo "Usage: $0 <mlir_file> --type=[wami|llvm] [--optimize] [--use-aot=<true|false>] --silent -- <aot_flags>"
     exit 1
 fi
 
 # Initialize variables
 MLIR_FILE=""
-COMPILER="mlir"  # Default type is mlir
+COMPILER="wami"  # Default type is wami
 DEVICE="mcu"  # Default device is mcu
 LLVM_OPT_FLAGS=""
 BINARYEN_OPT_FLAGS=""
@@ -61,8 +61,8 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Check for valid values of --type
-if [[ "$COMPILER" != "mlir" && "$COMPILER" != "llvm" ]]; then
-    echo "Error: --type must be either 'mlir' or 'llvm'."
+if [[ "$COMPILER" != "wami" && "$COMPILER" != "llvm" ]]; then
+    echo "Error: --type must be either 'wami' or 'llvm'."
     exit 1
 fi
 

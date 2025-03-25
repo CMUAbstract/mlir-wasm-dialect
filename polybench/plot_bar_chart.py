@@ -46,7 +46,7 @@ def parse_data_from_file(filename):
                     
                     # Extract execution time from stdout
                     stdout = entry.get('stdout', '')
-                    match = re.search(r'\[execution time\] (\d+) miliseconds', stdout)
+                    match = re.search(r'\[execution time\] (\d+\.\d+) miliseconds', stdout)
                     if match:
                         execution_time = float(match.group(1))
                         

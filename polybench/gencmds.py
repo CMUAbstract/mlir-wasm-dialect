@@ -61,7 +61,7 @@ def cmd(
 
     if device == "mcu":
         cmd_parts = [
-            'echo "cd .. && ./run-mcu.sh',
+            'echo "cd .. && ./run.sh',
             f"--device={device}",
             f"polybench/{size}/{file_name}",
             f"--compiler={compiler}",
@@ -74,7 +74,7 @@ def cmd(
         ]
     elif device == "local_wamr":
         cmd_parts = [
-            "cd .. && ./run-mcu.sh",
+            "cd .. && ./run.sh",
             f"--device={device}",
             f"polybench/{size}/{file_name}",
             f"--compiler={compiler}",
@@ -85,7 +85,7 @@ def cmd(
         ]
     elif device == "local_wasmtime":
         cmd_parts = [
-            "cd .. && ./run-mcu.sh",
+            "cd .. && ./run.sh",
             f"--device={device}",
             f"polybench/{size}/{file_name}",
             f"--compiler={compiler}",
@@ -183,6 +183,7 @@ if __name__ == "__main__":
 
     devices = ["local_wamr", "local_wasmtime", "mcu"]
     sizes = ["small", "medium", "large", "extralarge"]
+    compilers = ["wami", "llvm"]
 
     tests = [
         filter_unique(
@@ -200,7 +201,7 @@ if __name__ == "__main__":
         for device in devices
         for tag in tags
         for size in sizes
-        for compiler in ["mlir", "llvm"]
+        for compiler in compilers
         for use_aot in [True, False]
         for llvm_opt_level in [0, 1, 2, 3]
         for binaryen_opt_level in [0, 1, 2, 3, 4]

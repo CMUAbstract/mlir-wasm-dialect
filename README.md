@@ -1,4 +1,4 @@
-# MLIR WebAssembly Dialect
+# WAMI: Compilation to WebAssembly through MLIR without Losing Abstraction
 
 ## Prerequisites
 
@@ -84,15 +84,14 @@ We have scripts for end-to-end execution as well as each step of it.
 
 ### End-to-End Execution
 
-We have a command: `run-aot`, which (1) compiles a given MLIR file to Wasm using
-either `--convert-to-wasm` pass or LLVM backend, (2) (optionally) perform
+We have a command: `run`, which (1) compiles a given MLIR file to Wasm using
+either WAMI or LLVM backend, (2) (optionally) perform
 optimizations, (3) (optionally) perform aot compilation, and (4) execution on a MCU.
 
 For example, you can run as follows:
 
 ```sh
-./run-mcu.sh test/lenet.mlir --compiler=llvm --testcase="MNIST_LLVM" --binaryen-opt-flags="-O3" --use-aot=true \
--- --opt-level=0 --target=thumbv7em --target-abi=eabihf --cpu=cortex-m4
+./run.sh polybench/small/2mm.mlir --compiler=wami --use-aot=false
 ```
 
 Refer to [mcu-wasm-executor/README.md](mcu-wasm-executor/README.md) to get more
@@ -107,7 +106,7 @@ etc.
 Use `./compile.sh --help` for more options.
 
 ```sh
-./compile.sh -i test/conv2d.mlir -o conv2d-mlir --compiler=mlir
+./compile.sh -i test/conv2d.mlir -o conv2d-mlir --compiler=wami
 ```
 
 For comparison, compilation using LLVM is also supported:
@@ -128,48 +127,6 @@ Refer to [mcu-wasm-executor/README.md](mcu-wasm-executor/README.md).
 
 Refer to [wasmtime-executor/README.md](wasmtime-executor/README.md).
 
-
-## Generating Inputs
-
-To use the `--convert-to-wasm` pass, we require that an MLIR file only contains
-the standard dialects (arith, scf, and memref). Any higher-level
-dialects must be lowered to these standard dialects beforehand.
-
-Currently, we have two examples: `test/conv2d.mlir` and `test/lenet.mlir`.
-We outline the creation of `test/conv2d.mlir` here; `test/lenet.mlir` was generated
-similarly.
-
-We start from `test/conv2d-tosa.mlir`, which is generated from TFLite, and apply
-the following pipelines to produce `test/conv2d.mlir`.
-
-```sh
-mlir-opt test/conv2d-tosa.mlir \
---pass-pipeline="builtin.module(func.func(tosa-to-linalg-named, tosa-to-linalg, \
-canonicalize, tosa-infer-shapes, tosa-optional-decompositions, \
-tosa-layerwise-constant-fold, tosa-make-broadcastable, tosa-to-arith, \
-tosa-to-tensor), convert-tensor-to-linalg)" -o \
-test/conv2d-linalg.mlir
-# We had to split this into two commands because currently the
-# `--tosa-to-linalg` pass has a bug so that we had to call it using
-# `--pass-pipeline`, which cannot be combined with other named passes.
-mlir-opt test/conv2d-linalg.mlir \
- --one-shot-bufferize="bufferize-function-boundaries" \
- --expand-realloc \
- --canonicalize \
- --ownership-based-buffer-deallocation \
- --buffer-deallocation-simplification \
- --bufferization-lower-deallocations \
- --canonicalize \
- --normalize-memrefs \
- --convert-linalg-to-affine-loops \
- --lower-affine \
- -o test/conv2d.mlir
-```
-
-NOTE: We do not support dynamically shaped memrefs at this time, so we should
-manually add shapes to the memref type of the input argument (as well as other
-dynamically shaped memref values inferred from the input argument). This can be
-done by replacing ? with concrete numbers.
 
 ## Debugging Tips
 
