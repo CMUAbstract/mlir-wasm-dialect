@@ -100,9 +100,18 @@ fn main() -> Result<()> {
         let min = intervals.iter().min().unwrap();
         let max = intervals.iter().max().unwrap();
 
-        println!("[execution time] {:?} miliseconds", avg.as_micros());
-        println!("[min execution time] {:?} miliseconds", min.as_micros());
-        println!("[max execution time] {:?} miliseconds", max.as_micros());
+        println!(
+            "[execution time] {:?} miliseconds",
+            avg.as_micros() as f64 / 1000.0
+        );
+        println!(
+            "[min execution time] {:?} miliseconds",
+            min.as_micros() as f64 / 1000.0
+        );
+        println!(
+            "[max execution time] {:?} miliseconds",
+            max.as_micros() as f64 / 1000.0
+        );
     }
 
     Ok(())

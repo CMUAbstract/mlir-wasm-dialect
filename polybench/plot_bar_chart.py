@@ -208,7 +208,7 @@ def add_category_labels(fig, ax, group_positions, category_labels):
             rotation=45
         )
 
-def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None):
+def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None, title=None):
     """Plot speedup comparison chart with wider bars and properly centered category labels."""
     speedup_positive = '#009E73'  # Dark green
     speedup_negative = '#D55E00'  # Dark orange
@@ -224,8 +224,12 @@ def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None):
     fig = plt.figure(figsize=(max(15, len(benchmark_labels) * 0.5), 7))
     ax = fig.add_subplot(1, 1, 1)
     
-    execution_mode = "Interpreter" if not use_aot else "AOT"
-    fig.suptitle(f'Speedup of WAMI over LLVM - {execution_mode}', fontsize=16, y=0.95)
+    # Use custom title if provided, otherwise use default
+    if title is None:
+        execution_mode = "Interpreter" if not use_aot else "AOT"
+        title = f'Speedup of WAMI over LLVM - {execution_mode}'
+    
+    fig.suptitle(title, fontsize=16, y=0.95)
     
     width = 0.5
     
@@ -322,6 +326,7 @@ def main():
     parser.add_argument('--normalize', action='store_true',
                         help='Normalize execution times (only applies to time chart)')
     parser.add_argument('-o', '--output', help='Output file for the plot (optional)')
+    parser.add_argument('--title', help='Custom title for the plot (optional)')
     
     args = parser.parse_args()
     
@@ -330,7 +335,8 @@ def main():
     print("data", data)
     filtered_data = filter_and_prepare_data(data, args.use_aot, args.binaryen_opt_level)
     
-    plot_speedup(filtered_data, args.use_aot, args.binaryen_opt_level, output_file=args.output)
+    plot_speedup(filtered_data, args.use_aot, args.binaryen_opt_level, 
+                output_file=args.output, title=args.title)
 
 if __name__ == "__main__":
     main()
