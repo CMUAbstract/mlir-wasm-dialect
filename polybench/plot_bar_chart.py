@@ -89,16 +89,16 @@ def filter_and_prepare_data(data, use_aot, binaryen_opt_level):
         execution_time = entry['execution_time']
         
         if benchmark not in result:
-            result[benchmark] = {'llvm': None, 'mlir': None}
+            result[benchmark] = {'llvm': None, 'wami': None}
         
         result[benchmark][compiler] = execution_time
     
     # Filter out benchmarks without both LLVM and MLIR data
-    result = {k: v for k, v in result.items() if v['llvm'] is not None and v['mlir'] is not None}
+    result = {k: v for k, v in result.items() if v['llvm'] is not None and v['wami'] is not None}
     
     # Calculate speedup for each benchmark
     for benchmark, values in result.items():
-        values['speedup'] = (values['llvm'] / values['mlir']) if values['mlir'] > 0.001 else 0.0
+        values['speedup'] = (values['llvm'] / values['wami']) if values['wami'] > 0.001 else 0.0
     
     return result
 
@@ -154,7 +154,7 @@ def prepare_plot_data(data, bar_spacing=0.6):
             benchmark_positions.append(position)
             benchmark_labels.append(benchmark)
             llvm_times.append(categorized_data[category][benchmark]['llvm'])
-            mlir_times.append(categorized_data[category][benchmark]['mlir'])
+            mlir_times.append(categorized_data[category][benchmark]['wami'])
             speedups.append(categorized_data[category][benchmark]['speedup'])
             position += bar_spacing
         
