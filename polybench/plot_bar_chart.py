@@ -10,12 +10,12 @@ from collections import defaultdict
 # Define benchmark categories with line breaks for long names
 BENCHMARK_CATEGORIES = {
     "Data\nMining": ["covariance", "correlation"],
-    "BLAS Routines": ["gemm", "gemver", "gesummv", "symm", "syrk", "syr2k", "trmm"],
-    "Linear Algebra\nKernels": ["2mm", "3mm", "atax", "bicg", "doitgen", "mvt"],
-    "Linear Algebra\nSolvers": ["cholesky", "durbin", "gramschmidt", "lu", "ludcmp", "trisolv"],
+    "BLAS": ["gemm", "gemver", "gesummv", "symm", "syrk", "syr2k", "trmm"],
+    "LinAlg\nKernels": ["2mm", "3mm", "atax", "bicg", "doitgen", "mvt"],
+    "LinAlg\nSolvers": ["cholesky", "durbin", "gramschmidt", "lu", "ludcmp", "trisolv"],
     "Medley": ["deriche", "floyd-marshall", "nussinov"],
     "Stencils": ["adi", "fdtd-2d", "heat-3d", "jacobi-1d", "jacobi-2d", "seidel-2d"],
-    "Dynamic\nProgramming": ["floyd-warshall"]
+    "DP": ["floyd-warshall"]
 }
 
 # Create reverse mapping for easy category lookup
@@ -164,7 +164,7 @@ def prepare_plot_data(data, bar_spacing=0.6):
         group_positions.append(middle)
         category_labels.append(category)
         
-        position += bar_spacing * 1.5
+        position += bar_spacing * 1.0
     
     return {
         'categorized_data': categorized_data,
@@ -192,7 +192,7 @@ def add_category_labels(fig, ax, group_positions, category_labels):
     # Create a new axis for the category labels below the main plot
     label_ax = fig.add_axes([
         main_pos.x0, 
-        main_pos.y0 - 0.2, 
+        main_pos.y0 - 0.25, 
         main_pos.width, 
         label_height
     ])
@@ -204,9 +204,7 @@ def add_category_labels(fig, ax, group_positions, category_labels):
     for pos, label in zip(group_positions, category_labels):
         label_ax.text(
             pos, 0.5, label,
-            ha='center', va='center', fontsize=12, fontweight='bold',
-            rotation=45
-        )
+            ha='center', va='center', fontsize=18, fontweight='bold')
 
 def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None, title=None):
     """Plot speedup comparison chart with wider bars and properly centered category labels."""
@@ -223,19 +221,27 @@ def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None, title=None
     
     fig = plt.figure(figsize=(max(15, len(benchmark_labels) * 0.5), 7))
     ax = fig.add_subplot(1, 1, 1)
+
+    # Calculate tighter x-limits to reduce internal padding
+    min_pos = min(benchmark_positions)
+    max_pos = max(benchmark_positions)
+    # Use a smaller padding value (default padding is often around 0.1)
+    padding = 0.5  # Adjust this value to control tightness
+    ax.set_xlim(min_pos - padding, max_pos + padding)
     
     # Use custom title if provided, otherwise use default
     if title is None:
         execution_mode = "Interpreter" if not use_aot else "AOT"
         title = f'Speedup of WAMI over LLVM - {execution_mode}'
     
-    fig.suptitle(title, fontsize=16, y=0.95)
+    fig.suptitle(title, fontsize=24, y=0.95)
     
     width = 0.5
     
     # Plot the bars
     for pos, speedup in zip(benchmark_positions, speedups):
         color = speedup_positive if speedup > 1 else speedup_negative
+        print("pos", pos, "speedup", speedup)
         ax.bar(pos, speedup, width, color=color, alpha=0.85)
     
     # Determine y-axis limits
@@ -271,23 +277,24 @@ def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None, title=None
     y_ticks = np.arange(
         np.floor(y_min * 10) / 10, 
         np.ceil(y_max * 10) / 10 + 0.01, 
-        0.05
+        0.1
     )
     ax.set_yticks(y_ticks)
     ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%.2f'))
-    ax.set_ylabel('Speedup (LLVM/WAMI)', fontsize=11)
+    ax.tick_params(axis='y', labelsize=18)
+    #  ax.set_ylabel('Speedup (LLVM/WAMI)', fontsize=11)
     ax.set_xticks(benchmark_positions)
-    ax.set_xticklabels(benchmark_labels, rotation=45, ha='right')
+    ax.set_xticklabels(benchmark_labels, rotation=45, ha='right', fontsize=18)
     
     from matplotlib.patches import Patch
     legend_elements = [
         Patch(facecolor=speedup_positive, alpha=0.85, label='WAMI faster'),
         Patch(facecolor=speedup_negative, alpha=0.85, label='LLVM faster')
     ]
-    ax.legend(handles=legend_elements, loc='best', frameon=True, framealpha=0.95)
+    ax.legend(handles=legend_elements, loc='best', frameon=True, framealpha=0.95, fontsize=18)
     
     # - Reduce left/right margin
-    plt.subplots_adjust(left=0.03, right=0.97, bottom=0.25, top=0.90)
+    plt.subplots_adjust(left=0.044, right=0.99, bottom=0.25, top=0.90)
     # Category labels at bottom
     add_category_labels(fig, ax, group_positions, category_labels)
     
