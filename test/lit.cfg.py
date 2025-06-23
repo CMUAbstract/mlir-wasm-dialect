@@ -54,7 +54,6 @@ llvm_config.with_environment("PATH", config.llvm_tools_dir, append_path=True)
 tool_dirs = [config.wasm_tools_dir, config.llvm_tools_dir]
 tools = [
     "mlir-opt",
-    "wasm-capi-test",
     "wasm-opt",
     "wasm-translate",
 ]
