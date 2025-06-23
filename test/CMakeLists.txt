@@ -11,7 +11,6 @@ configure_lit_site_cfg(
 
 set(WASM_TEST_DEPENDS
         FileCheck count not
-        wasm-capi-test
         wasm-opt
         wasm-translate
         )
@@ -26,5 +25,3 @@ add_lit_testsuite(check-wasm "Running the wasm regression tests"
 set_target_properties(check-wasm PROPERTIES FOLDER "Tests")
 
 add_lit_testsuites(WASM ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS ${WASM_TEST_DEPENDS})
-
-add_subdirectory(CAPI)
