@@ -381,6 +381,15 @@ def SsaWasm_CallOp : SsaWasm_Op<"call",
         return getOperandsMutable();
       }
 
+      ArrayAttr getArgAttrsAttr() { return {}; }
+      ArrayAttr getResAttrsAttr() { return {}; }
+
+      void setResAttrsAttr(ArrayAttr attrs) {}
+      void setArgAttrsAttr(ArrayAttr attrs) {}
+
+      Attribute removeArgAttrsAttr() { return {}; }
+      Attribute removeResAttrsAttr() { return {}; }
+
       operand_iterator arg_operand_begin() { return operand_begin(); }
       operand_iterator arg_operand_end() { return operand_end(); }
 
