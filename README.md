@@ -1,6 +1,24 @@
 # WAMI: Compilation to WebAssembly through MLIR without Losing Abstraction
 
-## Prerequisites
+
+WAMI is an MLIR-based compilation pipeline for WebAssembly. WAMI consists of Wasm dialects explicitly designed to represent high-level Wasm constructs within MLIR. This enables direct generation of high-level Wasm code from corresponding high-level MLIR dialects without losing abstraction, providing a modular and extensible way to incorporate high-level Wasm features.
+
+WAMI is the artifact of [WAMI: Compilation to WebAssembly through MLIR without Losing Abstraction](https://arxiv.org/abs/2506.16048).
+
+## Project Structure
+
+- `include/SsaWasm` and `lib/SsaWasm`: Implement the `SsaWasm` dialect, which represents Wasm in SSA form with explicit operands and results, facilitating the use of standard MLIR analysis and optimization passes.
+- `include/Wasm` and `lib/Wasm`: Implement the `Wasm` dialect, which captures Wasm's stack-based semantics with implicit operands and results, optimized for direct emission of Wasm code.
+- `include/DCont` and `lib/DCont`: Implement the `dcont` dialect, which models delimited continuations, to be used as an example in the paper.
+- `wasm-translate`: Implements the compiler backend, which translates the `Wasm` dialect into Wasm textual format.
+- `wasm-opt`: Implements the main driver (counterpart of `mlir-opt`).
+
+The rest of the structure consists of scripts and runtimes for evaluating and testing WAMI:
+
+- `polybench`: Script for performance evaluation on PolyBench.
+- `aot-compiler`: Script for AOT compilation for the WAMR runtime.
+- `local-executor` and `mcu-wasm-executor`: WAMR setup for execution on local machine and microcontroller, respectively.
+- `wasmtime-executor`: Wasmtime setup for execution on local machine
 
 ## Building the Project
 
