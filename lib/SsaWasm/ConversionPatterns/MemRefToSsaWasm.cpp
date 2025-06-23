@@ -102,7 +102,7 @@ generatePointerComputation(Operation *op, Value base, MemRefType memRefType,
   SmallVector<int64_t, 4> strides;
   int64_t offset;
   // Compute strides and offset using the utility function
-  if (failed(mlir::getStridesAndOffset(memRefType, strides, offset))) {
+  if (failed(memRefType.getStridesAndOffset(strides, offset))) {
     return std::make_pair(
         rewriter.notifyMatchFailure(
             op, "Cannot compute strides and offset for the given MemRefType."),

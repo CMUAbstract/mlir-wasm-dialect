@@ -159,7 +159,7 @@ public:
     RewritePatternSet patterns(context);
     populateScfToSsaWasmPatterns(typeConverter, patterns);
 
-    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
+    if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -333,7 +333,8 @@ struct IntroduceLocalPattern : public RewritePattern {
       : RewritePattern(MatchAnyOpTypeTag(), 1, context),
         introduceLocal(introduceLocal) {}
 
-  LogicalResult match(Operation *op) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     if (op->getDialect() !=
             op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>() &&
         op->getDialect() !=
@@ -350,9 +351,7 @@ struct IntroduceLocalPattern : public RewritePattern {
       return success();
     }
     return failure();
-  }
 
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     rewriter.setInsertionPointAfter(op);
     auto local =
         rewriter
@@ -368,6 +367,8 @@ struct IntroduceLocalPattern : public RewritePattern {
         rewriter.create<LocalSetOp>(op->getLoc(), local, op->getResult(0));
     // we assume that the op has one operand
     rewriter.replaceAllUsesExcept(op->getResult(0), castedLocal, localSetOp);
+
+    return success();
   }
 
 private:
@@ -397,7 +398,8 @@ struct IntroduceLocalGetPattern : public RewritePattern {
       : RewritePattern(MatchAnyOpTypeTag(), 1, context),
         introduceLocal(introduceLocal) {}
 
-  LogicalResult match(Operation *op) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     assert(op->getDialect() ==
                op->getContext()->getLoadedDialect<ssawasm::SsaWasmDialect>() ||
            op->getDialect() ==
@@ -409,9 +411,7 @@ struct IntroduceLocalGetPattern : public RewritePattern {
       return success();
     }
     return failure();
-  }
 
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     rewriter.setInsertionPoint(op);
     unsigned offset = 0;
     for (int operandIdx = op->getNumOperands() - 1; operandIdx >= 0;
@@ -456,6 +456,8 @@ struct IntroduceLocalGetPattern : public RewritePattern {
         offset += computeOffset(op, operandIdx);
       }
     }
+
+    return success();
   }
 
 private:
@@ -490,9 +492,9 @@ Type convertSsaWasmTypeToWasmType(Type type, MLIRContext *ctx) {
   } else if (isa<FloatType>(type)) {
     auto bitWidth = cast<FloatType>(type).getWidth();
     if (bitWidth == 32) {
-      return FloatType::getF32(ctx);
+      return Float32Type::get(ctx);
     } else if (bitWidth == 64) {
-      return FloatType::getF64(ctx);
+      return Float64Type::get(ctx);
     } else {
       assert(false && "Unsupported float type");
     }
