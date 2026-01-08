@@ -5,6 +5,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+//
+// This file defines the operations for the WAMI dialect. These operations
+// extend WebAssembly with support for continuations and other features from
+// WebAssembly proposals such as stack switching.
+//
+//===----------------------------------------------------------------------===//
 
 #ifndef WAMI_WAMIOPS_H
 #define WAMI_WAMIOPS_H

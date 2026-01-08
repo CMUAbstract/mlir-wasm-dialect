@@ -6,12 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/InitAllDialects.h"
-#include "mlir/InitAllPasses.h"
-#include "mlir/Support/FileUtilities.h"
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
-
 #include "DCont/DContDialect.h"
 #include "DCont/DContPasses.h"
 #include "Intermittent/IntermittentDialect.h"
@@ -19,6 +13,13 @@
 #include "SsaWasm/SsaWasmDialect.h"
 #include "SsaWasm/SsaWasmPasses.h"
 #include "Wasm/WasmDialect.h"
+
+#include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllPasses.h"
+#include "mlir/Support/FileUtilities.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
