@@ -15,6 +15,7 @@
 #ifndef WAMI_WAMITYPES_H
 #define WAMI_WAMITYPES_H
 
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Types.h"
 
 #define GET_TYPEDEF_CLASSES
