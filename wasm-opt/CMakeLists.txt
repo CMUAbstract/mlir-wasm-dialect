@@ -5,6 +5,7 @@ set(LIBS
         ${conversion_libs}
         MLIRArithDialect
         MLIROptLib
+        MLIRRegisterAllPasses
         MLIRWasm
         MLIRIntermittent
         )
