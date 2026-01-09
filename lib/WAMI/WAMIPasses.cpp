@@ -13,9 +13,11 @@
 
 #include "WAMI/WAMIPasses.h"
 #include "WAMI/ConversionPatterns/WAMIConvertArith.h"
+#include "WAMI/ConversionPatterns/WAMIConvertFunc.h"
 #include "WAMI/WAMITypeConverter.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -23,6 +25,7 @@
 namespace mlir::wami {
 
 #define GEN_PASS_DEF_WAMICONVERTARITH
+#define GEN_PASS_DEF_WAMICONVERTFUNC
 #include "WAMI/WAMIPasses.h.inc"
 
 //===----------------------------------------------------------------------===//
@@ -50,6 +53,38 @@ public:
 
     RewritePatternSet patterns(context);
     populateWAMIConvertArithPatterns(typeConverter, patterns);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// WAMIConvertFunc Pass
+//===----------------------------------------------------------------------===//
+
+class WAMIConvertFunc : public impl::WAMIConvertFuncBase<WAMIConvertFunc> {
+public:
+  using impl::WAMIConvertFuncBase<WAMIConvertFunc>::WAMIConvertFuncBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    WAMITypeConverter typeConverter(context);
+    ConversionTarget target(*context);
+
+    // WasmSSA dialect operations are legal
+    target.addLegalDialect<wasmssa::WasmSSADialect>();
+
+    // Func dialect operations are illegal (we want to convert them)
+    target.addIllegalDialect<func::FuncDialect>();
+
+    // Allow unrealized conversion casts for type mismatches
+    target.addLegalOp<UnrealizedConversionCastOp>();
+
+    RewritePatternSet patterns(context);
+    populateWAMIConvertFuncPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
