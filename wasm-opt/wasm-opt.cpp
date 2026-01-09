@@ -13,6 +13,7 @@
 #include "SsaWasm/SsaWasmDialect.h"
 #include "SsaWasm/SsaWasmPasses.h"
 #include "WAMI/WAMIDialect.h"
+#include "WAMI/WAMIPasses.h"
 #include "Wasm/WasmDialect.h"
 
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -28,6 +29,7 @@ int main(int argc, char **argv) {
   mlir::intermittent::registerPasses();
   mlir::ssawasm::registerPasses();
   mlir::dcont::registerPasses();
+  mlir::wami::registerPasses();
 
   mlir::DialectRegistry registry;
   registry
