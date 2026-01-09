@@ -1,0 +1,384 @@
+//===- WAMIConvertArith.cpp - Arith to WasmSSA conversion -------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file implements conversion patterns from Arith dialect to the upstream
+// WasmSSA dialect.
+//
+//===----------------------------------------------------------------------===//
+
+#include "WAMI/ConversionPatterns/WAMIConvertArith.h"
+
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
+
+namespace mlir::wami {
+
+namespace {
+
+//===----------------------------------------------------------------------===//
+// Binary Operation Lowering Templates
+//===----------------------------------------------------------------------===//
+
+template <typename SrcOp, typename TgtOp>
+struct BinaryOpLowering : public OpConversionPattern<SrcOp> {
+  using OpConversionPattern<SrcOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(SrcOp op, typename SrcOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType =
+        this->getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<TgtOp>(op, resultType, adaptor.getLhs(),
+                                       adaptor.getRhs());
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Unary Operation Lowering Templates
+//===----------------------------------------------------------------------===//
+
+template <typename SrcOp, typename TgtOp>
+struct UnaryOpLowering : public OpConversionPattern<SrcOp> {
+  using OpConversionPattern<SrcOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(SrcOp op, typename SrcOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType =
+        this->getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<TgtOp>(op, resultType, adaptor.getOperand());
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Arithmetic Operation Lowerings
+//===----------------------------------------------------------------------===//
+
+// Integer and floating-point add/sub/mul use the same WasmSSA ops
+using AddIOpLowering = BinaryOpLowering<arith::AddIOp, wasmssa::AddOp>;
+using AddFOpLowering = BinaryOpLowering<arith::AddFOp, wasmssa::AddOp>;
+using SubIOpLowering = BinaryOpLowering<arith::SubIOp, wasmssa::SubOp>;
+using SubFOpLowering = BinaryOpLowering<arith::SubFOp, wasmssa::SubOp>;
+using MulIOpLowering = BinaryOpLowering<arith::MulIOp, wasmssa::MulOp>;
+using MulFOpLowering = BinaryOpLowering<arith::MulFOp, wasmssa::MulOp>;
+
+// Division ops
+using DivSIOpLowering = BinaryOpLowering<arith::DivSIOp, wasmssa::DivSIOp>;
+using DivUIOpLowering = BinaryOpLowering<arith::DivUIOp, wasmssa::DivUIOp>;
+using DivFOpLowering = BinaryOpLowering<arith::DivFOp, wasmssa::DivOp>;
+
+// Remainder ops
+using RemSIOpLowering = BinaryOpLowering<arith::RemSIOp, wasmssa::RemSIOp>;
+using RemUIOpLowering = BinaryOpLowering<arith::RemUIOp, wasmssa::RemUIOp>;
+
+// Bitwise ops
+using AndIOpLowering = BinaryOpLowering<arith::AndIOp, wasmssa::AndOp>;
+using OrIOpLowering = BinaryOpLowering<arith::OrIOp, wasmssa::OrOp>;
+using XOrIOpLowering = BinaryOpLowering<arith::XOrIOp, wasmssa::XOrOp>;
+
+// Min/Max ops (floating-point only in WasmSSA)
+// minimumf/maximumf - WebAssembly semantics
+using MinimumFOpLowering = BinaryOpLowering<arith::MinimumFOp, wasmssa::MinOp>;
+using MaximumFOpLowering = BinaryOpLowering<arith::MaximumFOp, wasmssa::MaxOp>;
+// minnumf/maxnumf - IEEE 754-2008 minNum/maxNum semantics (also use Wasm
+// min/max)
+using MinNumFOpLowering = BinaryOpLowering<arith::MinNumFOp, wasmssa::MinOp>;
+using MaxNumFOpLowering = BinaryOpLowering<arith::MaxNumFOp, wasmssa::MaxOp>;
+
+//===----------------------------------------------------------------------===//
+// Constant Operation Lowering
+//===----------------------------------------------------------------------===//
+
+struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
+  using OpConversionPattern<arith::ConstantOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ConstantOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Attribute value = adaptor.getValue();
+
+    // Convert index type to i32 (WebAssembly uses 32-bit addresses)
+    if (auto intAttr = dyn_cast<IntegerAttr>(value)) {
+      if (intAttr.getType().isIndex()) {
+        auto i32Type = IntegerType::get(op.getContext(), 32);
+        APInt truncated = intAttr.getValue().trunc(32);
+        value = IntegerAttr::get(i32Type, truncated);
+      }
+    }
+
+    // Convert bool to i32 (WebAssembly represents booleans as i32)
+    if (auto boolAttr = dyn_cast<BoolAttr>(value)) {
+      auto i32Type = IntegerType::get(op.getContext(), 32);
+      value = IntegerAttr::get(i32Type, boolAttr.getValue() ? 1 : 0);
+    }
+
+    auto typedAttr = cast<TypedAttr>(value);
+    rewriter.replaceOpWithNewOp<wasmssa::ConstOp>(op, typedAttr);
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Comparison Operation Lowerings
+//===----------------------------------------------------------------------===//
+
+struct CmpIOpLowering : public OpConversionPattern<arith::CmpIOp> {
+  using OpConversionPattern<arith::CmpIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::CmpIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto predicate = op.getPredicate();
+
+    switch (predicate) {
+    case arith::CmpIPredicate::eq:
+      rewriter.replaceOpWithNewOp<wasmssa::EqOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::ne:
+      rewriter.replaceOpWithNewOp<wasmssa::NeOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::slt:
+      rewriter.replaceOpWithNewOp<wasmssa::LtSIOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::ult:
+      rewriter.replaceOpWithNewOp<wasmssa::LtUIOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::sle:
+      rewriter.replaceOpWithNewOp<wasmssa::LeSIOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::ule:
+      rewriter.replaceOpWithNewOp<wasmssa::LeUIOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::sgt:
+      rewriter.replaceOpWithNewOp<wasmssa::GtSIOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::ugt:
+      rewriter.replaceOpWithNewOp<wasmssa::GtUIOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::sge:
+      rewriter.replaceOpWithNewOp<wasmssa::GeSIOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpIPredicate::uge:
+      rewriter.replaceOpWithNewOp<wasmssa::GeUIOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    default:
+      return rewriter.notifyMatchFailure(op,
+                                         "unsupported comparison predicate");
+    }
+    return success();
+  }
+};
+
+struct CmpFOpLowering : public OpConversionPattern<arith::CmpFOp> {
+  using OpConversionPattern<arith::CmpFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::CmpFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto predicate = op.getPredicate();
+
+    // Handle ordered comparisons (most common case)
+    switch (predicate) {
+    case arith::CmpFPredicate::OEQ:
+      rewriter.replaceOpWithNewOp<wasmssa::EqOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpFPredicate::ONE:
+      rewriter.replaceOpWithNewOp<wasmssa::NeOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpFPredicate::OLT:
+      rewriter.replaceOpWithNewOp<wasmssa::LtOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpFPredicate::OLE:
+      rewriter.replaceOpWithNewOp<wasmssa::LeOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpFPredicate::OGT:
+      rewriter.replaceOpWithNewOp<wasmssa::GtOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    case arith::CmpFPredicate::OGE:
+      rewriter.replaceOpWithNewOp<wasmssa::GeOp>(
+          op, rewriter.getI32Type(), adaptor.getLhs(), adaptor.getRhs());
+      break;
+    default:
+      return rewriter.notifyMatchFailure(op,
+                                         "unsupported comparison predicate");
+    }
+    return success();
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Extension and Truncation Operation Lowerings
+//===----------------------------------------------------------------------===//
+
+struct ExtUIOpLowering : public OpConversionPattern<arith::ExtUIOp> {
+  using OpConversionPattern<arith::ExtUIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ExtUIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getIn().getType();
+    Type dstType = getTypeConverter()->convertType(op.getResult().getType());
+
+    // If source and dest types are the same after conversion (e.g., i1→i32 when
+    // both become i32), just replace with the input value
+    if (srcType == dstType) {
+      rewriter.replaceOp(op, adaptor.getIn());
+      return success();
+    }
+
+    // i32 to i64 extension
+    if (srcType.isInteger(32) && dstType.isInteger(64)) {
+      rewriter.replaceOpWithNewOp<wasmssa::ExtendUI32Op>(op, dstType,
+                                                         adaptor.getIn());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(op, "unsupported extension");
+  }
+};
+
+struct ExtSIOpLowering : public OpConversionPattern<arith::ExtSIOp> {
+  using OpConversionPattern<arith::ExtSIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ExtSIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getIn().getType();
+    Type dstType = getTypeConverter()->convertType(op.getResult().getType());
+
+    // If source and dest types are the same after conversion, replace with
+    // input
+    if (srcType == dstType) {
+      rewriter.replaceOp(op, adaptor.getIn());
+      return success();
+    }
+
+    // i32 to i64 extension
+    if (srcType.isInteger(32) && dstType.isInteger(64)) {
+      rewriter.replaceOpWithNewOp<wasmssa::ExtendSI32Op>(op, dstType,
+                                                         adaptor.getIn());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(op, "unsupported extension");
+  }
+};
+
+struct TruncIOpLowering : public OpConversionPattern<arith::TruncIOp> {
+  using OpConversionPattern<arith::TruncIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::TruncIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getIn().getType();
+    Type dstType = getTypeConverter()->convertType(op.getResult().getType());
+
+    // If source and dest types are the same after conversion, replace with
+    // input
+    if (srcType == dstType) {
+      rewriter.replaceOp(op, adaptor.getIn());
+      return success();
+    }
+
+    // i64 to i32 truncation
+    if (srcType.isInteger(64) && dstType.isInteger(32)) {
+      rewriter.replaceOpWithNewOp<wasmssa::WrapOp>(op, dstType,
+                                                   adaptor.getIn());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(op, "unsupported truncation");
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Shift Operation Lowerings
+//===----------------------------------------------------------------------===//
+
+struct ShLIOpLowering : public OpConversionPattern<arith::ShLIOp> {
+  using OpConversionPattern<arith::ShLIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ShLIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType =
+        this->getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<wasmssa::ShLOp>(
+        op, resultType, adaptor.getLhs(), adaptor.getRhs());
+    return success();
+  }
+};
+
+struct ShRSIOpLowering : public OpConversionPattern<arith::ShRSIOp> {
+  using OpConversionPattern<arith::ShRSIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ShRSIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType =
+        this->getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<wasmssa::ShRSOp>(
+        op, resultType, adaptor.getLhs(), adaptor.getRhs());
+    return success();
+  }
+};
+
+struct ShRUIOpLowering : public OpConversionPattern<arith::ShRUIOp> {
+  using OpConversionPattern<arith::ShRUIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ShRUIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType =
+        this->getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<wasmssa::ShRUOp>(
+        op, resultType, adaptor.getLhs(), adaptor.getRhs());
+    return success();
+  }
+};
+
+} // namespace
+
+//===----------------------------------------------------------------------===//
+// Pattern Population
+//===----------------------------------------------------------------------===//
+
+void populateWAMIConvertArithPatterns(TypeConverter &typeConverter,
+                                      RewritePatternSet &patterns) {
+  MLIRContext *context = patterns.getContext();
+
+  // Arithmetic operations
+  patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+               MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
+               DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
+               OrIOpLowering, XOrIOpLowering, MinimumFOpLowering,
+               MaximumFOpLowering, MinNumFOpLowering, MaxNumFOpLowering,
+               ConstantOpLowering, CmpIOpLowering, CmpFOpLowering,
+               ShLIOpLowering, ShRSIOpLowering, ShRUIOpLowering,
+               ExtUIOpLowering, ExtSIOpLowering, TruncIOpLowering>(
+      typeConverter, context);
+}
+
+} // namespace mlir::wami
