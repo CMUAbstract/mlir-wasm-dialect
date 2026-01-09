@@ -4,6 +4,7 @@ add_mlir_dialect_library(MLIRWAMI
   WAMIOps.cpp
   WAMIPasses.cpp
   ConversionPatterns/WAMIConvertArith.cpp
+  ConversionPatterns/WAMIConvertFunc.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/WAMI
@@ -15,6 +16,7 @@ add_mlir_dialect_library(MLIRWAMI
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRArithDialect
+  MLIRFuncDialect
   MLIRPass
   MLIRTransforms
   MLIRWasmSSADialect
