@@ -1,0 +1,60 @@
+//===- WAMIPasses.cpp - WAMI dialect passes ---------------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This file implements passes for the WAMI dialect and conversion passes
+// to/from the upstream WasmSSA dialect.
+//
+//===----------------------------------------------------------------------===//
+
+#include "WAMI/WAMIPasses.h"
+#include "WAMI/ConversionPatterns/WAMIConvertArith.h"
+#include "WAMI/WAMITypeConverter.h"
+
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/DialectConversion.h"
+
+namespace mlir::wami {
+
+#define GEN_PASS_DEF_WAMICONVERTARITH
+#include "WAMI/WAMIPasses.h.inc"
+
+//===----------------------------------------------------------------------===//
+// WAMIConvertArith Pass
+//===----------------------------------------------------------------------===//
+
+class WAMIConvertArith : public impl::WAMIConvertArithBase<WAMIConvertArith> {
+public:
+  using impl::WAMIConvertArithBase<WAMIConvertArith>::WAMIConvertArithBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    WAMITypeConverter typeConverter(context);
+    ConversionTarget target(*context);
+
+    // WasmSSA dialect operations are legal
+    target.addLegalDialect<wasmssa::WasmSSADialect>();
+
+    // Arith dialect operations are illegal (we want to convert them)
+    target.addIllegalDialect<arith::ArithDialect>();
+
+    // Allow unrealized conversion casts for type mismatches
+    target.addLegalOp<UnrealizedConversionCastOp>();
+
+    RewritePatternSet patterns(context);
+    populateWAMIConvertArithPatterns(typeConverter, patterns);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+} // namespace mlir::wami
