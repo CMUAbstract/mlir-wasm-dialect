@@ -29,4 +29,17 @@ def WAMIConvertArith : Pass<"wami-convert-arith", "ModuleOp"> {
   ];
 }
 
+def WAMIConvertFunc : Pass<"wami-convert-func", "ModuleOp"> {
+  let summary = "Convert Func dialect to WasmSSA dialect";
+  let description = [{
+    This pass converts operations from the MLIR Func dialect to the
+    upstream WasmSSA dialect. It handles function definitions, calls,
+    and returns.
+  }];
+  let dependentDialects = [
+    "wasmssa::WasmSSADialect",
+    "func::FuncDialect"
+  ];
+}
+
 #endif // WAMI_PASSES
