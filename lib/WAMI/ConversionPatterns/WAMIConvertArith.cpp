@@ -107,8 +107,12 @@ struct ConstantOpLowering : public OpConversionPattern<arith::ConstantOp> {
     // Convert index type to i32 (WebAssembly uses 32-bit addresses)
     if (auto intAttr = dyn_cast<IntegerAttr>(value)) {
       if (intAttr.getType().isIndex()) {
+        APInt indexValue = intAttr.getValue();
+        if (indexValue.getActiveBits() > 32)
+          return rewriter.notifyMatchFailure(
+              op, "index constant exceeds 32-bit range");
         auto i32Type = IntegerType::get(op.getContext(), 32);
-        APInt truncated = intAttr.getValue().trunc(32);
+        APInt truncated = indexValue.trunc(32);
         value = IntegerAttr::get(i32Type, truncated);
       }
     }
