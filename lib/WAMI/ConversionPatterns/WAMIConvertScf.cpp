@@ -25,12 +25,20 @@ namespace {
 // Helper Functions
 //===----------------------------------------------------------------------===//
 
-/// Convert an i1 condition to i32 for WasmSSA (which expects i32 conditions).
-static Value convertConditionToI32(Value cond, Location loc,
-                                   ConversionPatternRewriter &rewriter) {
+/// Ensure condition is i32 for WasmSSA (which expects i32 conditions).
+/// If the condition is i1 (from arith.cmpi), extends it to i32 using
+/// arith.extui which will be converted by the subsequent arith pass.
+static Value ensureConditionIsI32(Value cond, Location loc,
+                                  ConversionPatternRewriter &rewriter) {
+  if (cond.getType().isInteger(32))
+    return cond;
+
   if (cond.getType().isInteger(1)) {
+    // Extend i1 to i32 - this will be converted by wami-convert-arith
     return arith::ExtUIOp::create(rewriter, loc, rewriter.getI32Type(), cond);
   }
+
+  // For other types, return as-is
   return cond;
 }
 
@@ -48,7 +56,7 @@ struct IfOpLowering : public OpConversionPattern<scf::IfOp> {
 
     // Convert condition to i32 (WasmSSA expects i32)
     Value condition =
-        convertConditionToI32(adaptor.getCondition(), loc, rewriter);
+        ensureConditionIsI32(adaptor.getCondition(), loc, rewriter);
 
     // Convert result types
     SmallVector<Type, 4> resultTypes;
@@ -343,7 +351,7 @@ struct WhileOpLowering : public OpConversionPattern<scf::WhileOp> {
     auto conditionOp =
         cast<scf::ConditionOp>(op.getBefore().front().getTerminator());
     Value cond = beforeMapping.lookupOrDefault(conditionOp.getCondition());
-    cond = convertConditionToI32(cond, loc, rewriter);
+    cond = ensureConditionIsI32(cond, loc, rewriter);
 
     // Get values to pass to after region
     SmallVector<Value, 4> condArgs;
