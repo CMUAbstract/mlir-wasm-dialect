@@ -28,9 +28,15 @@ public:
   WAMITypeConverter(MLIRContext *ctx) {
     // Note: TypeConverter tries conversions in reverse order (LIFO), so
     // registering identity conversion FIRST gives it LOWEST priority.
-    // It acts as a fallback for types that don't need conversion (f32, f64,
-    // FunctionType, LocalRefType, etc.).
-    addConversion([](Type type) { return type; });
+    // It acts as a fallback for types that don't need conversion
+    // (FunctionType, LocalRefType, etc.).
+    // Exclude IntegerType, IndexType, and FloatType as they have specific
+    // conversions registered below.
+    addConversion([](Type type) -> std::optional<Type> {
+      if (isa<IntegerType, IndexType, FloatType>(type))
+        return std::nullopt;
+      return type;
+    });
 
     // Integer types: WebAssembly only supports i32 and i64
     addConversion([](IntegerType type) -> Type {
@@ -43,6 +49,14 @@ public:
     // Index type is converted to i32 (32-bit addressing in Wasm32)
     addConversion(
         [ctx](IndexType type) -> Type { return IntegerType::get(ctx, 32); });
+
+    // Float types: WebAssembly only supports f32 and f64
+    addConversion([](FloatType type) -> std::optional<Type> {
+      if (type.isF32() || type.isF64())
+        return type;
+      // Reject unsupported float types (f16, bf16, f80, f128, etc.)
+      return std::nullopt;
+    });
 
     // Source materialization: convert from converted types back to source types
     // This handles LocalRefType -> value type conversion via local_get
