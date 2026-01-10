@@ -1,4 +1,7 @@
-// RUN: wasm-opt %s --wami-convert-scf | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --reconcile-unrealized-casts | FileCheck %s
+
+// Verify no unrealized conversion casts remain after conversion
+// CHECK-NOT: unrealized_conversion_cast
 
 //===----------------------------------------------------------------------===//
 // scf.if tests
