@@ -314,6 +314,79 @@ struct TruncIOpLowering : public OpConversionPattern<arith::TruncIOp> {
 };
 
 //===----------------------------------------------------------------------===//
+// Index Cast Operation Lowering
+//===----------------------------------------------------------------------===//
+
+struct IndexCastOpLowering : public OpConversionPattern<arith::IndexCastOp> {
+  using OpConversionPattern<arith::IndexCastOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::IndexCastOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getIn().getType();
+    Type dstType = getTypeConverter()->convertType(op.getResult().getType());
+
+    // After type conversion, index becomes i32.
+    // If source and dest types are the same, this is a no-op.
+    if (srcType == dstType) {
+      rewriter.replaceOp(op, adaptor.getIn());
+      return success();
+    }
+
+    // i32 to i64 (index_cast i32 to index when index is 64-bit, which is rare)
+    if (srcType.isInteger(32) && dstType.isInteger(64)) {
+      rewriter.replaceOpWithNewOp<wasmssa::ExtendSI32Op>(op, dstType,
+                                                         adaptor.getIn());
+      return success();
+    }
+
+    // i64 to i32 (index_cast index to i32 when index is 64-bit)
+    if (srcType.isInteger(64) && dstType.isInteger(32)) {
+      rewriter.replaceOpWithNewOp<wasmssa::WrapOp>(op, dstType,
+                                                   adaptor.getIn());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(op, "unsupported index cast");
+  }
+};
+
+struct IndexCastUIOpLowering
+    : public OpConversionPattern<arith::IndexCastUIOp> {
+  using OpConversionPattern<arith::IndexCastUIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::IndexCastUIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getIn().getType();
+    Type dstType = getTypeConverter()->convertType(op.getResult().getType());
+
+    // After type conversion, index becomes i32.
+    // If source and dest types are the same, this is a no-op.
+    if (srcType == dstType) {
+      rewriter.replaceOp(op, adaptor.getIn());
+      return success();
+    }
+
+    // i32 to i64 (unsigned extension)
+    if (srcType.isInteger(32) && dstType.isInteger(64)) {
+      rewriter.replaceOpWithNewOp<wasmssa::ExtendUI32Op>(op, dstType,
+                                                         adaptor.getIn());
+      return success();
+    }
+
+    // i64 to i32 (wrap)
+    if (srcType.isInteger(64) && dstType.isInteger(32)) {
+      rewriter.replaceOpWithNewOp<wasmssa::WrapOp>(op, dstType,
+                                                   adaptor.getIn());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(op, "unsupported index cast");
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Shift Operation Lowerings
 //===----------------------------------------------------------------------===//
 
@@ -370,15 +443,16 @@ void populateWAMIConvertArithPatterns(TypeConverter &typeConverter,
   MLIRContext *context = patterns.getContext();
 
   // Arithmetic operations
-  patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-               MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
-               DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
-               OrIOpLowering, XOrIOpLowering, MinimumFOpLowering,
-               MaximumFOpLowering, MinNumFOpLowering, MaxNumFOpLowering,
-               ConstantOpLowering, CmpIOpLowering, CmpFOpLowering,
-               ShLIOpLowering, ShRSIOpLowering, ShRUIOpLowering,
-               ExtUIOpLowering, ExtSIOpLowering, TruncIOpLowering>(
-      typeConverter, context);
+  patterns
+      .add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+           MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
+           DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
+           OrIOpLowering, XOrIOpLowering, MinimumFOpLowering,
+           MaximumFOpLowering, MinNumFOpLowering, MaxNumFOpLowering,
+           ConstantOpLowering, CmpIOpLowering, CmpFOpLowering, ShLIOpLowering,
+           ShRSIOpLowering, ShRUIOpLowering, ExtUIOpLowering, ExtSIOpLowering,
+           TruncIOpLowering, IndexCastOpLowering, IndexCastUIOpLowering>(
+          typeConverter, context);
 }
 
 } // namespace mlir::wami
