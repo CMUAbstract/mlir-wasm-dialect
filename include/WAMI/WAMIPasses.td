@@ -42,4 +42,18 @@ def WAMIConvertFunc : Pass<"wami-convert-func", "ModuleOp"> {
   ];
 }
 
+def WAMIConvertScf : Pass<"wami-convert-scf", "ModuleOp"> {
+  let summary = "Convert SCF dialect to WasmSSA dialect";
+  let description = [{
+    This pass converts operations from the MLIR SCF (Structured Control Flow)
+    dialect to the upstream WasmSSA dialect. It handles if, for, and while
+    loops using direct structured control flow mapping without a relooper
+    algorithm.
+  }];
+  let dependentDialects = [
+    "wasmssa::WasmSSADialect",
+    "scf::SCFDialect"
+  ];
+}
+
 #endif // WAMI_PASSES

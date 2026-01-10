@@ -14,10 +14,12 @@
 #include "WAMI/WAMIPasses.h"
 #include "WAMI/ConversionPatterns/WAMIConvertArith.h"
 #include "WAMI/ConversionPatterns/WAMIConvertFunc.h"
+#include "WAMI/ConversionPatterns/WAMIConvertScf.h"
 #include "WAMI/WAMITypeConverter.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -26,6 +28,7 @@ namespace mlir::wami {
 
 #define GEN_PASS_DEF_WAMICONVERTARITH
 #define GEN_PASS_DEF_WAMICONVERTFUNC
+#define GEN_PASS_DEF_WAMICONVERTSCF
 #include "WAMI/WAMIPasses.h.inc"
 
 //===----------------------------------------------------------------------===//
@@ -85,6 +88,42 @@ public:
 
     RewritePatternSet patterns(context);
     populateWAMIConvertFuncPatterns(typeConverter, patterns);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// WAMIConvertScf Pass
+//===----------------------------------------------------------------------===//
+
+class WAMIConvertScf : public impl::WAMIConvertScfBase<WAMIConvertScf> {
+public:
+  using impl::WAMIConvertScfBase<WAMIConvertScf>::WAMIConvertScfBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    WAMITypeConverter typeConverter(context);
+    ConversionTarget target(*context);
+
+    // WasmSSA dialect operations are legal
+    target.addLegalDialect<wasmssa::WasmSSADialect>();
+
+    // SCF dialect operations are illegal (we want to convert them)
+    target.addIllegalDialect<scf::SCFDialect>();
+
+    // Arith and Func dialects are legal (may be used in loop bodies)
+    target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalDialect<func::FuncDialect>();
+
+    // Allow unrealized conversion casts for type mismatches
+    target.addLegalOp<UnrealizedConversionCastOp>();
+
+    RewritePatternSet patterns(context);
+    populateWAMIConvertScfPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
