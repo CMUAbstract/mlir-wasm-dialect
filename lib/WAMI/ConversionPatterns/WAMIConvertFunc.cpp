@@ -48,8 +48,10 @@ struct FuncOpLowering : public OpConversionPattern<func::FuncOp> {
       newResultTypes.push_back(getTypeConverter()->convertType(resultType));
     }
 
-    // Create function type with value types (wasmssa.func stores plain types,
-    // but entry block args are LocalRefType - handled by the dialect)
+    // Create function type with value types.
+    // wasmssa.func stores plain types in the function signature, but the entry
+    // block arguments are LocalRefType - this asymmetry is by design and
+    // handled by the wasmssa.func verifier.
     SmallVector<Type, 4> newInputTypes;
     for (Type inputType : op.getFunctionType().getInputs()) {
       newInputTypes.push_back(getTypeConverter()->convertType(inputType));
