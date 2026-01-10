@@ -18,6 +18,31 @@ class WAMI_Op<string mnemonic, list<Trait> traits = []>
     : Op<WAMI_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
+// Core WebAssembly Operations
+//===----------------------------------------------------------------------===//
+
+def WAMI_SelectOp : WAMI_Op<"select", [
+    AllTypesMatch<["true_value", "false_value", "result"]>,
+    Pure
+]> {
+  let summary = "Select between two values based on condition";
+  let description = [{
+    WebAssembly select instruction. Returns true_value if condition is non-zero,
+    false_value otherwise.
+
+    This corresponds to the WebAssembly `select` instruction which provides
+    a ternary conditional without control flow.
+  }];
+  let arguments = (ins
+    AnyType:$true_value,
+    AnyType:$false_value,
+    I32:$condition
+  );
+  let results = (outs AnyType:$result);
+  let assemblyFormat = "$condition `,` $true_value `,` $false_value attr-dict `:` type($result)";
+}
+
+//===----------------------------------------------------------------------===//
 // Stack Switching Operations (WebAssembly Stack Switching Proposal)
 //
 // These operations will be added incrementally as needed:

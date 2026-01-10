@@ -15,6 +15,7 @@
 #include "WAMI/ConversionPatterns/WAMIConvertArith.h"
 #include "WAMI/ConversionPatterns/WAMIConvertFunc.h"
 #include "WAMI/ConversionPatterns/WAMIConvertScf.h"
+#include "WAMI/WAMIDialect.h"
 #include "WAMI/WAMITypeConverter.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -45,8 +46,9 @@ public:
     WAMITypeConverter typeConverter(context);
     ConversionTarget target(*context);
 
-    // WasmSSA dialect operations are legal
+    // WasmSSA and WAMI dialect operations are legal
     target.addLegalDialect<wasmssa::WasmSSADialect>();
+    target.addLegalDialect<WAMIDialect>();
 
     // Arith dialect operations are illegal (we want to convert them)
     target.addIllegalDialect<arith::ArithDialect>();
