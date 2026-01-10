@@ -1,4 +1,7 @@
-// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-func | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts | FileCheck %s
+
+// Verify no unrealized conversion casts remain after the full pipeline
+// CHECK-NOT: unrealized_conversion_cast
 
 //===----------------------------------------------------------------------===//
 // Integrated tests: arith + func + scf → WasmSSA

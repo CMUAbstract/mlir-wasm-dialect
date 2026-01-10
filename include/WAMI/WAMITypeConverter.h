@@ -52,11 +52,27 @@ public:
       Type inputType = input.getType();
 
       // If input is a LocalRefType and we need a value type, insert local_get
-      // Only if the inner type exactly matches the requested type
       if (auto localRefType = dyn_cast<wasmssa::LocalRefType>(inputType)) {
         Type innerType = localRefType.getElementType();
+
+        // Case 1: innerType exactly matches requested type - use local_get
         if (innerType == type) {
           return wasmssa::LocalGetOp::create(builder, loc, input);
+        }
+
+        // Case 2: innerType is the converted form of requested type
+        // e.g., LocalRefType(i32) -> i1, where i1 converts to i32
+        // Check if type is a small integer that would convert to innerType
+        if (auto intType = dyn_cast<IntegerType>(type)) {
+          Type expectedConverted = IntegerType::get(
+              type.getContext(), intType.getWidth() <= 32 ? 32 : 64);
+          if (innerType == expectedConverted) {
+            // Extract via local_get, then create a reconcilable cast
+            Value extracted = wasmssa::LocalGetOp::create(builder, loc, input);
+            return UnrealizedConversionCastOp::create(builder, loc, type,
+                                                      extracted)
+                .getResult(0);
+          }
         }
       }
 
@@ -74,11 +90,25 @@ public:
       Type inputType = input.getType();
 
       // If input is a LocalRefType and we need a value type, insert local_get
-      // Only if the inner type exactly matches the requested type
       if (auto localRefType = dyn_cast<wasmssa::LocalRefType>(inputType)) {
         Type innerType = localRefType.getElementType();
+
+        // Case 1: innerType exactly matches requested type - use local_get
         if (innerType == type) {
           return wasmssa::LocalGetOp::create(builder, loc, input);
+        }
+
+        // Case 2: innerType is the converted form of requested type
+        // Check if type is a small integer that would convert to innerType
+        if (auto intType = dyn_cast<IntegerType>(type)) {
+          Type expectedConverted = IntegerType::get(
+              type.getContext(), intType.getWidth() <= 32 ? 32 : 64);
+          if (innerType == expectedConverted) {
+            Value extracted = wasmssa::LocalGetOp::create(builder, loc, input);
+            return UnrealizedConversionCastOp::create(builder, loc, type,
+                                                      extracted)
+                .getResult(0);
+          }
         }
       }
 
