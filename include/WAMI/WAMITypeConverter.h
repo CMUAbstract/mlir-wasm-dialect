@@ -14,6 +14,7 @@
 #ifndef WAMI_WAMITYPECONVERTER_H
 #define WAMI_WAMITYPECONVERTER_H
 
+#include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -40,9 +41,25 @@ public:
     addConversion(
         [ctx](IndexType type) -> Type { return IntegerType::get(ctx, 32); });
 
-    // Source materialization: convert back to original type when needed
+    // Source materialization: convert from converted types back to source types
+    // This handles LocalRefType -> value type conversion via local_get
     addSourceMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) -> Value {
+      if (inputs.size() != 1)
+        return nullptr;
+
+      Value input = inputs[0];
+      Type inputType = input.getType();
+
+      // If input is a LocalRefType and we need a value type, insert local_get
+      // Only if the inner type exactly matches the requested type
+      if (auto localRefType = dyn_cast<wasmssa::LocalRefType>(inputType)) {
+        Type innerType = localRefType.getElementType();
+        if (innerType == type) {
+          return wasmssa::LocalGetOp::create(builder, loc, input);
+        }
+      }
+
       return UnrealizedConversionCastOp::create(builder, loc, type, inputs)
           .getResult(0);
     });
@@ -50,6 +67,21 @@ public:
     // Target materialization: convert to target type when needed
     addTargetMaterialization([](OpBuilder &builder, Type type,
                                 ValueRange inputs, Location loc) -> Value {
+      if (inputs.size() != 1)
+        return nullptr;
+
+      Value input = inputs[0];
+      Type inputType = input.getType();
+
+      // If input is a LocalRefType and we need a value type, insert local_get
+      // Only if the inner type exactly matches the requested type
+      if (auto localRefType = dyn_cast<wasmssa::LocalRefType>(inputType)) {
+        Type innerType = localRefType.getElementType();
+        if (innerType == type) {
+          return wasmssa::LocalGetOp::create(builder, loc, input);
+        }
+      }
+
       return UnrealizedConversionCastOp::create(builder, loc, type, inputs)
           .getResult(0);
     });
