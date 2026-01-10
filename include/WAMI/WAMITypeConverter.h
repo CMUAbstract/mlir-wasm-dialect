@@ -26,7 +26,10 @@ namespace mlir::wami {
 class WAMITypeConverter : public TypeConverter {
 public:
   WAMITypeConverter(MLIRContext *ctx) {
-    // Identity conversion for types that don't need conversion
+    // Note: TypeConverter tries conversions in reverse order (LIFO), so
+    // registering identity conversion FIRST gives it LOWEST priority.
+    // It acts as a fallback for types that don't need conversion (f32, f64,
+    // FunctionType, LocalRefType, etc.).
     addConversion([](Type type) { return type; });
 
     // Integer types: WebAssembly only supports i32 and i64
