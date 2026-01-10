@@ -250,6 +250,116 @@ func.func @test_const_f64() -> f64 {
   return %0 : f64
 }
 
+// Floating-point comparison tests
+
+// CHECK-LABEL: func @test_cmpf_oeq
+func.func @test_cmpf_oeq(%arg0: f32, %arg1: f32) -> i32 {
+  // CHECK: wasmssa.eq %{{.*}} %{{.*}} : f32 -> i32
+  %0 = arith.cmpf oeq, %arg0, %arg1 : f32
+  %1 = arith.extui %0 : i1 to i32
+  return %1 : i32
+}
+
+// CHECK-LABEL: func @test_cmpf_one
+func.func @test_cmpf_one(%arg0: f32, %arg1: f32) -> i32 {
+  // CHECK: wasmssa.ne %{{.*}} %{{.*}} : f32 -> i32
+  %0 = arith.cmpf one, %arg0, %arg1 : f32
+  %1 = arith.extui %0 : i1 to i32
+  return %1 : i32
+}
+
+// CHECK-LABEL: func @test_cmpf_olt
+func.func @test_cmpf_olt(%arg0: f32, %arg1: f32) -> i32 {
+  // CHECK: wasmssa.lt %{{.*}} %{{.*}} : f32 -> i32
+  %0 = arith.cmpf olt, %arg0, %arg1 : f32
+  %1 = arith.extui %0 : i1 to i32
+  return %1 : i32
+}
+
+// CHECK-LABEL: func @test_cmpf_ole
+func.func @test_cmpf_ole(%arg0: f32, %arg1: f32) -> i32 {
+  // CHECK: wasmssa.le %{{.*}} %{{.*}} : f32 -> i32
+  %0 = arith.cmpf ole, %arg0, %arg1 : f32
+  %1 = arith.extui %0 : i1 to i32
+  return %1 : i32
+}
+
+// CHECK-LABEL: func @test_cmpf_ogt
+func.func @test_cmpf_ogt(%arg0: f32, %arg1: f32) -> i32 {
+  // CHECK: wasmssa.gt %{{.*}} %{{.*}} : f32 -> i32
+  %0 = arith.cmpf ogt, %arg0, %arg1 : f32
+  %1 = arith.extui %0 : i1 to i32
+  return %1 : i32
+}
+
+// CHECK-LABEL: func @test_cmpf_oge
+func.func @test_cmpf_oge(%arg0: f32, %arg1: f32) -> i32 {
+  // CHECK: wasmssa.ge %{{.*}} %{{.*}} : f32 -> i32
+  %0 = arith.cmpf oge, %arg0, %arg1 : f32
+  %1 = arith.extui %0 : i1 to i32
+  return %1 : i32
+}
+
+// CHECK-LABEL: func @test_cmpf_oeq_f64
+func.func @test_cmpf_oeq_f64(%arg0: f64, %arg1: f64) -> i32 {
+  // CHECK: wasmssa.eq %{{.*}} %{{.*}} : f64 -> i32
+  %0 = arith.cmpf oeq, %arg0, %arg1 : f64
+  %1 = arith.extui %0 : i1 to i32
+  return %1 : i32
+}
+
+// minnumf/maxnumf tests - these use conditional logic for NaN handling
+// minnumf: if either is NaN, return the other (the number)
+
+// CHECK-LABEL: func @test_minnumf
+func.func @test_minnumf(%arg0: f32, %arg1: f32) -> f32 {
+  // CHECK: wasmssa.ne %{{.*}} %{{.*}} : f32
+  // CHECK: wasmssa.ne %{{.*}} %{{.*}} : f32
+  // CHECK: wasmssa.min %{{.*}} %{{.*}} : f32
+  // CHECK: wami.select
+  // CHECK: wami.select
+  %0 = arith.minnumf %arg0, %arg1 : f32
+  return %0 : f32
+}
+
+// CHECK-LABEL: func @test_maxnumf
+func.func @test_maxnumf(%arg0: f32, %arg1: f32) -> f32 {
+  // CHECK: wasmssa.ne %{{.*}} %{{.*}} : f32
+  // CHECK: wasmssa.ne %{{.*}} %{{.*}} : f32
+  // CHECK: wasmssa.max %{{.*}} %{{.*}} : f32
+  // CHECK: wami.select
+  // CHECK: wami.select
+  %0 = arith.maxnumf %arg0, %arg1 : f32
+  return %0 : f32
+}
+
+// CHECK-LABEL: func @test_minnumf_f64
+func.func @test_minnumf_f64(%arg0: f64, %arg1: f64) -> f64 {
+  // CHECK: wasmssa.ne %{{.*}} %{{.*}} : f64
+  // CHECK: wasmssa.ne %{{.*}} %{{.*}} : f64
+  // CHECK: wasmssa.min %{{.*}} %{{.*}} : f64
+  // CHECK: wami.select
+  // CHECK: wami.select
+  %0 = arith.minnumf %arg0, %arg1 : f64
+  return %0 : f64
+}
+
+// arith.select tests
+
+// CHECK-LABEL: func @test_select_i32
+func.func @test_select_i32(%cond: i1, %a: i32, %b: i32) -> i32 {
+  // CHECK: wami.select %{{.*}}, %{{.*}}, %{{.*}} : i32
+  %0 = arith.select %cond, %a, %b : i32
+  return %0 : i32
+}
+
+// CHECK-LABEL: func @test_select_f32
+func.func @test_select_f32(%cond: i1, %a: f32, %b: f32) -> f32 {
+  // CHECK: wami.select %{{.*}}, %{{.*}}, %{{.*}} : f32
+  %0 = arith.select %cond, %a, %b : f32
+  return %0 : f32
+}
+
 // Extension and truncation tests
 
 // CHECK-LABEL: func @test_extui_i32_to_i64
