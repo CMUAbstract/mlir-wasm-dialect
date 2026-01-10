@@ -25,7 +25,8 @@ def WAMIConvertArith : Pass<"wami-convert-arith", "ModuleOp"> {
   }];
   let dependentDialects = [
     "wasmssa::WasmSSADialect",
-    "arith::ArithDialect"
+    "arith::ArithDialect",
+    "wami::WAMIDialect"
   ];
 }
 

@@ -13,6 +13,7 @@
 
 #include "WAMI/ConversionPatterns/WAMIConvertArith.h"
 
+#include "WAMI/WAMIOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 
@@ -84,13 +85,99 @@ using OrIOpLowering = BinaryOpLowering<arith::OrIOp, wasmssa::OrOp>;
 using XOrIOpLowering = BinaryOpLowering<arith::XOrIOp, wasmssa::XOrOp>;
 
 // Min/Max ops (floating-point only in WasmSSA)
-// minimumf/maximumf - WebAssembly semantics
+// minimumf/maximumf - IEEE 754-2019 minimum/maximum (propagate NaN)
+// WebAssembly min/max also propagate NaN, so direct mapping is correct.
+// Reference: https://github.com/WebAssembly/design/issues/1548
 using MinimumFOpLowering = BinaryOpLowering<arith::MinimumFOp, wasmssa::MinOp>;
 using MaximumFOpLowering = BinaryOpLowering<arith::MaximumFOp, wasmssa::MaxOp>;
-// minnumf/maxnumf - IEEE 754-2008 minNum/maxNum semantics (also use Wasm
-// min/max)
-using MinNumFOpLowering = BinaryOpLowering<arith::MinNumFOp, wasmssa::MinOp>;
-using MaxNumFOpLowering = BinaryOpLowering<arith::MaxNumFOp, wasmssa::MaxOp>;
+
+// minnumf/maxnumf - IEEE 754-2008 minNum/maxNum semantics (return non-NaN)
+// WebAssembly min/max propagate NaN, so we need conditional logic.
+// Logic: if lhs is NaN, return rhs; else if rhs is NaN, return lhs; else
+// min/max
+struct MinNumFOpLowering : public OpConversionPattern<arith::MinNumFOp> {
+  using OpConversionPattern<arith::MinNumFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::MinNumFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+    Type resultType = getTypeConverter()->convertType(op.getType());
+
+    // Check if operands are NaN (a != a is true iff a is NaN)
+    Value lhsIsNaN = wasmssa::NeOp::create(rewriter, loc, lhs, lhs);
+    Value rhsIsNaN = wasmssa::NeOp::create(rewriter, loc, rhs, rhs);
+
+    // Compute min using WebAssembly min
+    Value minResult =
+        wasmssa::MinOp::create(rewriter, loc, resultType, lhs, rhs);
+
+    // If rhs is NaN, use lhs; otherwise use min result
+    Value step1 =
+        SelectOp::create(rewriter, loc, resultType, lhs, minResult, rhsIsNaN);
+    // If lhs is NaN, use rhs; otherwise use step1
+    Value result =
+        SelectOp::create(rewriter, loc, resultType, rhs, step1, lhsIsNaN);
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+struct MaxNumFOpLowering : public OpConversionPattern<arith::MaxNumFOp> {
+  using OpConversionPattern<arith::MaxNumFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::MaxNumFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+    Type resultType = getTypeConverter()->convertType(op.getType());
+
+    // Check if operands are NaN (a != a is true iff a is NaN)
+    Value lhsIsNaN = wasmssa::NeOp::create(rewriter, loc, lhs, lhs);
+    Value rhsIsNaN = wasmssa::NeOp::create(rewriter, loc, rhs, rhs);
+
+    // Compute max using WebAssembly max
+    Value maxResult =
+        wasmssa::MaxOp::create(rewriter, loc, resultType, lhs, rhs);
+
+    // If rhs is NaN, use lhs; otherwise use max result
+    Value step1 =
+        SelectOp::create(rewriter, loc, resultType, lhs, maxResult, rhsIsNaN);
+    // If lhs is NaN, use rhs; otherwise use step1
+    Value result =
+        SelectOp::create(rewriter, loc, resultType, rhs, step1, lhsIsNaN);
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+// arith.select -> wami.select
+struct SelectOpLowering : public OpConversionPattern<arith::SelectOp> {
+  using OpConversionPattern<arith::SelectOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::SelectOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = getTypeConverter()->convertType(op.getType());
+
+    // Ensure condition is i32 (WebAssembly select requires i32 condition)
+    Value cond = adaptor.getCondition();
+    if (!cond.getType().isInteger(32)) {
+      cond = arith::ExtUIOp::create(rewriter, op.getLoc(),
+                                    rewriter.getI32Type(), cond);
+    }
+
+    rewriter.replaceOpWithNewOp<SelectOp>(
+        op, resultType, adaptor.getTrueValue(), adaptor.getFalseValue(), cond);
+    return success();
+  }
+};
 
 //===----------------------------------------------------------------------===//
 // Constant Operation Lowering
@@ -447,16 +534,16 @@ void populateWAMIConvertArithPatterns(TypeConverter &typeConverter,
   MLIRContext *context = patterns.getContext();
 
   // Arithmetic operations
-  patterns
-      .add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-           MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
-           DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
-           OrIOpLowering, XOrIOpLowering, MinimumFOpLowering,
-           MaximumFOpLowering, MinNumFOpLowering, MaxNumFOpLowering,
-           ConstantOpLowering, CmpIOpLowering, CmpFOpLowering, ShLIOpLowering,
-           ShRSIOpLowering, ShRUIOpLowering, ExtUIOpLowering, ExtSIOpLowering,
-           TruncIOpLowering, IndexCastOpLowering, IndexCastUIOpLowering>(
-          typeConverter, context);
+  patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+               MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
+               DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
+               OrIOpLowering, XOrIOpLowering, MinimumFOpLowering,
+               MaximumFOpLowering, MinNumFOpLowering, MaxNumFOpLowering,
+               ConstantOpLowering, CmpIOpLowering, CmpFOpLowering,
+               ShLIOpLowering, ShRSIOpLowering, ShRUIOpLowering,
+               ExtUIOpLowering, ExtSIOpLowering, TruncIOpLowering,
+               IndexCastOpLowering, IndexCastUIOpLowering, SelectOpLowering>(
+      typeConverter, context);
 }
 
 } // namespace mlir::wami
