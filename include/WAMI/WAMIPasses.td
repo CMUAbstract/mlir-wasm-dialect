@@ -57,4 +57,25 @@ def WAMIConvertScf : Pass<"wami-convert-scf", "ModuleOp"> {
   ];
 }
 
+def WAMIConvertMemref : Pass<"wami-convert-memref", "ModuleOp"> {
+  let summary = "Convert MemRef dialect to WasmSSA/WAMI dialects";
+  let description = [{
+    This pass converts operations from the MLIR MemRef dialect to the
+    upstream WasmSSA dialect and WAMI dialect. It handles:
+    - Global memory declarations (memref.global -> wami.data + wasmssa.global)
+    - Memory loads (memref.load -> wami.load)
+    - Memory stores (memref.store -> wami.store)
+    - Dynamic allocation (memref.alloc -> malloc call)
+    - Deallocation (memref.dealloc -> free call)
+
+    Memory addressing is computed explicitly using WebAssembly's linear
+    memory model with 32-bit addresses starting at offset 1024.
+  }];
+  let dependentDialects = [
+    "wasmssa::WasmSSADialect",
+    "wami::WAMIDialect",
+    "memref::MemRefDialect"
+  ];
+}
+
 #endif // WAMI_PASSES
