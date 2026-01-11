@@ -106,7 +106,26 @@ std::pair<LogicalResult, Value> generatePointerComputation(
   // Start with the base address (already i32)
   Value result = base;
 
-  // Compute: base + sum(indices[i] * strides[i] * elementSize)
+  // Add the base offset if non-zero
+  // Address = base + offset * elementSize + sum(indices[i] * strides[i] *
+  // elementSize)
+  if (!ShapedType::isDynamic(offset) && offset != 0) {
+    Type memRefElementType = memRefType.getElementType();
+    int64_t elementSize = memRefElementType.getIntOrFloatBitWidth() / 8;
+    int64_t byteOffset = offset * elementSize;
+    Value offsetConst = wasmssa::ConstOp::create(
+        rewriter, loc, rewriter.getI32IntegerAttr(byteOffset));
+    result = wasmssa::AddOp::create(rewriter, loc, rewriter.getI32Type(),
+                                    result, offsetConst);
+  } else if (ShapedType::isDynamic(offset)) {
+    return std::make_pair(
+        rewriter.notifyMatchFailure(
+            op, "Cannot handle dynamic offset in the MemRefType."),
+        Value());
+  }
+
+  // Compute: base + offset * elementSize + sum(indices[i] * strides[i] *
+  // elementSize)
   for (int64_t i = 0; i < memRefType.getRank(); i++) {
     if (ShapedType::isDynamic(strides[i])) {
       return std::make_pair(
