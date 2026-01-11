@@ -63,9 +63,20 @@ WAMIBaseAddressAnalysis::WAMIBaseAddressAnalysis(ModuleOp &moduleOp) {
 
   moduleOp.walk([this, &baseAddress](memref::GlobalOp op) {
     auto symName = op.getSymName().str();
+
+    // Get alignment requirement for this global
+    int64_t alignment = op.getAlignment().value_or(1);
+
+    // Align the base address to the required alignment boundary
+    // Formula: alignedAddr = ((addr + alignment - 1) / alignment) * alignment
+    if (alignment > 1) {
+      baseAddress = ((baseAddress + alignment - 1) / alignment) * alignment;
+    }
+
+    // Assign the aligned address to this global
     baseAddressMap.emplace(symName, baseAddress);
 
-    int64_t alignment = op.getAlignment().value_or(1);
+    // Compute size and advance to next position
     int64_t size = computeMemRefSize(op.getType(), alignment);
     if (size > 0)
       baseAddress += size;
