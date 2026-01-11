@@ -58,6 +58,10 @@ public:
       return std::nullopt;
     });
 
+    // MemRef types are converted to i32 (memory pointers in WebAssembly)
+    addConversion(
+        [ctx](MemRefType type) -> Type { return IntegerType::get(ctx, 32); });
+
     // Source materialization: convert from converted types back to source types
     // This handles LocalRefType -> value type conversion via local_get
     addSourceMaterialization([](OpBuilder &builder, Type type,
