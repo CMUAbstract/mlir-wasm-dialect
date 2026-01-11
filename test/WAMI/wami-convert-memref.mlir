@@ -74,3 +74,24 @@ func.func @float_const_access(%val: f32) -> f32 {
   %loaded = memref.load %ref[%c0] : memref<4xf32>
   return %loaded : f32
 }
+
+//===----------------------------------------------------------------------===//
+// Test 6: MemRef with Non-Zero Offset
+//===----------------------------------------------------------------------===//
+
+// Test that memref with a static offset properly includes the offset in
+// address computation. For strided<[1], offset: 2> with i32 elements,
+// loading at index 0 should compute: base + 2*4 + 0*1*4 = base + 8
+// The offset constant (8) should appear in the generated code.
+
+// CHECK-LABEL: wasmssa.func @test_memref_with_offset
+// CHECK-SAME: (%[[BASE:.*]]: !wasmssa<local ref to i32>)
+func.func @test_memref_with_offset(%mem: memref<4xi32, strided<[1], offset: 2>>) -> i32 {
+  %c0 = arith.constant 0 : index
+  // The address computation should include offset: base + 8 (offset=2 * elemSize=4)
+  // CHECK: %[[OFFSET:.*]] = wasmssa.const 8 : i32
+  // CHECK: wasmssa.add %{{.*}} %[[OFFSET]] : i32
+  // CHECK: wami.load
+  %val = memref.load %mem[%c0] : memref<4xi32, strided<[1], offset: 2>>
+  return %val : i32
+}
