@@ -33,6 +33,7 @@ namespace mlir::wami {
 #define GEN_PASS_DEF_WAMICONVERTFUNC
 #define GEN_PASS_DEF_WAMICONVERTMEMREF
 #define GEN_PASS_DEF_WAMICONVERTSCF
+#define GEN_PASS_DEF_WAMICONVERTALL
 #include "WAMI/WAMIPasses.h.inc"
 
 //===----------------------------------------------------------------------===//
@@ -168,6 +169,50 @@ public:
     target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
+    populateWAMIConvertMemrefPatterns(typeConverter, patterns,
+                                      baseAddressAnalysis);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// WAMIConvertAll Pass
+//===----------------------------------------------------------------------===//
+
+class WAMIConvertAll : public impl::WAMIConvertAllBase<WAMIConvertAll> {
+public:
+  using impl::WAMIConvertAllBase<WAMIConvertAll>::WAMIConvertAllBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    WAMITypeConverter typeConverter(context);
+    ConversionTarget target(*context);
+
+    // Analyze module to assign base addresses to globals
+    WAMIBaseAddressAnalysis baseAddressAnalysis(module);
+
+    // WasmSSA and WAMI dialect operations are legal
+    target.addLegalDialect<wasmssa::WasmSSADialect>();
+    target.addLegalDialect<WAMIDialect>();
+
+    // All source dialects are illegal (we want to convert them)
+    target.addIllegalDialect<arith::ArithDialect>();
+    target.addIllegalDialect<func::FuncDialect>();
+    target.addIllegalDialect<scf::SCFDialect>();
+    target.addIllegalDialect<memref::MemRefDialect>();
+
+    // Allow unrealized conversion casts for type mismatches
+    target.addLegalOp<UnrealizedConversionCastOp>();
+
+    // Collect all conversion patterns
+    RewritePatternSet patterns(context);
+    populateWAMIConvertArithPatterns(typeConverter, patterns);
+    populateWAMIConvertFuncPatterns(typeConverter, patterns);
+    populateWAMIConvertScfPatterns(typeConverter, patterns);
     populateWAMIConvertMemrefPatterns(typeConverter, patterns,
                                       baseAddressAnalysis);
 
