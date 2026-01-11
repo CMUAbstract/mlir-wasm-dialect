@@ -1,13 +1,13 @@
-// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-memref --wami-convert-scf --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts | FileCheck %s
 
 // Verify no unrealized conversion casts remain after the full pipeline
 // CHECK-NOT: unrealized_conversion_cast
 
 //===----------------------------------------------------------------------===//
-// Integrated tests: arith + func + scf → WasmSSA
+// Integrated tests: arith + func + scf + memref → WasmSSA/WAMI
 //
 // These tests verify that the full pipeline correctly converts standard MLIR
-// dialects (arith, func, scf) to the WasmSSA dialect.
+// dialects (arith, func, scf, memref) to the WasmSSA and WAMI dialects.
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
@@ -297,4 +297,105 @@ func.func @type_conversions(%i32_val: i32) -> i32 {
   %result = arith.trunci %i64_sum : i64 to i32
   // CHECK: wasmssa.return
   return %result : i32
+}
+
+//===----------------------------------------------------------------------===//
+// Memory operations (memref dialect)
+//===----------------------------------------------------------------------===//
+
+// Global array declaration
+// CHECK-DAG: wami.data @global_array_data = dense<[10, 20, 30, 40]> : tensor<4xi32> at 1024
+// CHECK-DAG: wasmssa.global @global_array_base i32 mutable
+memref.global @global_array : memref<4xi32> = dense<[10, 20, 30, 40]>
+
+// CHECK-LABEL: wasmssa.func @read_from_array
+func.func @read_from_array() -> i32 {
+  // CHECK: wasmssa.global_get @global_array_base
+  %ref = memref.get_global @global_array : memref<4xi32>
+  %c2 = arith.constant 2 : index
+  // CHECK: wasmssa.mul
+  // CHECK: wasmssa.add
+  // CHECK: wami.load
+  %val = memref.load %ref[%c2] : memref<4xi32>
+  // CHECK: wasmssa.return
+  return %val : i32
+}
+
+// CHECK-LABEL: wasmssa.func @write_to_array
+func.func @write_to_array(%val: i32) {
+  // CHECK: wasmssa.global_get @global_array_base
+  %ref = memref.get_global @global_array : memref<4xi32>
+  %c1 = arith.constant 1 : index
+  // CHECK: wasmssa.mul
+  // CHECK: wasmssa.add
+  // CHECK: wami.store
+  memref.store %val, %ref[%c1] : memref<4xi32>
+  // CHECK: wasmssa.return
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Array sum: manually unrolled (mixing memref with scf requires careful pass ordering)
+//===----------------------------------------------------------------------===//
+
+// CHECK-DAG: wami.data @numbers_data
+// CHECK-DAG: wasmssa.global @numbers_base
+memref.global @numbers : memref<4xi32> = dense<[1, 2, 3, 4]>
+
+// CHECK-LABEL: wasmssa.func @sum_array_unrolled
+func.func @sum_array_unrolled() -> i32 {
+  %ref = memref.get_global @numbers : memref<4xi32>
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %c3 = arith.constant 3 : index
+
+  // CHECK: wami.load
+  %v0 = memref.load %ref[%c0] : memref<4xi32>
+  // CHECK: wami.load
+  %v1 = memref.load %ref[%c1] : memref<4xi32>
+  // CHECK: wami.load
+  %v2 = memref.load %ref[%c2] : memref<4xi32>
+  // CHECK: wami.load
+  %v3 = memref.load %ref[%c3] : memref<4xi32>
+
+  // CHECK: wasmssa.add
+  %sum01 = arith.addi %v0, %v1 : i32
+  // CHECK: wasmssa.add
+  %sum012 = arith.addi %sum01, %v2 : i32
+  // CHECK: wasmssa.add
+  %sum = arith.addi %sum012, %v3 : i32
+
+  // CHECK: wasmssa.return
+  return %sum : i32
+}
+
+//===----------------------------------------------------------------------===//
+// Float array operations
+//===----------------------------------------------------------------------===//
+
+// CHECK-DAG: wami.data @float_array_data
+memref.global @float_array : memref<3xf32> = dense<[1.5, 2.5, 3.5]>
+
+// CHECK-LABEL: wasmssa.func @sum_float_array
+func.func @sum_float_array() -> f32 {
+  %ref = memref.get_global @float_array : memref<3xf32>
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+
+  // CHECK: wami.load
+  %v0 = memref.load %ref[%c0] : memref<3xf32>
+  // CHECK: wami.load
+  %v1 = memref.load %ref[%c1] : memref<3xf32>
+  // CHECK: wami.load
+  %v2 = memref.load %ref[%c2] : memref<3xf32>
+
+  // CHECK: wasmssa.add
+  %sum01 = arith.addf %v0, %v1 : f32
+  // CHECK: wasmssa.add
+  %sum = arith.addf %sum01, %v2 : f32
+
+  // CHECK: wasmssa.return
+  return %sum : f32
 }
