@@ -78,4 +78,27 @@ def WAMIConvertMemref : Pass<"wami-convert-memref", "ModuleOp"> {
   ];
 }
 
+def WAMIConvertAll : Pass<"wami-convert-all", "ModuleOp"> {
+  let summary = "Convert all supported dialects to WasmSSA/WAMI";
+  let description = [{
+    Unified pass that converts arith, func, scf, and memref dialects to
+    WasmSSA and WAMI dialects in a single conversion. This handles cases
+    where operations from different dialects are interleaved (e.g., scf.for
+    with memref.load inside the loop body).
+
+    Using separate passes can cause issues when operations depend on each
+    other across dialect boundaries. This unified pass ensures all patterns
+    are available during a single conversion, allowing MLIR's inside-out
+    region traversal to convert operations in the correct order.
+  }];
+  let dependentDialects = [
+    "wasmssa::WasmSSADialect",
+    "wami::WAMIDialect",
+    "arith::ArithDialect",
+    "func::FuncDialect",
+    "scf::SCFDialect",
+    "memref::MemRefDialect"
+  ];
+}
+
 #endif // WAMI_PASSES
