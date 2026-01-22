@@ -487,9 +487,14 @@ public:
       emitIf(ifOp);
     } else if (auto branchIfOp = dyn_cast<wasmssa::BranchIfOp>(op)) {
       emitBranchIf(branchIfOp);
-    } else if (isa<wasmssa::BlockReturnOp>(op)) {
-      // Block return is implicit - just falls through
-      // The values should already be on stack
+    } else if (auto blockReturnOp = dyn_cast<wasmssa::BlockReturnOp>(op)) {
+      // Block return: emit the operands that will be the block's result
+      // These values must be on the stack when control exits the block
+      for (Value input : blockReturnOp.getInputs()) {
+        emitOperandIfNeeded(input);
+      }
+      // No explicit wasmstack instruction needed - values are now on stack
+      // and control flows to the block's end
     }
   }
 
@@ -627,14 +632,31 @@ private:
   void emitBlock(wasmssa::BlockOp blockOp) {
     Location loc = blockOp.getLoc();
 
+    // 1. Emit input values to stack BEFORE entering the block
+    // These become the block's parameters in WebAssembly
+    for (Value input : blockOp.getInputs()) {
+      emitOperandIfNeeded(input);
+    }
+
     // Generate label for this block
     std::string label = generateLabel("block");
 
-    // Get result types (empty for now - blocks can have result types)
-    SmallVector<Attribute> resultTypes;
+    // 2. Extract param types from the block's inputs
+    SmallVector<Attribute> paramTypes;
+    for (Value input : blockOp.getInputs()) {
+      paramTypes.push_back(TypeAttr::get(input.getType()));
+    }
 
-    // Create WasmStack block
+    // 3. Extract result types from the target successor block's arguments
+    SmallVector<Attribute> resultTypes;
+    Block *target = blockOp.getTarget();
+    for (BlockArgument arg : target->getArguments()) {
+      resultTypes.push_back(TypeAttr::get(arg.getType()));
+    }
+
+    // Create WasmStack block with param and result types
     auto wasmBlock = BlockOp::create(builder, loc, builder.getStringAttr(label),
+                                     builder.getArrayAttr(paramTypes),
                                      builder.getArrayAttr(resultTypes));
 
     // Create entry block for the WasmStack block
@@ -648,6 +670,20 @@ private:
     OpBuilder::InsertionGuard guard(builder);
     ScopedStackState stackGuard(*this);
     builder.setInsertionPointToStart(entryBlock);
+
+    // 4. Handle block arguments: in WebAssembly, block parameters are
+    // consumed from the stack and accessible inside the block.
+    // We mark them as "emitted to stack" so they can be used by operations
+    // inside the block body via local.get (they were allocated by
+    // LocalAllocator)
+    if (!blockOp.getBody().empty()) {
+      Block &bodyBlock = blockOp.getBody().front();
+      for (BlockArgument arg : bodyBlock.getArguments()) {
+        // Block arguments are on the implicit stack at block entry
+        // but need local access for subsequent uses
+        emittedToStack.insert(arg);
+      }
+    }
 
     // Emit operations from the WasmSSA block body
     if (!blockOp.getBody().empty()) {
@@ -664,14 +700,31 @@ private:
   void emitLoop(wasmssa::LoopOp loopOp) {
     Location loc = loopOp.getLoc();
 
+    // 1. Emit input values to stack BEFORE entering the loop
+    // These become the loop's parameters in WebAssembly
+    for (Value input : loopOp.getInputs()) {
+      emitOperandIfNeeded(input);
+    }
+
     // Generate label for this loop
     std::string label = generateLabel("loop");
 
-    // Get result types
-    SmallVector<Attribute> resultTypes;
+    // 2. Extract param types from the loop's inputs
+    SmallVector<Attribute> paramTypes;
+    for (Value input : loopOp.getInputs()) {
+      paramTypes.push_back(TypeAttr::get(input.getType()));
+    }
 
-    // Create WasmStack loop
+    // 3. Extract result types from the target successor block's arguments
+    SmallVector<Attribute> resultTypes;
+    Block *target = loopOp.getTarget();
+    for (BlockArgument arg : target->getArguments()) {
+      resultTypes.push_back(TypeAttr::get(arg.getType()));
+    }
+
+    // Create WasmStack loop with param and result types
     auto wasmLoop = LoopOp::create(builder, loc, builder.getStringAttr(label),
+                                   builder.getArrayAttr(paramTypes),
                                    builder.getArrayAttr(resultTypes));
 
     // Create entry block
@@ -685,6 +738,14 @@ private:
     OpBuilder::InsertionGuard guard(builder);
     ScopedStackState stackGuard(*this);
     builder.setInsertionPointToStart(entryBlock);
+
+    // 4. Handle loop block arguments: mark them as available on stack
+    if (!loopOp.getBody().empty()) {
+      Block &bodyBlock = loopOp.getBody().front();
+      for (BlockArgument arg : bodyBlock.getArguments()) {
+        emittedToStack.insert(arg);
+      }
+    }
 
     // Emit operations from the WasmSSA loop body
     if (!loopOp.getBody().empty()) {
@@ -701,14 +762,31 @@ private:
   void emitIf(wasmssa::IfOp ifOp) {
     Location loc = ifOp.getLoc();
 
-    // Emit the condition to the stack
+    // 1. Emit additional inputs to stack BEFORE the condition
+    // (In WebAssembly, params are consumed before condition)
+    for (Value input : ifOp.getInputs()) {
+      emitOperandIfNeeded(input);
+    }
+
+    // Emit the condition to the stack (always last, as it's popped first)
     emitOperandIfNeeded(ifOp.getCondition());
 
-    // Get result types
-    SmallVector<Attribute> resultTypes;
+    // 2. Extract param types from the if's inputs (not including condition)
+    SmallVector<Attribute> paramTypes;
+    for (Value input : ifOp.getInputs()) {
+      paramTypes.push_back(TypeAttr::get(input.getType()));
+    }
 
-    // Create WasmStack if
-    auto wasmIf = IfOp::create(builder, loc, builder.getArrayAttr(resultTypes));
+    // 3. Extract result types from the target successor block's arguments
+    SmallVector<Attribute> resultTypes;
+    Block *target = ifOp.getTarget();
+    for (BlockArgument arg : target->getArguments()) {
+      resultTypes.push_back(TypeAttr::get(arg.getType()));
+    }
+
+    // Create WasmStack if with param and result types
+    auto wasmIf = IfOp::create(builder, loc, builder.getArrayAttr(paramTypes),
+                               builder.getArrayAttr(resultTypes));
 
     // Create then block
     Block *thenBlock = new Block();
@@ -718,6 +796,14 @@ private:
       OpBuilder::InsertionGuard guard(builder);
       ScopedStackState stackGuard(*this); // Each branch has its own stack
       builder.setInsertionPointToStart(thenBlock);
+
+      // 4. Handle block arguments in then region
+      if (!ifOp.getIf().empty()) {
+        Block &bodyBlock = ifOp.getIf().front();
+        for (BlockArgument arg : bodyBlock.getArguments()) {
+          emittedToStack.insert(arg);
+        }
+      }
 
       // Emit then region operations
       if (!ifOp.getIf().empty()) {
@@ -735,6 +821,12 @@ private:
       OpBuilder::InsertionGuard guard(builder);
       ScopedStackState stackGuard(*this); // Each branch has its own stack
       builder.setInsertionPointToStart(elseBlock);
+
+      // Handle block arguments in else region
+      Block &bodyBlock = ifOp.getElse().front();
+      for (BlockArgument arg : bodyBlock.getArguments()) {
+        emittedToStack.insert(arg);
+      }
 
       for (Operation &op : ifOp.getElse().front()) {
         emitOperation(&op);

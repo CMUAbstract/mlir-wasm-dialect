@@ -21,7 +21,7 @@ wasmstack.module @test_module {
 
   // CHECK-LABEL: wasmstack.func @factorial
   wasmstack.func @factorial : (i32) -> i32 {
-    wasmstack.block @done : () -> [i32] {
+    wasmstack.block @done : ([]) -> [i32] {
       // Check if n <= 1
       wasmstack.local.get 0 : i32
       wasmstack.i32.const 1
@@ -47,8 +47,8 @@ wasmstack.module @test_module {
     wasmstack.i32.const 0
     wasmstack.local.set 1 : i32
 
-    wasmstack.block @exit : () -> [i32] {
-      wasmstack.loop @continue : () -> [] {
+    wasmstack.block @exit : ([]) -> [i32] {
+      wasmstack.loop @continue : ([]) -> [] {
         // Decrement counter
         wasmstack.local.get 0 : i32
         wasmstack.i32.const 1
@@ -89,7 +89,7 @@ wasmstack.module @test_module {
   // CHECK-LABEL: wasmstack.func @conditional
   wasmstack.func @conditional : (i32, i32, i32) -> i32 {
     wasmstack.local.get 0 : i32
-    wasmstack.if : () -> [i32] then {
+    wasmstack.if : ([]) -> [i32] then {
       wasmstack.local.get 1 : i32
     } else {
       wasmstack.local.get 2 : i32
