@@ -1250,8 +1250,6 @@ public:
 
     // Process each WasmSSA function
     for (wasmssa::FuncOp funcOp : funcsToConvert) {
-      llvm::errs() << "  Processing function: " << funcOp.getName() << "\n";
-
       // Skip empty functions
       if (funcOp.getBody().empty())
         continue;
