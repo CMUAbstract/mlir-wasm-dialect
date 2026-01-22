@@ -610,21 +610,32 @@ def WasmStack_BlockOp : WasmStack_Op<"block", [
   let description = [{
     A structured control flow block. Branch targets exit to the end of the block.
     Uses symbolic labels for readable IR; the emitter computes depth indices.
+
+    Supports WebAssembly multi-value: blocks can have input parameters (consumed
+    from stack when entering) and result types (left on stack when exiting).
   }];
 
   let arguments = (ins
     SymbolNameAttr:$label,
+    TypeArrayAttr:$param_types,
     TypeArrayAttr:$result_types
   );
   let regions = (region SizedRegion<1>:$body);
 
-  let assemblyFormat = "$label `:` `(` `)` `->` $result_types attr-dict-with-keyword $body";
+  let assemblyFormat = "$label `:` `(` $param_types `)` `->` $result_types attr-dict-with-keyword $body";
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    unsigned getStackInputs() { return 0; }
+    unsigned getStackInputs() { return getParamTypes().size(); }
     unsigned getStackOutputs() { return getResultTypes().size(); }
+    ::llvm::SmallVector<::mlir::Type> getStackInputTypes() {
+      ::llvm::SmallVector<::mlir::Type> types;
+      for (auto attr : getParamTypes()) {
+        types.push_back(::mlir::cast<::mlir::TypeAttr>(attr).getValue());
+      }
+      return types;
+    }
   }];
 }
 
@@ -637,21 +648,33 @@ def WasmStack_LoopOp : WasmStack_Op<"loop", [
   let description = [{
     A structured loop block. Branch targets jump to the start of the loop.
     Unlike block, branching to a loop re-enters from the beginning.
+
+    Supports WebAssembly multi-value: loops can have input parameters (consumed
+    from stack when entering) and result types (left on stack when exiting).
+    Note: When branching to a loop, the branch provides values matching param_types.
   }];
 
   let arguments = (ins
     SymbolNameAttr:$label,
+    TypeArrayAttr:$param_types,
     TypeArrayAttr:$result_types
   );
   let regions = (region SizedRegion<1>:$body);
 
-  let assemblyFormat = "$label `:` `(` `)` `->` $result_types attr-dict-with-keyword $body";
+  let assemblyFormat = "$label `:` `(` $param_types `)` `->` $result_types attr-dict-with-keyword $body";
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    unsigned getStackInputs() { return 0; }
+    unsigned getStackInputs() { return getParamTypes().size(); }
     unsigned getStackOutputs() { return getResultTypes().size(); }
+    ::llvm::SmallVector<::mlir::Type> getStackInputTypes() {
+      ::llvm::SmallVector<::mlir::Type> types;
+      for (auto attr : getParamTypes()) {
+        types.push_back(::mlir::cast<::mlir::TypeAttr>(attr).getValue());
+      }
+      return types;
+    }
   }];
 }
 
@@ -663,18 +686,33 @@ def WasmStack_IfOp : WasmStack_Op<"if", [
   let description = [{
     Conditional execution. Pops an i32 condition; if non-zero executes then_body,
     otherwise executes else_body (if present).
+
+    Supports WebAssembly multi-value: in addition to the condition, the if can
+    consume additional parameters from the stack (param_types) and produce
+    results (result_types). The condition is always consumed first (implicit i32).
   }];
 
-  let arguments = (ins TypeArrayAttr:$result_types);
+  let arguments = (ins
+    TypeArrayAttr:$param_types,
+    TypeArrayAttr:$result_types
+  );
   let regions = (region SizedRegion<1>:$then_body, AnyRegion:$else_body);
 
-  let assemblyFormat = "`:` `(` `)` `->` $result_types attr-dict-with-keyword `then` $then_body (`else` $else_body^)?";
+  let assemblyFormat = "`:` `(` $param_types `)` `->` $result_types attr-dict-with-keyword `then` $then_body (`else` $else_body^)?";
 
   let extraClassDeclaration = [{
-    unsigned getStackInputs() { return 1; }  // condition
+    // +1 for the implicit i32 condition
+    unsigned getStackInputs() { return 1 + getParamTypes().size(); }
     unsigned getStackOutputs() { return getResultTypes().size(); }
     ::llvm::SmallVector<::mlir::Type> getStackInputTypes() {
-      return {::mlir::IntegerType::get(getContext(), 32)};
+      ::llvm::SmallVector<::mlir::Type> types;
+      // First input is always the i32 condition
+      types.push_back(::mlir::IntegerType::get(getContext(), 32));
+      // Then additional parameters
+      for (auto attr : getParamTypes()) {
+        types.push_back(::mlir::cast<::mlir::TypeAttr>(attr).getValue());
+      }
+      return types;
     }
   }];
 }

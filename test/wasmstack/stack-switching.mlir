@@ -51,7 +51,7 @@ wasmstack.module @stack_switching {
     wasmstack.i32.const 10
 
     // Resume with handler for yield tag
-    wasmstack.block @handle_yield : () -> [i32] {
+    wasmstack.block @handle_yield : ([]) -> [i32] {
       wasmstack.resume @gen_cont (@yield -> @handle_yield)
       // If generator returns normally, push result
     }
