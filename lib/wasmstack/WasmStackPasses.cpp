@@ -310,8 +310,19 @@ public:
                           mulOp.getResult());
     } else if (isa<wasmssa::ReturnOp>(op)) {
       builder.create<ReturnOp>(loc);
+    } else if (auto blockOp = dyn_cast<wasmssa::BlockOp>(op)) {
+      emitBlock(blockOp);
+    } else if (auto loopOp = dyn_cast<wasmssa::LoopOp>(op)) {
+      emitLoop(loopOp);
+    } else if (auto ifOp = dyn_cast<wasmssa::IfOp>(op)) {
+      emitIf(ifOp);
+    } else if (auto branchIfOp = dyn_cast<wasmssa::BranchIfOp>(op)) {
+      emitBranchIf(branchIfOp);
+    } else if (isa<wasmssa::BlockReturnOp>(op)) {
+      // Block return is implicit - just falls through
+      // The values should already be on stack
     }
-    // TODO: Add more operation types
+    // TODO: Add more operation types (comparisons, etc.)
   }
 
 private:
@@ -411,6 +422,131 @@ private:
     if (Operation *defOp = value.getDefiningOp()) {
       emitOperation(defOp);
     }
+  }
+
+  /// Generate a unique label for control flow structures
+  std::string generateLabel(StringRef prefix) {
+    static unsigned counter = 0;
+    return (prefix + "_" + Twine(counter++)).str();
+  }
+
+  /// Emit a WasmSSA block operation
+  void emitBlock(wasmssa::BlockOp blockOp) {
+    Location loc = blockOp.getLoc();
+
+    // Generate label for this block
+    std::string label = generateLabel("block");
+
+    // Get result types (empty for now - blocks can have result types)
+    SmallVector<Attribute> resultTypes;
+
+    // Create WasmStack block
+    auto wasmBlock = builder.create<BlockOp>(loc, builder.getStringAttr(label),
+                                             builder.getArrayAttr(resultTypes));
+
+    // Create entry block for the WasmStack block
+    Block *entryBlock = new Block();
+    wasmBlock.getBody().push_back(entryBlock);
+
+    // Save current insertion point
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(entryBlock);
+
+    // Emit operations from the WasmSSA block body
+    if (!blockOp.getBody().empty()) {
+      for (Operation &op : blockOp.getBody().front()) {
+        emitOperation(&op);
+      }
+    }
+  }
+
+  /// Emit a WasmSSA loop operation
+  void emitLoop(wasmssa::LoopOp loopOp) {
+    Location loc = loopOp.getLoc();
+
+    // Generate label for this loop
+    std::string label = generateLabel("loop");
+
+    // Get result types
+    SmallVector<Attribute> resultTypes;
+
+    // Create WasmStack loop
+    auto wasmLoop = builder.create<LoopOp>(loc, builder.getStringAttr(label),
+                                           builder.getArrayAttr(resultTypes));
+
+    // Create entry block
+    Block *entryBlock = new Block();
+    wasmLoop.getBody().push_back(entryBlock);
+
+    // Save current insertion point
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(entryBlock);
+
+    // Emit operations from the WasmSSA loop body
+    if (!loopOp.getBody().empty()) {
+      for (Operation &op : loopOp.getBody().front()) {
+        emitOperation(&op);
+      }
+    }
+  }
+
+  /// Emit a WasmSSA if operation
+  void emitIf(wasmssa::IfOp ifOp) {
+    Location loc = ifOp.getLoc();
+
+    // Emit the condition to the stack
+    emitOperandIfNeeded(ifOp.getCondition());
+
+    // Get result types
+    SmallVector<Attribute> resultTypes;
+
+    // Create WasmStack if
+    auto wasmIf = builder.create<IfOp>(loc, builder.getArrayAttr(resultTypes));
+
+    // Create then block
+    Block *thenBlock = new Block();
+    wasmIf.getThenBody().push_back(thenBlock);
+
+    {
+      OpBuilder::InsertionGuard guard(builder);
+      builder.setInsertionPointToStart(thenBlock);
+
+      // Emit then region operations
+      if (!ifOp.getIf().empty()) {
+        for (Operation &op : ifOp.getIf().front()) {
+          emitOperation(&op);
+        }
+      }
+    }
+
+    // Create else block if present
+    if (!ifOp.getElse().empty()) {
+      Block *elseBlock = new Block();
+      wasmIf.getElseBody().push_back(elseBlock);
+
+      OpBuilder::InsertionGuard guard(builder);
+      builder.setInsertionPointToStart(elseBlock);
+
+      for (Operation &op : ifOp.getElse().front()) {
+        emitOperation(&op);
+      }
+    }
+  }
+
+  /// Emit a WasmSSA branch_if operation
+  void emitBranchIf(wasmssa::BranchIfOp branchIfOp) {
+    Location loc = branchIfOp.getLoc();
+
+    // Emit the condition to the stack
+    emitOperandIfNeeded(branchIfOp.getCondition());
+
+    // For now, we use a placeholder label - proper label resolution
+    // would require tracking the label stack during emission
+    // The exitLevel attribute tells us how many nesting levels to exit
+    unsigned exitLevel = branchIfOp.getExitLevel();
+    std::string label = "level_" + std::to_string(exitLevel);
+
+    builder.create<BrIfOp>(loc, builder.getAttr<FlatSymbolRefAttr>(label));
   }
 };
 
