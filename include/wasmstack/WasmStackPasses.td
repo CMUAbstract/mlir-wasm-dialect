@@ -16,7 +16,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def ConvertToWasmStack : Pass<"convert-to-wasmstack", "ModuleOp"> {
+def ConvertToWasmStack : Pass<"convert-to-wasmstack", "::mlir::ModuleOp"> {
   let summary = "Convert WasmSSA+WAMI dialects to WasmStack dialect";
   let description = [{
     This pass converts operations from the WasmSSA and WAMI dialects to the
