@@ -21,6 +21,14 @@ mlir_tablegen(WasmStackInterfaces.cpp.inc -gen-op-interface-defs)
 add_public_tablegen_target(MLIRWasmStackInterfacesIncGen)
 add_dependencies(mlir-headers MLIRWasmStackInterfacesIncGen)
 
+# Generate pass declarations
+set(LLVM_TARGET_DEFINITIONS WasmStackPasses.td)
+mlir_tablegen(WasmStackPasses.h.inc -gen-pass-decls -name WasmStack)
+mlir_tablegen(WasmStackPasses.capi.h.inc -gen-pass-capi-header --prefix WasmStack)
+mlir_tablegen(WasmStackPasses.capi.cpp.inc -gen-pass-capi-impl --prefix WasmStack)
+add_public_tablegen_target(MLIRWasmStackPassesIncGen)
+add_dependencies(mlir-headers MLIRWasmStackPassesIncGen)
+
 # Documentation
 add_mlir_doc(WasmStackDialect WasmStackDialect wasmstack/ -gen-dialect-doc)
 add_mlir_doc(WasmStackOps WasmStackOps wasmstack/ -gen-op-doc)
