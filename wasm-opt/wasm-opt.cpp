@@ -17,6 +17,7 @@
 #include "Wasm/WasmDialect.h"
 #include "wasmstack/WasmStackDialect.h"
 #include "wasmstack/WasmStackOps.h"
+#include "wasmstack/WasmStackPasses.h"
 
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
@@ -32,6 +33,7 @@ int main(int argc, char **argv) {
   mlir::ssawasm::registerPasses();
   mlir::dcont::registerPasses();
   mlir::wami::registerPasses();
+  mlir::wasmstack::registerPasses();
 
   mlir::DialectRegistry registry;
   registry.insert<
