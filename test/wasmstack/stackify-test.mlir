@@ -12,8 +12,8 @@
 
 // Then MLIR output on stdout
 // CHECK-LABEL: wasmstack.func @const_add
-// CHECK:         wasmstack.i32.const 20
-// CHECK-NEXT:    wasmstack.i32.const 10
+// CHECK:         wasmstack.i32.const 10
+// CHECK-NEXT:    wasmstack.i32.const 20
 // CHECK-NEXT:    wasmstack.add : i32
 // CHECK-NEXT:    wasmstack.return
 

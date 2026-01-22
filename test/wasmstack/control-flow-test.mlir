@@ -5,11 +5,11 @@
 // CHECK: ConvertToWasmStack pass running on module
 
 module {
-  // Test comparison operation (operands pushed right-to-left for stack evaluation)
-  // %b (rhs) is pushed first, then %a (lhs), so lt_s compares stack[top-1] < stack[top]
+  // Test comparison operation (operands pushed left-to-right for stack evaluation)
+  // %a (lhs) is pushed first (bottom), then %b (rhs) (top), so lt_s compares bottom < top
   // CHECK-LABEL: wasmstack.func @test_compare
-  // CHECK:         wasmstack.i32.const 5
-  // CHECK-NEXT:    wasmstack.i32.const 10
+  // CHECK:         wasmstack.i32.const 10
+  // CHECK-NEXT:    wasmstack.i32.const 5
   // CHECK-NEXT:    wasmstack.lt_s : i32
   // CHECK-NEXT:    wasmstack.return
   wasmssa.func @test_compare() -> i32 {
@@ -32,10 +32,10 @@ module {
     wasmssa.return %result : i32
   }
 
-  // Test division (rhs pushed first, lhs pushed second)
+  // Test division (lhs pushed first, rhs pushed second)
   // CHECK-LABEL: wasmstack.func @test_div
-  // CHECK:         wasmstack.i32.const 10
-  // CHECK-NEXT:    wasmstack.i32.const 100
+  // CHECK:         wasmstack.i32.const 100
+  // CHECK-NEXT:    wasmstack.i32.const 10
   // CHECK-NEXT:    wasmstack.div_s : i32
   // CHECK-NEXT:    wasmstack.return
   wasmssa.func @test_div() -> i32 {
@@ -47,8 +47,8 @@ module {
 
   // Test remainder
   // CHECK-LABEL: wasmstack.func @test_rem
-  // CHECK:         wasmstack.i32.const 5
-  // CHECK-NEXT:    wasmstack.i32.const 17
+  // CHECK:         wasmstack.i32.const 17
+  // CHECK-NEXT:    wasmstack.i32.const 5
   // CHECK-NEXT:    wasmstack.rem_s : i32
   // CHECK-NEXT:    wasmstack.return
   wasmssa.func @test_rem() -> i32 {
@@ -60,8 +60,8 @@ module {
 
   // Test bitwise AND
   // CHECK-LABEL: wasmstack.func @test_and
-  // CHECK:         wasmstack.i32.const 7
-  // CHECK-NEXT:    wasmstack.i32.const 15
+  // CHECK:         wasmstack.i32.const 15
+  // CHECK-NEXT:    wasmstack.i32.const 7
   // CHECK-NEXT:    wasmstack.and : i32
   // CHECK-NEXT:    wasmstack.return
   wasmssa.func @test_and() -> i32 {
@@ -73,8 +73,8 @@ module {
 
   // Test bitwise OR
   // CHECK-LABEL: wasmstack.func @test_or
-  // CHECK:         wasmstack.i32.const 3
-  // CHECK-NEXT:    wasmstack.i32.const 8
+  // CHECK:         wasmstack.i32.const 8
+  // CHECK-NEXT:    wasmstack.i32.const 3
   // CHECK-NEXT:    wasmstack.or : i32
   // CHECK-NEXT:    wasmstack.return
   wasmssa.func @test_or() -> i32 {
@@ -86,8 +86,8 @@ module {
 
   // Test shift left
   // CHECK-LABEL: wasmstack.func @test_shl
-  // CHECK:         wasmstack.i32.const 4
-  // CHECK-NEXT:    wasmstack.i32.const 1
+  // CHECK:         wasmstack.i32.const 1
+  // CHECK-NEXT:    wasmstack.i32.const 4
   // CHECK-NEXT:    wasmstack.shl : i32
   // CHECK-NEXT:    wasmstack.return
   wasmssa.func @test_shl() -> i32 {
@@ -110,8 +110,8 @@ module {
 
   // Test float comparisons
   // CHECK-LABEL: wasmstack.func @test_float_cmp
-  // CHECK:         wasmstack.f64.const 2.71
-  // CHECK-NEXT:    wasmstack.f64.const 3.14
+  // CHECK:         wasmstack.f64.const 3.14
+  // CHECK-NEXT:    wasmstack.f64.const 2.71
   // CHECK-NEXT:    wasmstack.lt : f64
   // CHECK-NEXT:    wasmstack.return
   wasmssa.func @test_float_cmp() -> i32 {

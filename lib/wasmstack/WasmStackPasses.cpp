@@ -1019,9 +1019,12 @@ public:
 
   /// Process a single operation, trying to stackify its operands
   void processOperation(Operation *op) {
-    // Process operands right-to-left (matching WebAssembly stack order)
-    // The rightmost operand should be pushed last (on top of stack)
-    for (int i = op->getNumOperands() - 1; i >= 0; --i) {
+    // Process operands left-to-right so that after reordering:
+    // - Left operand's definition ends up further from use (pushed first)
+    // - Right operand's definition ends up immediately before use (pushed
+    // second) This ensures stack order: [lhs, rhs] with rhs on top. Binary ops
+    // compute: bottom op top = lhs op rhs = CORRECT
+    for (unsigned i = 0; i < op->getNumOperands(); ++i) {
       Value operand = op->getOperand(i);
       Operation *defOp = operand.getDefiningOp();
 
