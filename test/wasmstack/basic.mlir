@@ -59,9 +59,13 @@ wasmstack.module @test_module {
         wasmstack.sub : i32
         wasmstack.local.tee 0 : i32
 
-        // If counter is 0, exit
+        // If counter is 0, exit with current sum
+        // Push result value FIRST, then condition for br_if
         wasmstack.eqz : i32
-        wasmstack.br_if @exit
+        wasmstack.if : ([]) -> [] then {
+          wasmstack.local.get 1 : i32
+          wasmstack.br @exit
+        }
 
         // Add counter to sum
         wasmstack.local.get 1 : i32
@@ -72,6 +76,7 @@ wasmstack.module @test_module {
         // Continue loop
         wasmstack.br @continue
       }
+      // Fallback (unreachable in practice)
       wasmstack.local.get 1 : i32
     }
     wasmstack.return

@@ -43,4 +43,25 @@ def ConvertToWasmStack : Pass<"convert-to-wasmstack", "::mlir::ModuleOp"> {
   ];
 }
 
+def VerifyWasmStack : Pass<"verify-wasmstack", "::mlir::ModuleOp"> {
+  let summary = "Verify WasmStack dialect operations have valid stack semantics";
+  let description = [{
+    Performs WebAssembly-spec compliant validation of stack operations:
+
+    1. **Stack balance**: Operations consume/produce correct number of values
+    2. **Type checking**: Operand types match expected types
+    3. **Control flow validation**: Blocks/loops have balanced stacks
+    4. **Function signature validation**: Returns match declared types
+    5. **Branch target validation**: br/br_if target valid labels with correct types
+
+    The pass implements WebAssembly's polymorphic typing rules:
+    - After `unreachable`, `br`, `return`, or `br_table`, the stack becomes
+      polymorphic and can match any expected type sequence
+    - Block entry consumes parameters, block exit produces results
+    - Loop branches go to loop start (using param_types), block branches
+      go to block end (using result_types)
+  }];
+  let dependentDialects = ["wasmstack::WasmStackDialect"];
+}
+
 #endif // WASMSTACK_PASSES
