@@ -22,13 +22,17 @@ wasmstack.module @test_module {
   // CHECK-LABEL: wasmstack.func @factorial
   wasmstack.func @factorial : (i32) -> i32 {
     wasmstack.block @done : ([]) -> [i32] {
-      // Check if n <= 1
+      // Base case: if n <= 1, return 1
+      // Push result value FIRST so it's on stack when br_if is taken
+      wasmstack.i32.const 1
       wasmstack.local.get 0 : i32
       wasmstack.i32.const 1
       wasmstack.le_s : i32
       wasmstack.br_if @done
 
-      // Compute n * factorial(n-1)
+      // Recursive case: compute n * factorial(n-1)
+      // First drop the 1 we pushed for the base case
+      wasmstack.drop : i32
       wasmstack.local.get 0 : i32
       wasmstack.local.get 0 : i32
       wasmstack.i32.const 1
@@ -37,7 +41,7 @@ wasmstack.module @test_module {
       wasmstack.mul : i32
       wasmstack.br @done
     }
-    wasmstack.i32.const 1
+    // Block result is on stack
     wasmstack.return
   }
 
