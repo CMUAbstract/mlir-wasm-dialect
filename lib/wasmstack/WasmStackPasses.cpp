@@ -477,7 +477,13 @@ public:
       emitCall(callOp);
     }
     // Control flow
-    else if (isa<wasmssa::ReturnOp>(op)) {
+    else if (auto returnOp = dyn_cast<wasmssa::ReturnOp>(op)) {
+      // Emit return operands to ensure they're on the stack
+      // (TreeWalker usually handles this, but we emit explicitly for
+      // robustness)
+      for (Value operand : returnOp.getOperands()) {
+        emitOperandIfNeeded(operand);
+      }
       ReturnOp::create(builder, loc);
     } else if (auto blockOp = dyn_cast<wasmssa::BlockOp>(op)) {
       emitBlock(blockOp);
@@ -495,6 +501,10 @@ public:
       }
       // No explicit wasmstack instruction needed - values are now on stack
       // and control flows to the block's end
+    } else {
+      // Report unhandled operations to avoid silent failures
+      op->emitWarning("unhandled operation in stackification: ")
+          << op->getName();
     }
   }
 
