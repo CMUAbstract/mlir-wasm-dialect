@@ -64,11 +64,9 @@ module {
   //===--------------------------------------------------------------------===//
 
   // A function that computes and returns multiple values
-  // Since constants are rematerialized, we get duplicates
+  // Constants are rematerialized: original for first use, clone for subsequent
   // CHECK-LABEL: wasmstack.func @return_multiple_computed
   // CHECK:         wasmstack.i32.const 10
-  // CHECK-NEXT:    wasmstack.i32.const 20
-  // CHECK-NEXT:    wasmstack.i32.const 10
   // CHECK-NEXT:    wasmstack.i32.const 20
   // CHECK-NEXT:    wasmstack.add : i32
   // CHECK-NEXT:    wasmstack.i32.const 10

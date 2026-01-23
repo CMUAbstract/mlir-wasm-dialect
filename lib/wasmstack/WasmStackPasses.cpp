@@ -302,6 +302,12 @@ public:
     if (!srcFunc.getBody().empty()) {
       Block &srcBlock = srcFunc.getBody().front();
       for (Operation &op : srcBlock) {
+        // Skip operations that have results but no users (e.g., cloned ops
+        // that were created but the original became unused after
+        // rematerialization)
+        if (op.getNumResults() > 0 && op.use_empty()) {
+          continue;
+        }
         emitOperation(&op);
       }
     }
@@ -1276,12 +1282,24 @@ public:
         continue;
       }
 
-      // Already stackified operations are already handled
+      // Already stackified operations need special handling for additional uses
       if (stackifiedOps.contains(defOp)) {
+        if (shouldRematerialize(defOp)) {
+          // Clone cheap ops for additional uses (e.g., second use of same
+          // const)
+          OpBuilder builder(op);
+          Operation *clone = builder.clone(*defOp);
+          op->setOperand(i, clone->getResult(0));
+          stackifiedOps.insert(clone);
+          processOperation(clone);
+        }
+        // Non-rematerializable ops that are already stackified: the first use
+        // consumes from stack, other uses need locals (handled by tee/local
+        // logic when defOp was first processed)
         continue;
       }
 
-      // Try to stackify this operand
+      // Try to stackify this operand (single-use values)
       if (canStackify(defOp, op)) {
         // Move the defining operation immediately before this operation
         defOp->moveBefore(op);
@@ -1289,16 +1307,12 @@ public:
 
         // Recursively process the moved operation's operands
         processOperation(defOp);
-      } else if (shouldRematerialize(defOp) &&
-                 !useCount.hasSingleUse(operand)) {
-        // Clone cheap operations instead of using locals
-        OpBuilder builder(op);
-        Operation *clone = builder.clone(*defOp);
-        op->setOperand(i, clone->getResult(0));
-        stackifiedOps.insert(clone);
-
-        // Process the clone's operands
-        processOperation(clone);
+      } else if (shouldRematerialize(defOp)) {
+        // Multi-use rematerializable: move original for first use
+        // (subsequent uses will hit the stackifiedOps check above and clone)
+        defOp->moveBefore(op);
+        stackifiedOps.insert(defOp);
+        processOperation(defOp);
       } else {
         // Can't stackify directly - check if we can use tee
         // Tee is useful when one use can consume from stack, others from local
