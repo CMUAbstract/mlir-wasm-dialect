@@ -23,13 +23,13 @@ module {
     wasmssa.return %c : i32
   }
 
-  // Multi-use constant - should be rematerialized (cloned), not need a local
-  // Constants are cheap to rematerialize
+  // Multi-use constant - original is used for first operand, cloned for second
+  // Constants are cheap to rematerialize, so no local variable needed
   // CHECK-LABEL: wasmstack.func @multi_use_const
   // CHECK:         wasmstack.i32.const 5
   // CHECK-NEXT:    wasmstack.i32.const 5
-  // CHECK-NEXT:    wasmstack.i32.const 5
   // CHECK-NEXT:    wasmstack.add : i32
+  // CHECK-NEXT:    wasmstack.return
   wasmssa.func @multi_use_const() -> i32 {
     %x = wasmssa.const 5 : i32
     %doubled = wasmssa.add %x %x : i32
