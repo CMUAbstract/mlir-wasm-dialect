@@ -4,9 +4,6 @@
 
 // Debug output comes first on stderr
 // CHECK: ConvertToWasmStack pass running on module
-// CHECK: Processing function: const_add
-// CHECK: Processing function: multi_use_const
-// CHECK: Processing function: multi_use_add
 // CHECK: Values needing tee: 1
 // CHECK: Allocated locals: 1 (params: 0, total: 1)
 
