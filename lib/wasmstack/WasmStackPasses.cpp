@@ -298,17 +298,40 @@ public:
       LocalOp::create(builder, loc, static_cast<uint32_t>(i), localType);
     }
 
-    // Emit operations from the source function
+    // Emit operations from the source function using CFG linearization
+    // This handles functions with multiple blocks (e.g., control flow with
+    // successor blocks containing the return statement)
     if (!srcFunc.getBody().empty()) {
-      Block &srcBlock = srcFunc.getBody().front();
-      for (Operation &op : srcBlock) {
-        // Skip operations that have results but no users (e.g., cloned ops
-        // that were created but the original became unused after
-        // rematerialization)
-        if (op.getNumResults() > 0 && op.use_empty()) {
-          continue;
+      Block *currentBlock = &srcFunc.getBody().front();
+      llvm::DenseSet<Block *> processed;
+
+      while (currentBlock && !processed.contains(currentBlock)) {
+        processed.insert(currentBlock);
+
+        // Mark block arguments as available on stack
+        for (BlockArgument arg : currentBlock->getArguments()) {
+          emittedToStack.insert(arg);
         }
-        emitOperation(&op);
+
+        // Emit all operations EXCEPT the terminator
+        for (Operation &op : currentBlock->without_terminator()) {
+          // Skip operations that have results but no users (e.g., cloned ops
+          // that were created but the original became unused after
+          // rematerialization)
+          if (op.getNumResults() > 0 && op.use_empty()) {
+            continue;
+          }
+          emitOperation(&op);
+        }
+
+        // Handle terminator and get next block to process
+        Operation *terminator = currentBlock->getTerminator();
+        if (terminator) {
+          currentBlock =
+              emitTerminatorAndGetNext(terminator, /*isInLoop=*/false);
+        } else {
+          currentBlock = nullptr;
+        }
       }
     }
 
@@ -1000,7 +1023,17 @@ private:
       return nullptr; // Stop processing this CFG path
     }
 
-    // For other terminators (like return), just return nullptr
+    // Handle function return
+    if (auto returnOp = dyn_cast<wasmssa::ReturnOp>(terminator)) {
+      // Emit return operands to ensure they're on the stack
+      for (Value operand : returnOp.getOperands()) {
+        emitOperandIfNeeded(operand);
+      }
+      ReturnOp::create(builder, loc);
+      return nullptr; // Stop processing - function ends
+    }
+
+    // For other terminators, just return nullptr
     return nullptr;
   }
 
