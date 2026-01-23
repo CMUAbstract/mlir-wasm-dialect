@@ -671,24 +671,33 @@ private:
     ScopedStackState stackGuard(*this);
     builder.setInsertionPointToStart(entryBlock);
 
-    // 4. Handle block arguments: in WebAssembly, block parameters are
-    // consumed from the stack and accessible inside the block.
-    // We mark them as "emitted to stack" so they can be used by operations
-    // inside the block body via local.get (they were allocated by
-    // LocalAllocator)
+    // 4. CFG linearization: process all blocks by following terminators
+    // This handles multi-block regions where branch_if has else successors
     if (!blockOp.getBody().empty()) {
-      Block &bodyBlock = blockOp.getBody().front();
-      for (BlockArgument arg : bodyBlock.getArguments()) {
-        // Block arguments are on the implicit stack at block entry
-        // but need local access for subsequent uses
-        emittedToStack.insert(arg);
-      }
-    }
+      Block *currentBlock = &blockOp.getBody().front();
+      llvm::DenseSet<Block *> processed;
 
-    // Emit operations from the WasmSSA block body
-    if (!blockOp.getBody().empty()) {
-      for (Operation &op : blockOp.getBody().front()) {
-        emitOperation(&op);
+      while (currentBlock && !processed.contains(currentBlock)) {
+        processed.insert(currentBlock);
+
+        // Mark block arguments as available on stack
+        for (BlockArgument arg : currentBlock->getArguments()) {
+          emittedToStack.insert(arg);
+        }
+
+        // Emit all operations EXCEPT the terminator
+        for (Operation &op : currentBlock->without_terminator()) {
+          emitOperation(&op);
+        }
+
+        // Handle terminator and get next block to process
+        Operation *terminator = currentBlock->getTerminator();
+        if (terminator) {
+          currentBlock =
+              emitTerminatorAndGetNext(terminator, /*isInLoop=*/false);
+        } else {
+          currentBlock = nullptr;
+        }
       }
     }
 
@@ -739,18 +748,32 @@ private:
     ScopedStackState stackGuard(*this);
     builder.setInsertionPointToStart(entryBlock);
 
-    // 4. Handle loop block arguments: mark them as available on stack
+    // 4. CFG linearization: process all blocks by following terminators
     if (!loopOp.getBody().empty()) {
-      Block &bodyBlock = loopOp.getBody().front();
-      for (BlockArgument arg : bodyBlock.getArguments()) {
-        emittedToStack.insert(arg);
-      }
-    }
+      Block *currentBlock = &loopOp.getBody().front();
+      llvm::DenseSet<Block *> processed;
 
-    // Emit operations from the WasmSSA loop body
-    if (!loopOp.getBody().empty()) {
-      for (Operation &op : loopOp.getBody().front()) {
-        emitOperation(&op);
+      while (currentBlock && !processed.contains(currentBlock)) {
+        processed.insert(currentBlock);
+
+        // Mark block arguments as available on stack
+        for (BlockArgument arg : currentBlock->getArguments()) {
+          emittedToStack.insert(arg);
+        }
+
+        // Emit all operations EXCEPT the terminator
+        for (Operation &op : currentBlock->without_terminator()) {
+          emitOperation(&op);
+        }
+
+        // Handle terminator and get next block to process
+        Operation *terminator = currentBlock->getTerminator();
+        if (terminator) {
+          currentBlock =
+              emitTerminatorAndGetNext(terminator, /*isInLoop=*/true);
+        } else {
+          currentBlock = nullptr;
+        }
       }
     }
 
@@ -846,6 +869,80 @@ private:
     std::string label = getLabelForExitLevel(exitLevel);
 
     BrIfOp::create(builder, loc, builder.getAttr<FlatSymbolRefAttr>(label));
+  }
+
+  /// Handle a terminator operation and return the next block to process.
+  /// Returns nullptr if processing should stop (e.g., block_return, exit
+  /// branch). The isInLoop parameter indicates whether we're inside a loop
+  /// body, which affects how block_return is handled (emit br to continue
+  /// loop).
+  Block *emitTerminatorAndGetNext(Operation *terminator, bool isInLoop) {
+    Location loc = terminator->getLoc();
+
+    // Handle structured control flow terminators (loop, block, if)
+    // These have nested regions and a successor block
+    if (auto loopOp = dyn_cast<wasmssa::LoopOp>(terminator)) {
+      // Emit the loop (which recursively processes its body)
+      emitLoop(loopOp);
+      // Continue with the loop's successor block
+      return loopOp.getTarget();
+    }
+
+    if (auto blockOp = dyn_cast<wasmssa::BlockOp>(terminator)) {
+      // Emit the block (which recursively processes its body)
+      emitBlock(blockOp);
+      // Continue with the block's successor block
+      return blockOp.getTarget();
+    }
+
+    if (auto ifOp = dyn_cast<wasmssa::IfOp>(terminator)) {
+      // Emit the if (which recursively processes its body)
+      emitIf(ifOp);
+      // Continue with the if's successor block
+      return ifOp.getTarget();
+    }
+
+    if (auto branchIfOp = dyn_cast<wasmssa::BranchIfOp>(terminator)) {
+      // branch_if %cond to level N with args(...) else ^successor
+      // In WebAssembly, br_if: if condition true, branch with args;
+      // if false, fall through (args remain on stack).
+
+      // 1. Emit exit args to stack first (they stay if branch not taken)
+      for (Value arg : branchIfOp.getInputs()) {
+        emitOperandIfNeeded(arg);
+      }
+
+      // 2. Emit condition (must be on top of stack for br_if)
+      emitOperandIfNeeded(branchIfOp.getCondition());
+
+      // 3. Emit br_if to the exit level
+      unsigned exitLevel = branchIfOp.getExitLevel();
+      std::string label = getLabelForExitLevel(exitLevel);
+      BrIfOp::create(builder, loc, builder.getAttr<FlatSymbolRefAttr>(label));
+
+      // 4. Return the else successor to continue processing (fallthrough path)
+      return branchIfOp.getElseSuccessor();
+    }
+
+    if (auto blockReturnOp = dyn_cast<wasmssa::BlockReturnOp>(terminator)) {
+      // Emit return values to stack
+      for (Value input : blockReturnOp.getInputs()) {
+        emitOperandIfNeeded(input);
+      }
+
+      // If inside a loop, emit br to continue the loop
+      if (isInLoop && !labelStack.empty()) {
+        std::string loopLabel = labelStack.back().first;
+        BrOp::create(builder, loc,
+                     builder.getAttr<FlatSymbolRefAttr>(loopLabel));
+      }
+      // Else: values on stack, control flows to block end naturally
+
+      return nullptr; // Stop processing this CFG path
+    }
+
+    // For other terminators (like return), just return nullptr
+    return nullptr;
   }
 
   /// Emit a comparison operation (2 inputs, 1 i32 output)
