@@ -627,13 +627,51 @@ private:
     ~ScopedStackState() { emitter.emittedToStack = std::move(savedState); }
   };
 
-  /// Get the branch label for a given exit level
-  /// exitLevel 0 = innermost enclosing block/loop
-  std::string getLabelForExitLevel(unsigned exitLevel) {
-    if (exitLevel >= labelStack.size()) {
-      // Fallback to placeholder if stack doesn't have enough entries
-      return "level_" + std::to_string(exitLevel);
+  /// RAII guard for label stack management.
+  /// Ensures labels are always pushed on entry and popped on exit of control
+  /// flow regions. This guarantees that labelStack.back() always refers to
+  /// the innermost enclosing control flow structure.
+  ///
+  /// Key invariant: When processing a loop body, labelStack.back() is always
+  /// the loop's own label. Even if the loop body contains nested blocks/ifs,
+  /// those nested structures use their own ScopedLabel which is destroyed
+  /// before we return to the loop's block_return handling.
+  class ScopedLabel {
+    WasmStackEmitter &emitter;
+
+  public:
+    /// Push a label for a control flow structure
+    /// @param label The unique label string (e.g., "block_0", "loop_1")
+    /// @param isLoop True for loop (br continues), false for block/if (br
+    /// exits)
+    ScopedLabel(WasmStackEmitter &emitter, const std::string &label,
+                bool isLoop)
+        : emitter(emitter) {
+      emitter.labelStack.push_back({label, isLoop});
     }
+
+    ~ScopedLabel() {
+      assert(!emitter.labelStack.empty() &&
+             "ScopedLabel destroyed with empty label stack - mismatched "
+             "push/pop");
+      emitter.labelStack.pop_back();
+    }
+
+    // Non-copyable, non-movable
+    ScopedLabel(const ScopedLabel &) = delete;
+    ScopedLabel &operator=(const ScopedLabel &) = delete;
+  };
+
+  /// Get the branch label for a given exit level.
+  /// Exit level 0 = innermost enclosing block/loop
+  /// Exit level 1 = next outer enclosing structure, etc.
+  ///
+  /// Precondition: exitLevel < labelStack.size()
+  /// This precondition should always hold for valid WasmSSA IR, as the
+  /// SCF-to-WasmSSA lowering generates correct exit levels.
+  std::string getLabelForExitLevel(unsigned exitLevel) {
+    assert(exitLevel < labelStack.size() &&
+           "Exit level exceeds label stack depth - invalid WasmSSA IR");
     // Labels are indexed from the top of the stack (innermost first)
     return labelStack[labelStack.size() - 1 - exitLevel].first;
   }
@@ -673,12 +711,11 @@ private:
     Block *entryBlock = new Block();
     wasmBlock.getBody().push_back(entryBlock);
 
-    // Push label onto stack (block branches exit the block)
-    labelStack.push_back({label, /*isLoop=*/false});
-
     // Save current insertion point and emittedToStack state
     OpBuilder::InsertionGuard guard(builder);
     ScopedStackState stackGuard(*this);
+    // Push label - ScopedLabel ensures it's popped when we exit this scope
+    ScopedLabel labelGuard(*this, label, /*isLoop=*/false);
     builder.setInsertionPointToStart(entryBlock);
 
     // 4. CFG linearization: process all blocks by following terminators
@@ -710,9 +747,7 @@ private:
         }
       }
     }
-
-    // Pop label from stack
-    labelStack.pop_back();
+    // ScopedLabel destructor pops the label automatically
   }
 
   /// Emit a WasmSSA loop operation
@@ -750,12 +785,15 @@ private:
     Block *entryBlock = new Block();
     wasmLoop.getBody().push_back(entryBlock);
 
-    // Push label onto stack (loop branches re-enter the loop)
-    labelStack.push_back({label, /*isLoop=*/true});
-
     // Save current insertion point and emittedToStack state
     OpBuilder::InsertionGuard guard(builder);
     ScopedStackState stackGuard(*this);
+    // Push label - ScopedLabel ensures it's popped when we exit this scope.
+    // This is critical for correctness: block_return inside this loop will
+    // use labelStack.back() to get the loop label for "br @loop" to continue.
+    // Any nested blocks/ifs inside this loop will have their own ScopedLabel
+    // that is destroyed before we return here.
+    ScopedLabel labelGuard(*this, label, /*isLoop=*/true);
     builder.setInsertionPointToStart(entryBlock);
 
     // 4. CFG linearization: process all blocks by following terminators
@@ -786,9 +824,7 @@ private:
         }
       }
     }
-
-    // Pop label from stack
-    labelStack.pop_back();
+    // ScopedLabel destructor pops the label automatically
   }
 
   /// Emit a WasmSSA if operation
@@ -940,8 +976,15 @@ private:
         emitOperandIfNeeded(input);
       }
 
-      // If inside a loop, emit br to continue the loop
+      // If inside a loop, emit br to continue the loop.
+      // INVARIANT: labelStack.back() is always the correct loop label here.
+      // This is guaranteed by ScopedLabel RAII in emitLoop/emitBlock:
+      // - Any nested blocks/ifs inside this loop have their own ScopedLabel
+      // - Those ScopedLabels are destroyed before we return to this scope
+      // - Therefore labelStack.back() is always the enclosing loop's label
       if (isInLoop && !labelStack.empty()) {
+        assert(labelStack.back().second &&
+               "isInLoop is true but labelStack.back() is not a loop label");
         std::string loopLabel = labelStack.back().first;
         BrOp::create(builder, loc,
                      builder.getAttr<FlatSymbolRefAttr>(loopLabel));
