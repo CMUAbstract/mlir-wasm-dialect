@@ -85,43 +85,57 @@ struct IfOpLowering : public OpConversionPattern<scf::IfOp> {
     Block *thenBlock = ifOp.createIfBlock();
     rewriter.setInsertionPointToEnd(thenBlock);
 
-    // Clone the then region using IRMapping
-    IRMapping thenMapping;
-    for (auto &origOp : op.getThenRegion().front().without_terminator()) {
-      rewriter.clone(origOp, thenMapping);
+    // Move operations from then region instead of cloning (avoids stale
+    // references)
+    Block *origThenBlock = &op.getThenRegion().front();
+
+    // Get yielded values BEFORE moving operations
+    SmallVector<Value, 4> thenYieldOperands;
+    if (auto yieldOp = dyn_cast<scf::YieldOp>(origThenBlock->getTerminator())) {
+      for (Value v : yieldOp.getOperands()) {
+        thenYieldOperands.push_back(v);
+      }
     }
 
-    // Handle scf.yield -> wasmssa.block_return
-    if (auto yieldOp = dyn_cast<scf::YieldOp>(
-            op.getThenRegion().front().getTerminator())) {
-      SmallVector<Value, 4> yieldOperands;
-      for (Value v : yieldOp.getOperands()) {
-        yieldOperands.push_back(thenMapping.lookupOrDefault(v));
-      }
-      wasmssa::BlockReturnOp::create(rewriter, loc, yieldOperands);
-    } else {
-      wasmssa::BlockReturnOp::create(rewriter, loc, ValueRange{});
+    // Move operations from original then block
+    for (auto &origOp :
+         llvm::make_early_inc_range(origThenBlock->without_terminator())) {
+      origOp.moveBefore(thenBlock, thenBlock->end());
     }
+
+    // Erase the original terminator
+    rewriter.eraseOp(origThenBlock->getTerminator());
+
+    // Create wasmssa.block_return with yielded values
+    wasmssa::BlockReturnOp::create(rewriter, loc, thenYieldOperands);
 
     // Create and populate the 'else' region
     Block *elseBlock = ifOp.createElseBlock();
     rewriter.setInsertionPointToEnd(elseBlock);
 
     if (!op.getElseRegion().empty()) {
-      IRMapping elseMapping;
-      for (auto &origOp : op.getElseRegion().front().without_terminator()) {
-        rewriter.clone(origOp, elseMapping);
-      }
-      if (auto yieldOp = dyn_cast<scf::YieldOp>(
-              op.getElseRegion().front().getTerminator())) {
-        SmallVector<Value, 4> yieldOperands;
+      Block *origElseBlock = &op.getElseRegion().front();
+
+      // Get yielded values BEFORE moving operations
+      SmallVector<Value, 4> elseYieldOperands;
+      if (auto yieldOp =
+              dyn_cast<scf::YieldOp>(origElseBlock->getTerminator())) {
         for (Value v : yieldOp.getOperands()) {
-          yieldOperands.push_back(elseMapping.lookupOrDefault(v));
+          elseYieldOperands.push_back(v);
         }
-        wasmssa::BlockReturnOp::create(rewriter, loc, yieldOperands);
-      } else {
-        wasmssa::BlockReturnOp::create(rewriter, loc, ValueRange{});
       }
+
+      // Move operations from original else block
+      for (auto &origOp :
+           llvm::make_early_inc_range(origElseBlock->without_terminator())) {
+        origOp.moveBefore(elseBlock, elseBlock->end());
+      }
+
+      // Erase the original terminator
+      rewriter.eraseOp(origElseBlock->getTerminator());
+
+      // Create wasmssa.block_return with yielded values
+      wasmssa::BlockReturnOp::create(rewriter, loc, elseYieldOperands);
     } else {
       wasmssa::BlockReturnOp::create(rewriter, loc, ValueRange{});
     }
@@ -195,8 +209,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     Block *blockEntry = blockOp.createBlock();
     rewriter.setInsertionPointToEnd(blockEntry);
 
-    // Block arguments: induction var + iter_args
-    Value inductionVar = blockEntry->getArgument(0);
+    // Block arguments: iter_args (skip induction var at index 0)
     SmallVector<Value, 4> blockIterArgs;
     for (unsigned i = 1; i < blockEntry->getNumArguments(); ++i) {
       blockIterArgs.push_back(blockEntry->getArgument(i));
@@ -240,25 +253,35 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     // In continue block, execute body and loop back
     rewriter.setInsertionPointToEnd(continueBlock);
 
-    // Clone the loop body operations
-    IRMapping mapping;
-    mapping.map(op.getInductionVar(), loopInductionVar);
+    // Instead of cloning (which causes stale references for nested ops),
+    // replace block argument uses and move operations directly.
+    // This allows the conversion framework to properly handle nested
+    // scf.for/if.
+    Block *origBody = op.getBody();
+
+    // Replace uses of old block arguments with new loop block arguments
+    rewriter.replaceAllUsesWith(op.getInductionVar(), loopInductionVar);
     for (auto [oldArg, newArg] :
          llvm::zip(op.getRegionIterArgs(), loopIterArgs)) {
-      mapping.map(oldArg, newArg);
+      rewriter.replaceAllUsesWith(oldArg, newArg);
     }
 
-    for (auto &bodyOp : op.getBody()->without_terminator()) {
-      rewriter.clone(bodyOp, mapping);
-    }
-
-    // Get yielded values and update induction variable
+    // Get yielded values BEFORE moving operations (terminator will be erased)
     SmallVector<Value, 4> yieldedValues;
-    if (auto yieldOp = dyn_cast<scf::YieldOp>(op.getBody()->getTerminator())) {
+    if (auto yieldOp = dyn_cast<scf::YieldOp>(origBody->getTerminator())) {
       for (Value v : yieldOp.getOperands()) {
-        yieldedValues.push_back(mapping.lookupOrDefault(v));
+        yieldedValues.push_back(v);
       }
     }
+
+    // Move operations from original body to continueBlock (don't clone)
+    for (auto &bodyOp :
+         llvm::make_early_inc_range(origBody->without_terminator())) {
+      bodyOp.moveBefore(continueBlock, continueBlock->end());
+    }
+
+    // Erase the original terminator to avoid "value still has uses" error
+    rewriter.eraseOp(origBody->getTerminator());
 
     // Update induction variable
     Value nextInduction =
