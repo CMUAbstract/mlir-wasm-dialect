@@ -493,6 +493,22 @@ public:
     } else if (auto truncOp = dyn_cast<wasmssa::TruncOp>(op)) {
       emitUnaryOp<FTruncOp>(truncOp, truncOp.getSrc(), truncOp.getResult());
     }
+    // Type conversion operations
+    else if (auto convertSOp = dyn_cast<wasmssa::ConvertSOp>(op)) {
+      emitConvertOp(convertSOp, /*isSigned=*/true);
+    } else if (auto convertUOp = dyn_cast<wasmssa::ConvertUOp>(op)) {
+      emitConvertOp(convertUOp, /*isSigned=*/false);
+    } else if (auto promoteOp = dyn_cast<wasmssa::PromoteOp>(op)) {
+      emitPromoteOp(promoteOp);
+    } else if (auto demoteOp = dyn_cast<wasmssa::DemoteOp>(op)) {
+      emitDemoteOp(demoteOp);
+    } else if (auto extendSI32Op = dyn_cast<wasmssa::ExtendSI32Op>(op)) {
+      emitExtendI32Op(extendSI32Op, /*isSigned=*/true);
+    } else if (auto extendUI32Op = dyn_cast<wasmssa::ExtendUI32Op>(op)) {
+      emitExtendI32Op(extendUI32Op, /*isSigned=*/false);
+    } else if (auto wrapOp = dyn_cast<wasmssa::WrapOp>(op)) {
+      emitWrapOp(wrapOp);
+    }
     // Source dialect local operations
     else if (auto localGetOp = dyn_cast<wasmssa::LocalGetOp>(op)) {
       emitSourceLocalGet(localGetOp);
@@ -1125,6 +1141,142 @@ private:
 
     emitOperandIfNeeded(input);
     WasmStackOp::create(builder, loc, TypeAttr::get(resultType));
+
+    if (needsTee.contains(result)) {
+      int idx = allocator.getLocalIndex(result);
+      if (idx >= 0) {
+        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                           resultType);
+      }
+    }
+    emittedToStack.insert(result);
+  }
+
+  /// Emit a signed/unsigned int-to-float conversion operation
+  /// Maps to wasmssa.convert_s / wasmssa.convert_u
+  void emitConvertOp(Operation *srcOp, bool isSigned) {
+    Location loc = srcOp->getLoc();
+    Value input = srcOp->getOperand(0);
+    Value result = srcOp->getResult(0);
+    Type inputType = input.getType();
+    Type resultType = result.getType();
+
+    emitOperandIfNeeded(input);
+
+    // Emit the appropriate convert instruction based on types
+    if (resultType.isF32()) {
+      if (inputType.isInteger(32)) {
+        if (isSigned)
+          F32ConvertI32SOp::create(builder, loc, inputType, resultType);
+        else
+          F32ConvertI32UOp::create(builder, loc, inputType, resultType);
+      } else if (inputType.isInteger(64)) {
+        if (isSigned)
+          F32ConvertI64SOp::create(builder, loc, inputType, resultType);
+        else
+          F32ConvertI64UOp::create(builder, loc, inputType, resultType);
+      }
+    } else if (resultType.isF64()) {
+      if (inputType.isInteger(32)) {
+        if (isSigned)
+          F64ConvertI32SOp::create(builder, loc, inputType, resultType);
+        else
+          F64ConvertI32UOp::create(builder, loc, inputType, resultType);
+      } else if (inputType.isInteger(64)) {
+        if (isSigned)
+          F64ConvertI64SOp::create(builder, loc, inputType, resultType);
+        else
+          F64ConvertI64UOp::create(builder, loc, inputType, resultType);
+      }
+    }
+
+    if (needsTee.contains(result)) {
+      int idx = allocator.getLocalIndex(result);
+      if (idx >= 0) {
+        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                           resultType);
+      }
+    }
+    emittedToStack.insert(result);
+  }
+
+  /// Emit a promote operation (f32 to f64)
+  void emitPromoteOp(wasmssa::PromoteOp promoteOp) {
+    Location loc = promoteOp.getLoc();
+    Value input = promoteOp.getInput();
+    Value result = promoteOp.getResult();
+    Type inputType = input.getType();
+    Type resultType = result.getType();
+
+    emitOperandIfNeeded(input);
+    F64PromoteF32Op::create(builder, loc, inputType, resultType);
+
+    if (needsTee.contains(result)) {
+      int idx = allocator.getLocalIndex(result);
+      if (idx >= 0) {
+        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                           resultType);
+      }
+    }
+    emittedToStack.insert(result);
+  }
+
+  /// Emit a demote operation (f64 to f32)
+  void emitDemoteOp(wasmssa::DemoteOp demoteOp) {
+    Location loc = demoteOp.getLoc();
+    Value input = demoteOp.getInput();
+    Value result = demoteOp.getResult();
+    Type inputType = input.getType();
+    Type resultType = result.getType();
+
+    emitOperandIfNeeded(input);
+    F32DemoteF64Op::create(builder, loc, inputType, resultType);
+
+    if (needsTee.contains(result)) {
+      int idx = allocator.getLocalIndex(result);
+      if (idx >= 0) {
+        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                           resultType);
+      }
+    }
+    emittedToStack.insert(result);
+  }
+
+  /// Emit an i32 extension operation (i32 to i64)
+  void emitExtendI32Op(Operation *srcOp, bool isSigned) {
+    Location loc = srcOp->getLoc();
+    Value input = srcOp->getOperand(0);
+    Value result = srcOp->getResult(0);
+    Type inputType = input.getType();
+    Type resultType = result.getType();
+
+    emitOperandIfNeeded(input);
+
+    if (isSigned)
+      I64ExtendI32SOp::create(builder, loc, inputType, resultType);
+    else
+      I64ExtendI32UOp::create(builder, loc, inputType, resultType);
+
+    if (needsTee.contains(result)) {
+      int idx = allocator.getLocalIndex(result);
+      if (idx >= 0) {
+        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                           resultType);
+      }
+    }
+    emittedToStack.insert(result);
+  }
+
+  /// Emit a wrap operation (i64 to i32)
+  void emitWrapOp(wasmssa::WrapOp wrapOp) {
+    Location loc = wrapOp.getLoc();
+    Value input = wrapOp.getInput();
+    Value result = wrapOp.getResult();
+    Type inputType = input.getType();
+    Type resultType = result.getType();
+
+    emitOperandIfNeeded(input);
+    I32WrapI64Op::create(builder, loc, inputType, resultType);
 
     if (needsTee.contains(result)) {
       int idx = allocator.getLocalIndex(result);
