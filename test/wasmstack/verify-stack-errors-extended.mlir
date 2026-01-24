@@ -128,7 +128,7 @@ wasmstack.module @br_if_no_condition {
   wasmstack.func @missing_condition : () -> i32 {
     wasmstack.block @exit : ([]) -> [i32] {
       wasmstack.i32.const 42  // value for branch
-      // expected-error @+1 {{stack underflow}}
+      // expected-error @+1 {{insufficient values for conditional branch: need 1 but only have 0}}
       wasmstack.br_if @exit
       wasmstack.i32.const 0
     }
@@ -143,7 +143,7 @@ wasmstack.module @br_if_wrong_value_type {
     wasmstack.block @exit : ([]) -> [i32] {
       wasmstack.f32.const 1.0  // wrong type for i32 block result
       wasmstack.i32.const 1    // condition
-      // expected-error @+1 {{type mismatch: expected 'i32' but got 'f32'}}
+      // expected-error @+1 {{conditional branch type mismatch at index 0: expected 'i32' but got 'f32'}}
       wasmstack.br_if @exit
       wasmstack.i32.const 0
     }
@@ -167,11 +167,12 @@ wasmstack.module @return_underflow {
 
 // -----
 
-wasmstack.module @return_too_many {
-  wasmstack.func @extra_values : () -> i32 {
+// Per WebAssembly spec: extra values before unconditional branch (return)
+// are valid - they get discarded when the branch is taken.
+wasmstack.module @return_extra_values_valid {
+  wasmstack.func @extra_values_before_return : () -> i32 {
     wasmstack.i32.const 1
-    wasmstack.i32.const 2  // extra value
-    // expected-error @+1 {{stack height mismatch}}
+    wasmstack.i32.const 2  // extra value - valid, discarded by return
     wasmstack.return
   }
 }
@@ -369,7 +370,7 @@ wasmstack.module @conversion_wrong_input {
 wasmstack.module @nested_inner_error {
   wasmstack.func @inner_block_underflow : () -> i32 {
     wasmstack.block @outer : ([]) -> [i32] {
-      // expected-error @below {{stack underflow}}
+      // expected-error @below {{stack height mismatch at frame exit}}
       wasmstack.block @inner : ([]) -> [i32] {
         // No value produced
       }
@@ -492,13 +493,14 @@ wasmstack.module @br_table_no_index {
 // Complex Control Flow Errors
 //===----------------------------------------------------------------------===//
 
-wasmstack.module @loop_exit_arity_mismatch {
-  wasmstack.func @loop_wrong_exit : () -> i32 {
+// Per WebAssembly spec: extra values before unconditional branch (br)
+// are valid - they get discarded when the branch is taken.
+wasmstack.module @loop_exit_extra_values_valid {
+  wasmstack.func @extra_values_before_br : () -> i32 {
     wasmstack.block @exit : ([]) -> [i32] {
       wasmstack.loop @loop : ([]) -> [] {
         wasmstack.i32.const 1
-        wasmstack.i32.const 2  // extra value
-        // expected-error @+1 {{type mismatch}}
+        wasmstack.i32.const 2  // extra value - valid, discarded by br
         wasmstack.br @exit
       }
       wasmstack.i32.const 0
