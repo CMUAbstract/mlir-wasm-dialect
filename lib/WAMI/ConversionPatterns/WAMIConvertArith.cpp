@@ -601,6 +601,34 @@ struct TruncFOpLowering : public OpConversionPattern<arith::TruncFOp> {
   }
 };
 
+// arith.fptosi: float to signed int
+// Maps to wami.trunc_s (WebAssembly i32.trunc_f32_s, i64.trunc_f64_s, etc.)
+struct FPToSIOpLowering : public OpConversionPattern<arith::FPToSIOp> {
+  using OpConversionPattern<arith::FPToSIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::FPToSIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<TruncSOp>(op, resultType, adaptor.getIn());
+    return success();
+  }
+};
+
+// arith.fptoui: float to unsigned int
+// Maps to wami.trunc_u (WebAssembly i32.trunc_f32_u, i64.trunc_f64_u, etc.)
+struct FPToUIOpLowering : public OpConversionPattern<arith::FPToUIOp> {
+  using OpConversionPattern<arith::FPToUIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::FPToUIOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<TruncUOp>(op, resultType, adaptor.getIn());
+    return success();
+  }
+};
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -612,17 +640,18 @@ void populateWAMIConvertArithPatterns(TypeConverter &typeConverter,
   MLIRContext *context = patterns.getContext();
 
   // Arithmetic operations
-  patterns.add<
-      AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-      MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
-      DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
-      OrIOpLowering, XOrIOpLowering, MinimumFOpLowering, MaximumFOpLowering,
-      MinNumFOpLowering, MaxNumFOpLowering, ConstantOpLowering, CmpIOpLowering,
-      CmpFOpLowering, ShLIOpLowering, ShRSIOpLowering, ShRUIOpLowering,
-      ExtUIOpLowering, ExtSIOpLowering, TruncIOpLowering, IndexCastOpLowering,
-      IndexCastUIOpLowering, SelectOpLowering, SIToFPOpLowering,
-      UIToFPOpLowering, ExtFOpLowering, TruncFOpLowering>(typeConverter,
-                                                          context);
+  patterns
+      .add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+           MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
+           DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
+           OrIOpLowering, XOrIOpLowering, MinimumFOpLowering,
+           MaximumFOpLowering, MinNumFOpLowering, MaxNumFOpLowering,
+           ConstantOpLowering, CmpIOpLowering, CmpFOpLowering, ShLIOpLowering,
+           ShRSIOpLowering, ShRUIOpLowering, ExtUIOpLowering, ExtSIOpLowering,
+           TruncIOpLowering, IndexCastOpLowering, IndexCastUIOpLowering,
+           SelectOpLowering, SIToFPOpLowering, UIToFPOpLowering, ExtFOpLowering,
+           TruncFOpLowering, FPToSIOpLowering, FPToUIOpLowering>(typeConverter,
+                                                                 context);
 }
 
 } // namespace mlir::wami
