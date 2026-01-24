@@ -3,6 +3,10 @@ add_mlir_dialect_library(MLIRWasmStack
         WasmStackTypes.cpp
         WasmStackOps.cpp
         WasmStackPasses.cpp
+        StackificationAnalysis.cpp
+        LocalAllocator.cpp
+        TreeWalker.cpp
+        WasmStackEmitter.cpp
         VerifyWasmStack.cpp
 
         ADDITIONAL_HEADER_DIRS
