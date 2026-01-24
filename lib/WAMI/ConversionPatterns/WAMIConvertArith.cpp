@@ -601,6 +601,21 @@ struct TruncFOpLowering : public OpConversionPattern<arith::TruncFOp> {
   }
 };
 
+// arith.negf: float negation
+// Maps to wasmssa.neg (WebAssembly f32.neg, f64.neg)
+struct NegFOpLowering : public OpConversionPattern<arith::NegFOp> {
+  using OpConversionPattern<arith::NegFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::NegFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<wasmssa::NegOp>(op, resultType,
+                                                adaptor.getOperand());
+    return success();
+  }
+};
+
 // arith.fptosi: float to signed int
 // Maps to wami.trunc_s (WebAssembly i32.trunc_f32_s, i64.trunc_f64_s, etc.)
 struct FPToSIOpLowering : public OpConversionPattern<arith::FPToSIOp> {
@@ -640,18 +655,17 @@ void populateWAMIConvertArithPatterns(TypeConverter &typeConverter,
   MLIRContext *context = patterns.getContext();
 
   // Arithmetic operations
-  patterns
-      .add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-           MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
-           DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
-           OrIOpLowering, XOrIOpLowering, MinimumFOpLowering,
-           MaximumFOpLowering, MinNumFOpLowering, MaxNumFOpLowering,
-           ConstantOpLowering, CmpIOpLowering, CmpFOpLowering, ShLIOpLowering,
-           ShRSIOpLowering, ShRUIOpLowering, ExtUIOpLowering, ExtSIOpLowering,
-           TruncIOpLowering, IndexCastOpLowering, IndexCastUIOpLowering,
-           SelectOpLowering, SIToFPOpLowering, UIToFPOpLowering, ExtFOpLowering,
-           TruncFOpLowering, FPToSIOpLowering, FPToUIOpLowering>(typeConverter,
-                                                                 context);
+  patterns.add<
+      AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+      MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
+      DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
+      OrIOpLowering, XOrIOpLowering, MinimumFOpLowering, MaximumFOpLowering,
+      MinNumFOpLowering, MaxNumFOpLowering, ConstantOpLowering, CmpIOpLowering,
+      CmpFOpLowering, ShLIOpLowering, ShRSIOpLowering, ShRUIOpLowering,
+      ExtUIOpLowering, ExtSIOpLowering, TruncIOpLowering, IndexCastOpLowering,
+      IndexCastUIOpLowering, SelectOpLowering, SIToFPOpLowering,
+      UIToFPOpLowering, ExtFOpLowering, TruncFOpLowering, FPToSIOpLowering,
+      FPToUIOpLowering, NegFOpLowering>(typeConverter, context);
 }
 
 } // namespace mlir::wami
