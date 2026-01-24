@@ -523,6 +523,12 @@ public:
     } else if (auto storeOp = dyn_cast<wami::StoreOp>(op)) {
       emitStore(storeOp);
     }
+    // WAMI type conversion operations
+    else if (auto truncSOp = dyn_cast<wami::TruncSOp>(op)) {
+      emitTruncOp(truncSOp, /*isSigned=*/true);
+    } else if (auto truncUOp = dyn_cast<wami::TruncUOp>(op)) {
+      emitTruncOp(truncUOp, /*isSigned=*/false);
+    }
     // Global variable operations
     else if (auto globalGetOp = dyn_cast<wasmssa::GlobalGetOp>(op)) {
       emitGlobalGet(globalGetOp);
@@ -1277,6 +1283,54 @@ private:
 
     emitOperandIfNeeded(input);
     I32WrapI64Op::create(builder, loc, inputType, resultType);
+
+    if (needsTee.contains(result)) {
+      int idx = allocator.getLocalIndex(result);
+      if (idx >= 0) {
+        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                           resultType);
+      }
+    }
+    emittedToStack.insert(result);
+  }
+
+  /// Emit a WAMI trunc operation (float to int)
+  /// Maps to wami.trunc_s or wami.trunc_u
+  void emitTruncOp(Operation *srcOp, bool isSigned) {
+    Location loc = srcOp->getLoc();
+    Value input = srcOp->getOperand(0);
+    Value result = srcOp->getResult(0);
+    Type inputType = input.getType();
+    Type resultType = result.getType();
+
+    emitOperandIfNeeded(input);
+
+    // Emit appropriate truncation instruction based on types
+    if (resultType.isInteger(32)) {
+      if (inputType.isF32()) {
+        if (isSigned)
+          I32TruncF32SOp::create(builder, loc, inputType, resultType);
+        else
+          I32TruncF32UOp::create(builder, loc, inputType, resultType);
+      } else if (inputType.isF64()) {
+        if (isSigned)
+          I32TruncF64SOp::create(builder, loc, inputType, resultType);
+        else
+          I32TruncF64UOp::create(builder, loc, inputType, resultType);
+      }
+    } else if (resultType.isInteger(64)) {
+      if (inputType.isF32()) {
+        if (isSigned)
+          I64TruncF32SOp::create(builder, loc, inputType, resultType);
+        else
+          I64TruncF32UOp::create(builder, loc, inputType, resultType);
+      } else if (inputType.isF64()) {
+        if (isSigned)
+          I64TruncF64SOp::create(builder, loc, inputType, resultType);
+        else
+          I64TruncF64UOp::create(builder, loc, inputType, resultType);
+      }
+    }
 
     if (needsTee.contains(result)) {
       int idx = allocator.getLocalIndex(result);

@@ -101,6 +101,52 @@ def WAMI_DataOp : WAMI_Op<"data", [Symbol]> {
 }
 
 //===----------------------------------------------------------------------===//
+// Type Conversion Operations
+//===----------------------------------------------------------------------===//
+
+def WAMI_TruncSOp : WAMI_Op<"trunc_s", [Pure]> {
+  let summary = "Truncate float to signed integer";
+  let description = [{
+    Truncate a floating-point value to a signed integer.
+    This corresponds to WebAssembly instructions like `i32.trunc_f32_s`,
+    `i32.trunc_f64_s`, `i64.trunc_f32_s`, `i64.trunc_f64_s`.
+
+    The truncation is towards zero. If the value is NaN or out of range,
+    the behavior is a trap in standard WebAssembly.
+
+    Example:
+    ```mlir
+    %i32_val = wami.trunc_s %f32_val : f32 to i32
+    %i64_val = wami.trunc_s %f64_val : f64 to i64
+    ```
+  }];
+  let arguments = (ins AnyFloat:$input);
+  let results = (outs AnyInteger:$result);
+  let assemblyFormat = "$input attr-dict `:` type($input) `to` type($result)";
+}
+
+def WAMI_TruncUOp : WAMI_Op<"trunc_u", [Pure]> {
+  let summary = "Truncate float to unsigned integer";
+  let description = [{
+    Truncate a floating-point value to an unsigned integer.
+    This corresponds to WebAssembly instructions like `i32.trunc_f32_u`,
+    `i32.trunc_f64_u`, `i64.trunc_f32_u`, `i64.trunc_f64_u`.
+
+    The truncation is towards zero. If the value is negative, NaN, or out
+    of range, the behavior is a trap in standard WebAssembly.
+
+    Example:
+    ```mlir
+    %i32_val = wami.trunc_u %f32_val : f32 to i32
+    %i64_val = wami.trunc_u %f64_val : f64 to i64
+    ```
+  }];
+  let arguments = (ins AnyFloat:$input);
+  let results = (outs AnyInteger:$result);
+  let assemblyFormat = "$input attr-dict `:` type($input) `to` type($result)";
+}
+
+//===----------------------------------------------------------------------===//
 // Stack Switching Operations (WebAssembly Stack Switching Proposal)
 //
 // These operations will be added incrementally as needed:
