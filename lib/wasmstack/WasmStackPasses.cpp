@@ -304,14 +304,20 @@ public:
     if (!srcFunc.getBody().empty()) {
       Block *currentBlock = &srcFunc.getBody().front();
       llvm::DenseSet<Block *> processed;
+      bool isEntryBlock = true;
 
       while (currentBlock && !processed.contains(currentBlock)) {
         processed.insert(currentBlock);
 
-        // Mark block arguments as available on stack
+        // For the entry block, arguments are function parameters which are
+        // already in locals - no tee needed. Just mark them as available.
+        // For successor blocks (after control flow), arguments represent
+        // values passed via the stack - no tee needed either as they flow
+        // naturally.
         for (BlockArgument arg : currentBlock->getArguments()) {
           emittedToStack.insert(arg);
         }
+        isEntryBlock = false;
 
         // Emit all operations EXCEPT the terminator
         for (Operation &op : currentBlock->without_terminator()) {
@@ -501,6 +507,10 @@ public:
     } else if (auto storeOp = dyn_cast<wami::StoreOp>(op)) {
       emitStore(storeOp);
     }
+    // Global variable operations
+    else if (auto globalGetOp = dyn_cast<wasmssa::GlobalGetOp>(op)) {
+      emitGlobalGet(globalGetOp);
+    }
     // Function call
     else if (auto callOp = dyn_cast<wasmssa::FuncCallOp>(op)) {
       emitCall(callOp);
@@ -570,7 +580,6 @@ private:
                            resultType);
       }
     }
-
     emittedToStack.insert(result);
   }
 
@@ -614,15 +623,18 @@ private:
                            resultType);
       }
     }
-
     emittedToStack.insert(result);
   }
 
-  /// Emit an operand value if it's not already on stack
+  /// Emit an operand value if it's not already on stack.
+  /// If the value is on stack, mark it as CONSUMED (remove from emittedToStack)
+  /// so that subsequent uses will fetch it via local.get.
   void emitOperandIfNeeded(Value value) {
-    // If already emitted to stack, nothing to do
-    if (emittedToStack.contains(value))
+    // If already emitted to stack, mark as consumed and return
+    if (emittedToStack.contains(value)) {
+      emittedToStack.erase(value); // Mark as consumed
       return;
+    }
 
     // If it has a local, emit local.get
     int idx = allocator.getLocalIndex(value);
@@ -645,14 +657,23 @@ private:
   }
 
   /// RAII guard to save/restore emittedToStack state for control flow regions
-  /// Each WebAssembly control flow region has its own stack frame
+  /// Each WebAssembly control flow region has its own stack frame.
+  /// In WebAssembly, when entering a control flow construct (if, block, loop),
+  /// the inner stack starts fresh - outer stack values are NOT accessible
+  /// except through locals. We must clear emittedToStack on entry so that
+  /// values from the outer scope are re-emitted (via local.get or
+  /// rematerialization) inside the inner scope.
   class ScopedStackState {
     WasmStackEmitter &emitter;
     DenseSet<Value> savedState;
 
   public:
     ScopedStackState(WasmStackEmitter &emitter)
-        : emitter(emitter), savedState(emitter.emittedToStack) {}
+        : emitter(emitter), savedState(emitter.emittedToStack) {
+      // Clear emittedToStack for the inner scope - WebAssembly control flow
+      // regions have their own stack frame
+      emitter.emittedToStack.clear();
+    }
     ~ScopedStackState() { emitter.emittedToStack = std::move(savedState); }
   };
 
@@ -756,9 +777,22 @@ private:
       while (currentBlock && !processed.contains(currentBlock)) {
         processed.insert(currentBlock);
 
-        // Mark block arguments as available on stack
+        // Block arguments represent values on the stack at block entry.
+        // If they have locals allocated, emit local.set to save them.
+        // DON'T mark them as "on stack" - they should be accessed via
+        // local.get for subsequent uses, as the stack state changes during
+        // block execution.
         for (BlockArgument arg : currentBlock->getArguments()) {
-          emittedToStack.insert(arg);
+          int idx = allocator.getLocalIndex(arg);
+          if (idx >= 0) {
+            // Set the value to local (consumes from stack)
+            LocalSetOp::create(builder, arg.getLoc(),
+                               static_cast<uint32_t>(idx), arg.getType());
+          } else {
+            // No local allocated - this arg is used only once immediately
+            // Keep it on stack by marking as emitted
+            emittedToStack.insert(arg);
+          }
         }
 
         // Emit all operations EXCEPT the terminator
@@ -833,9 +867,22 @@ private:
       while (currentBlock && !processed.contains(currentBlock)) {
         processed.insert(currentBlock);
 
-        // Mark block arguments as available on stack
+        // Block arguments represent values on the stack at block entry.
+        // If they have locals allocated, emit local.set to save them.
+        // DON'T mark them as "on stack" - they should be accessed via
+        // local.get for subsequent uses, as the stack state changes during
+        // block execution.
         for (BlockArgument arg : currentBlock->getArguments()) {
-          emittedToStack.insert(arg);
+          int idx = allocator.getLocalIndex(arg);
+          if (idx >= 0) {
+            // Set the value to local (consumes from stack)
+            LocalSetOp::create(builder, arg.getLoc(),
+                               static_cast<uint32_t>(idx), arg.getType());
+          } else {
+            // No local allocated - this arg is used only once immediately
+            // Keep it on stack by marking as emitted
+            emittedToStack.insert(arg);
+          }
         }
 
         // Emit all operations EXCEPT the terminator
@@ -1211,6 +1258,29 @@ private:
     }
   }
 
+  /// Emit a wasmssa.global_get operation
+  void emitGlobalGet(wasmssa::GlobalGetOp globalGetOp) {
+    Location loc = globalGetOp.getLoc();
+    Value result = globalGetOp.getResult();
+    Type resultType = result.getType();
+
+    // Get the global symbol name
+    FlatSymbolRefAttr globalName = globalGetOp.getGlobalAttr();
+
+    // Emit wasmstack.global.get operation
+    GlobalGetOp::create(builder, loc, globalName, TypeAttr::get(resultType));
+
+    // Handle multi-use values with local.tee
+    if (needsTee.contains(result)) {
+      int idx = allocator.getLocalIndex(result);
+      if (idx >= 0) {
+        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                           resultType);
+      }
+    }
+    emittedToStack.insert(result);
+  }
+
   /// Emit a WasmSSA call operation
   void emitCall(wasmssa::FuncCallOp callOp) {
     Location loc = callOp.getLoc();
@@ -1293,13 +1363,25 @@ public:
     }
 
     // Process from last to first
+    // Skip operations already in stackifiedOps - they were processed when
+    // their user was processed (e.g., add processed via block_return).
     for (auto it = ops.rbegin(); it != ops.rend(); ++it) {
-      processOperation(*it);
+      if (!stackifiedOps.contains(*it))
+        processOperation(*it);
     }
   }
 
   /// Process a single operation, trying to stackify its operands
   void processOperation(Operation *op) {
+    // Recursively process nested regions first.
+    // This ensures block arguments inside control flow (loop, block, if)
+    // are properly analyzed for local allocation.
+    for (Region &region : op->getRegions()) {
+      for (Block &block : region) {
+        processBlock(block);
+      }
+    }
+
     // Process operands left-to-right so that after reordering:
     // - Left operand's definition ends up further from use (pushed first)
     // - Right operand's definition ends up immediately before use (pushed
@@ -1309,7 +1391,11 @@ public:
       Value operand = op->getOperand(i);
       Operation *defOp = operand.getDefiningOp();
 
-      // Block arguments can't be stackified - they need local.get
+      // Block argument - arrives on stack at block entry.
+      // Conservatively allocate a local because:
+      // 1. Multi-use args need locals (first use consumes from stack)
+      // 2. Single-use args may not be in correct stack position
+      // Future optimization: analyze stack order to keep some args on stack.
       if (!defOp) {
         needsLocal.insert(operand);
         continue;
@@ -1341,11 +1427,21 @@ public:
         // Recursively process the moved operation's operands
         processOperation(defOp);
       } else if (shouldRematerialize(defOp)) {
-        // Multi-use rematerializable: move original for first use
-        // (subsequent uses will hit the stackifiedOps check above and clone)
-        defOp->moveBefore(op);
-        stackifiedOps.insert(defOp);
-        processOperation(defOp);
+        // Rematerializable operation (constants, local.get)
+        if (defOp->getBlock() == op->getBlock()) {
+          // Same block - safe to move original for first use
+          // (subsequent uses will hit the stackifiedOps check above and clone)
+          defOp->moveBefore(op);
+          stackifiedOps.insert(defOp);
+          processOperation(defOp);
+        } else {
+          // Different block (e.g., nested region using outer value) - clone
+          OpBuilder builder(op);
+          Operation *clone = builder.clone(*defOp);
+          op->setOperand(i, clone->getResult(0));
+          stackifiedOps.insert(clone);
+          processOperation(clone);
+        }
       } else {
         // Can't stackify directly - check if we can use tee
         // Tee is useful when one use can consume from stack, others from local
@@ -1460,7 +1556,7 @@ public:
       walker.processBlock(entryBlock);
 
       // Get values that need locals or tee
-      const auto &needsLocal = walker.getValuesNeedingLocals();
+      DenseSet<Value> needsLocal = walker.getValuesNeedingLocals();
       const auto &needsTee = walker.getValuesNeedingTee();
 
       // Allocate local indices

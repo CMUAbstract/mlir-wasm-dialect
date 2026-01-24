@@ -27,8 +27,11 @@ module {
   //
   // CHECK-LABEL: wasmstack.func @nested_block_in_loop
   // Verify the structure: outer block containing loop containing nested block
+  // Block params get saved to locals, then loaded for the loop entry
   // CHECK: wasmstack.block @[[OUTER_BLOCK:block_[0-9]+]]
-  // CHECK-NEXT: wasmstack.loop @[[LOOP:loop_[0-9]+]]
+  // CHECK: wasmstack.local.set
+  // CHECK: wasmstack.local.get
+  // CHECK: wasmstack.loop @[[LOOP:loop_[0-9]+]]
   // CHECK: wasmstack.block @[[INNER_BLOCK:block_[0-9]+]]
   // After the inner block completes, the next br should target the loop, not any block
   // CHECK: wasmstack.br @[[LOOP]]
