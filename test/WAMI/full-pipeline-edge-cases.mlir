@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-func --wami-convert-memref --reconcile-unrealized-casts --convert-to-wasmstack -verify-wasmstack 2>&1 | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack -verify-wasmstack 2>&1 | FileCheck %s
 
 // Full pipeline edge case tests: standard MLIR -> WasmSSA -> WasmStack with verification
 // These tests exercise complex patterns that could expose bugs in conversion or verification
