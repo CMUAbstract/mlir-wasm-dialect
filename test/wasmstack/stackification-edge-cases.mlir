@@ -1,5 +1,5 @@
-// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts --convert-to-wasmstack 2>&1 | FileCheck %s
-// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts --convert-to-wasmstack -verify-wasmstack 2>&1 | FileCheck %s --check-prefix=VERIFY
+// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack 2>&1 | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack -verify-wasmstack 2>&1 | FileCheck %s --check-prefix=VERIFY
 
 // Edge cases in stackification: WasmSSA -> WasmStack conversion
 // Tests complex value orderings, multi-use values, and control flow interactions

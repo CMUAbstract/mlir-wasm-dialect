@@ -129,6 +129,16 @@ static bool shouldRematerialize(Operation *op) {
   return false;
 }
 
+/// Recursively collect ALL block arguments from a region and nested regions.
+/// Block arguments need locals because:
+/// 1. They arrive on the stack at block entry, but their position is not
+///    controlled by code motion (unlike operation results).
+/// 2. Multi-use args need locals (first use consumes from stack).
+/// 3. Single-use args may not be in the correct stack position for their use.
+/// The conservative approach is to always use locals for block args.
+static void allocateLocalsForBlockArgs(Region &region,
+                                       DenseSet<Value> &needsLocal);
+
 //===----------------------------------------------------------------------===//
 // Use Count Analysis
 //===----------------------------------------------------------------------===//
@@ -161,6 +171,23 @@ public:
 
   bool hasSingleUse(Value value) const { return getUseCount(value) == 1; }
 };
+
+/// Implementation of allocateLocalsForBlockArgs
+static void allocateLocalsForBlockArgs(Region &region,
+                                       DenseSet<Value> &needsLocal) {
+  for (Block &block : region) {
+    // Add ALL block arguments to needsLocal (conservative but correct)
+    for (BlockArgument arg : block.getArguments()) {
+      needsLocal.insert(arg);
+    }
+    // Recursively process nested regions
+    for (Operation &op : block) {
+      for (Region &nestedRegion : op.getRegions()) {
+        allocateLocalsForBlockArgs(nestedRegion, needsLocal);
+      }
+    }
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // Local Allocation
@@ -309,15 +336,33 @@ public:
       while (currentBlock && !processed.contains(currentBlock)) {
         processed.insert(currentBlock);
 
-        // For the entry block, arguments are function parameters which are
-        // already in locals - no tee needed. Just mark them as available.
-        // For successor blocks (after control flow), arguments represent
-        // values passed via the stack - no tee needed either as they flow
-        // naturally.
-        for (BlockArgument arg : currentBlock->getArguments()) {
-          emittedToStack.insert(arg);
+        if (isEntryBlock) {
+          // For the entry block, arguments are function parameters which are
+          // already in locals - just mark them as available for local.get.
+          for (BlockArgument arg : currentBlock->getArguments()) {
+            emittedToStack.insert(arg);
+          }
+          isEntryBlock = false;
+        } else {
+          // For successor blocks (after control flow), arguments represent
+          // values on the stack. If they have locals allocated (multi-use or
+          // used in nested control flow), emit local.set to save them.
+          // IMPORTANT: Process in REVERSE order because stack is LIFO.
+          auto args = currentBlock->getArguments();
+          for (auto it = args.rbegin(); it != args.rend(); ++it) {
+            BlockArgument arg = *it;
+            int idx = allocator.getLocalIndex(arg);
+            if (idx >= 0) {
+              // Set the value to local (consumes from stack)
+              LocalSetOp::create(builder, arg.getLoc(),
+                                 static_cast<uint32_t>(idx), arg.getType());
+            } else {
+              // No local allocated - this arg is used only once immediately
+              // Keep it on stack by marking as emitted
+              emittedToStack.insert(arg);
+            }
+          }
         }
-        isEntryBlock = false;
 
         // Emit all operations EXCEPT the terminator
         for (Operation &op : currentBlock->without_terminator()) {
@@ -528,6 +573,26 @@ public:
       emitTruncOp(truncSOp, /*isSigned=*/true);
     } else if (auto truncUOp = dyn_cast<wami::TruncUOp>(op)) {
       emitTruncOp(truncUOp, /*isSigned=*/false);
+    }
+    // WAMI select operation
+    else if (auto selectOp = dyn_cast<wami::SelectOp>(op)) {
+      // WebAssembly select stack order: [true_val, false_val, condition]
+      // with condition on top.
+      // Pops: condition (i32), false_val, true_val
+      // Pushes: condition ? true_val : false_val
+      emitOperandIfNeeded(selectOp.getTrueValue());
+      emitOperandIfNeeded(selectOp.getFalseValue());
+      emitOperandIfNeeded(selectOp.getCondition());
+      SelectOp::create(builder, loc, TypeAttr::get(selectOp.getType()));
+
+      if (needsTee.contains(selectOp.getResult())) {
+        int idx = allocator.getLocalIndex(selectOp.getResult());
+        if (idx >= 0) {
+          LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                             selectOp.getType());
+        }
+      }
+      emittedToStack.insert(selectOp.getResult());
     }
     // Global variable operations
     else if (auto globalGetOp = dyn_cast<wasmssa::GlobalGetOp>(op)) {
@@ -804,7 +869,11 @@ private:
         // DON'T mark them as "on stack" - they should be accessed via
         // local.get for subsequent uses, as the stack state changes during
         // block execution.
-        for (BlockArgument arg : currentBlock->getArguments()) {
+        // IMPORTANT: Process in REVERSE order because stack is LIFO - the last
+        // pushed value is on top, so we must pop (local.set) in reverse order.
+        auto args = currentBlock->getArguments();
+        for (auto it = args.rbegin(); it != args.rend(); ++it) {
+          BlockArgument arg = *it;
           int idx = allocator.getLocalIndex(arg);
           if (idx >= 0) {
             // Set the value to local (consumes from stack)
@@ -894,7 +963,11 @@ private:
         // DON'T mark them as "on stack" - they should be accessed via
         // local.get for subsequent uses, as the stack state changes during
         // block execution.
-        for (BlockArgument arg : currentBlock->getArguments()) {
+        // IMPORTANT: Process in REVERSE order because stack is LIFO - the last
+        // pushed value is on top, so we must pop (local.set) in reverse order.
+        auto args = currentBlock->getArguments();
+        for (auto it = args.rbegin(); it != args.rend(); ++it) {
+          BlockArgument arg = *it;
           int idx = allocator.getLocalIndex(arg);
           if (idx >= 0) {
             // Set the value to local (consumes from stack)
@@ -1050,14 +1123,55 @@ private:
       // branch_if %cond to level N with args(...) else ^successor
       // In WebAssembly, br_if: if condition true, branch with args;
       // if false, fall through (args remain on stack).
+      // Stack order must be: [args..., condition] with condition on top.
 
-      // 1. Emit exit args to stack first (they stay if branch not taken)
-      for (Value arg : branchIfOp.getInputs()) {
-        emitOperandIfNeeded(arg);
+      Value condition = branchIfOp.getCondition();
+      bool conditionAlreadyOnStack = emittedToStack.contains(condition);
+
+      if (conditionAlreadyOnStack && !branchIfOp.getInputs().empty()) {
+        // The condition was already emitted to stack (e.g., from a comparison
+        // that was stackified). We need to move it so args can go below it.
+        // Strategy: save condition to a temporary local, emit args, restore
+        // condition.
+
+        // Find or allocate a local for the condition
+        int condIdx = allocator.getLocalIndex(condition);
+        if (condIdx >= 0) {
+          // Condition has a local - save it there
+          LocalSetOp::create(builder, loc, static_cast<uint32_t>(condIdx),
+                             condition.getType());
+          emittedToStack.erase(condition);
+
+          // Emit exit args
+          for (Value arg : branchIfOp.getInputs()) {
+            emitOperandIfNeeded(arg);
+          }
+
+          // Restore condition
+          LocalGetOp::create(builder, loc, static_cast<uint32_t>(condIdx),
+                             condition.getType());
+        } else {
+          // Condition has no local - this shouldn't happen in practice
+          // because TreeWalker allocates locals for values that need them.
+          // Fall back to emitting args then condition (wrong order, but
+          // the verifier will catch this and we can debug).
+          for (Value arg : branchIfOp.getInputs()) {
+            emitOperandIfNeeded(arg);
+          }
+          // Note: Condition is still on stack from before args, which is wrong.
+          // For a proper fix, TreeWalker should ensure conditions for
+          // branch_if with args get locals allocated.
+        }
+      } else {
+        // Standard case: emit args first, then condition
+        // 1. Emit exit args to stack first (they stay if branch not taken)
+        for (Value arg : branchIfOp.getInputs()) {
+          emitOperandIfNeeded(arg);
+        }
+
+        // 2. Emit condition (must be on top of stack for br_if)
+        emitOperandIfNeeded(condition);
       }
-
-      // 2. Emit condition (must be on top of stack for br_if)
-      emitOperandIfNeeded(branchIfOp.getCondition());
 
       // 3. Emit br_if to the exit level
       unsigned exitLevel = branchIfOp.getExitLevel();
@@ -1588,6 +1702,24 @@ public:
       }
     }
 
+    // Special case: branch_if with inputs (args to pass to target block).
+    // WebAssembly requires stack order: [args..., condition] with condition on
+    // top. If we stackify the condition's defining op, it gets emitted before
+    // args, resulting in wrong order: [condition, args...]. To fix this, we
+    // ensure the condition gets a local so it can be reordered during emission.
+    if (auto branchIfOp = dyn_cast<wasmssa::BranchIfOp>(op)) {
+      if (!branchIfOp.getInputs().empty()) {
+        Value condition = branchIfOp.getCondition();
+        Operation *condDefOp = condition.getDefiningOp();
+        // If condition would be stackified (single-use, has defining op),
+        // force it to use a local instead
+        if (condDefOp && useCount.hasSingleUse(condition)) {
+          needsLocal.insert(condition);
+          // Don't return - still process other operands normally
+        }
+      }
+    }
+
     // Process operands left-to-right so that after reordering:
     // - Left operand's definition ends up further from use (pushed first)
     // - Right operand's definition ends up immediately before use (pushed
@@ -1753,7 +1885,8 @@ public:
       if (funcOp.getBody().empty())
         continue;
 
-      // Analyze use counts for the function
+      // Analyze use counts for operation results in the function.
+      // UseCountAnalysis recursively analyzes nested regions (loops, ifs, etc.)
       Block &entryBlock = funcOp.getBody().front();
       UseCountAnalysis useCount(entryBlock);
 
@@ -1764,6 +1897,14 @@ public:
       // Get values that need locals or tee
       DenseSet<Value> needsLocal = walker.getValuesNeedingLocals();
       const auto &needsTee = walker.getValuesNeedingTee();
+
+      // IMPORTANT: TreeWalker processes operations and adds block args to
+      // needsLocal when it encounters them as operands. However, it may miss
+      // some block args (e.g., in function-level successor blocks). To ensure
+      // correctness, we conservatively add ALL block arguments to needsLocal.
+      // Block args arrive on the stack at block entry, but their stack position
+      // is not controlled by code motion, so using locals is the safe approach.
+      allocateLocalsForBlockArgs(funcOp.getBody(), needsLocal);
 
       // Allocate local indices
       LocalAllocator allocator;
