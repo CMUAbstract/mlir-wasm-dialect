@@ -523,6 +523,84 @@ struct ShRUIOpLowering : public OpConversionPattern<arith::ShRUIOp> {
   }
 };
 
+//===----------------------------------------------------------------------===//
+// Float/Int Conversion Operation Lowerings
+//===----------------------------------------------------------------------===//
+
+// arith.sitofp: signed int to float
+// Maps to wasmssa.convert_s (WebAssembly f32.convert_i32_s, etc.)
+struct SIToFPOpLowering : public OpConversionPattern<arith::SIToFPOp> {
+  using OpConversionPattern<arith::SIToFPOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::SIToFPOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<wasmssa::ConvertSOp>(op, resultType,
+                                                     adaptor.getIn());
+    return success();
+  }
+};
+
+// arith.uitofp: unsigned int to float
+// Maps to wasmssa.convert_u (WebAssembly f32.convert_i32_u, etc.)
+struct UIToFPOpLowering : public OpConversionPattern<arith::UIToFPOp> {
+  using OpConversionPattern<arith::UIToFPOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::UIToFPOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type resultType = getTypeConverter()->convertType(op.getResult().getType());
+    rewriter.replaceOpWithNewOp<wasmssa::ConvertUOp>(op, resultType,
+                                                     adaptor.getIn());
+    return success();
+  }
+};
+
+// arith.extf: f32 to f64 (promote)
+// Maps to wasmssa.promote (WebAssembly f64.promote_f32)
+struct ExtFOpLowering : public OpConversionPattern<arith::ExtFOp> {
+  using OpConversionPattern<arith::ExtFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ExtFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getIn().getType();
+    Type dstType = getTypeConverter()->convertType(op.getResult().getType());
+
+    // f32 to f64 promotion
+    if (srcType.isF32() && dstType.isF64()) {
+      rewriter.replaceOpWithNewOp<wasmssa::PromoteOp>(op, dstType,
+                                                      adaptor.getIn());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(op, "unsupported float extension");
+  }
+};
+
+// arith.truncf: f64 to f32 (demote)
+// Maps to wasmssa.demote (WebAssembly f32.demote_f64)
+struct TruncFOpLowering : public OpConversionPattern<arith::TruncFOp> {
+  using OpConversionPattern<arith::TruncFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::TruncFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getIn().getType();
+    Type dstType = getTypeConverter()->convertType(op.getResult().getType());
+
+    // f64 to f32 demotion
+    if (srcType.isF64() && dstType.isF32()) {
+      rewriter.replaceOpWithNewOp<wasmssa::DemoteOp>(op, dstType,
+                                                     adaptor.getIn());
+      return success();
+    }
+
+    return rewriter.notifyMatchFailure(op, "unsupported float truncation");
+  }
+};
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -534,16 +612,17 @@ void populateWAMIConvertArithPatterns(TypeConverter &typeConverter,
   MLIRContext *context = patterns.getContext();
 
   // Arithmetic operations
-  patterns.add<AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
-               MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
-               DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
-               OrIOpLowering, XOrIOpLowering, MinimumFOpLowering,
-               MaximumFOpLowering, MinNumFOpLowering, MaxNumFOpLowering,
-               ConstantOpLowering, CmpIOpLowering, CmpFOpLowering,
-               ShLIOpLowering, ShRSIOpLowering, ShRUIOpLowering,
-               ExtUIOpLowering, ExtSIOpLowering, TruncIOpLowering,
-               IndexCastOpLowering, IndexCastUIOpLowering, SelectOpLowering>(
-      typeConverter, context);
+  patterns.add<
+      AddIOpLowering, AddFOpLowering, SubIOpLowering, SubFOpLowering,
+      MulIOpLowering, MulFOpLowering, DivSIOpLowering, DivUIOpLowering,
+      DivFOpLowering, RemSIOpLowering, RemUIOpLowering, AndIOpLowering,
+      OrIOpLowering, XOrIOpLowering, MinimumFOpLowering, MaximumFOpLowering,
+      MinNumFOpLowering, MaxNumFOpLowering, ConstantOpLowering, CmpIOpLowering,
+      CmpFOpLowering, ShLIOpLowering, ShRSIOpLowering, ShRUIOpLowering,
+      ExtUIOpLowering, ExtSIOpLowering, TruncIOpLowering, IndexCastOpLowering,
+      IndexCastUIOpLowering, SelectOpLowering, SIToFPOpLowering,
+      UIToFPOpLowering, ExtFOpLowering, TruncFOpLowering>(typeConverter,
+                                                          context);
 }
 
 } // namespace mlir::wami
