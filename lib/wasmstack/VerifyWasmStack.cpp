@@ -203,14 +203,19 @@ LogicalResult StackVerifier::popControlFrame() {
   // If not unreachable, verify stack matches expected results
   if (!frame.unreachable && !unreachable) {
     // Check we have exactly the result types on stack
-    if (failed(checkStackHeight(frame.resultTypes.size(), "frame exit")))
-      return failure();
+    size_t frameBase = frame.stackHeightAtEntry;
+    size_t actualHeight = valueStack.size() - frameBase;
+    if (actualHeight != frame.resultTypes.size()) {
+      return frame.op->emitError(
+                 "stack height mismatch at frame exit: expected ")
+             << frame.resultTypes.size() << " values but got " << actualHeight;
+    }
 
     // Verify result types (but don't actually pop yet)
     for (size_t i = 0; i < frame.resultTypes.size(); ++i) {
       size_t stackIdx = valueStack.size() - frame.resultTypes.size() + i;
       if (valueStack[stackIdx] != frame.resultTypes[i]) {
-        return emitError("frame result type mismatch at index ")
+        return frame.op->emitError("frame result type mismatch at index ")
                << i << ": expected " << frame.resultTypes[i] << " but got "
                << valueStack[stackIdx];
       }
