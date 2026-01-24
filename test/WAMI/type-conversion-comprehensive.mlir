@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts --convert-to-wasmstack -verify-wasmstack 2>&1 | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts --convert-to-wasmstack -verify-wasmstack 2>&1 | FileCheck %s
 
 // Comprehensive tests for type conversions through the full pipeline
 // Tests integer/float conversions, extensions, truncations, and casts
