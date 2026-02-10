@@ -13,6 +13,7 @@ set(WASM_TEST_DEPENDS
         FileCheck count not
         wasm-opt
         wasm-translate
+        wasm-emit
         )
 if(MLIR_ENABLE_BINDINGS_PYTHON)
   list(APPEND WASM_TEST_DEPENDS WasmPythonModules)
