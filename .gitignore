@@ -2,4 +2,5 @@ build/
 tmp_*
 .DS_Store
 .vscode
+.envrc
 CLAUDE.md
