@@ -127,4 +127,67 @@ uint32_t IndexSpace::getMemoryIndex(llvm::StringRef name) const {
   return it->second;
 }
 
+void IndexSpace::buildSymbolTable(Operation *moduleOp) {
+  symbols.clear();
+  symbolIndexMap.clear();
+
+  // Functions first
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto funcOp = dyn_cast<FuncOp>(op)) {
+      SymbolInfo sym;
+      sym.kind = wasm::SymtabKind::Function;
+      sym.name = funcOp.getSymName().str();
+      sym.elementIndex = getFuncIndex(funcOp.getSymName());
+      sym.flags = 0;
+      if (funcOp.getExportName())
+        sym.flags |= wasm::WASM_SYMBOL_EXPORTED;
+      uint32_t idx = symbols.size();
+      symbolIndexMap[sym.name] = idx;
+      symbols.push_back(std::move(sym));
+    }
+  }
+
+  // Globals second
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto globalOp = dyn_cast<GlobalOp>(op)) {
+      SymbolInfo sym;
+      sym.kind = wasm::SymtabKind::Global;
+      sym.name = globalOp.getSymName().str();
+      sym.elementIndex = getGlobalIndex(globalOp.getSymName());
+      sym.flags = 0;
+      if (globalOp.getExportName())
+        sym.flags |= wasm::WASM_SYMBOL_EXPORTED;
+      uint32_t idx = symbols.size();
+      symbolIndexMap[sym.name] = idx;
+      symbols.push_back(std::move(sym));
+    }
+  }
+
+  // Data segments third
+  uint32_t segmentIndex = 0;
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto dataOp = dyn_cast<DataOp>(op)) {
+      SymbolInfo sym;
+      sym.kind = wasm::SymtabKind::Data;
+      // Use a synthetic name for data segments
+      sym.name = (".data." + llvm::Twine(segmentIndex)).str();
+      sym.elementIndex = 0;
+      sym.flags = wasm::WASM_SYMBOL_BINDING_LOCAL;
+      sym.segment = segmentIndex;
+      sym.offset = 0;
+      sym.size = dataOp.getData().size();
+      uint32_t idx = symbols.size();
+      symbolIndexMap[sym.name] = idx;
+      symbols.push_back(std::move(sym));
+      segmentIndex++;
+    }
+  }
+}
+
+uint32_t IndexSpace::getSymbolIndex(llvm::StringRef name) const {
+  auto it = symbolIndexMap.find(name);
+  assert(it != symbolIndexMap.end() && "symbol not found in symbol table");
+  return it->second;
+}
+
 } // namespace mlir::wasmstack

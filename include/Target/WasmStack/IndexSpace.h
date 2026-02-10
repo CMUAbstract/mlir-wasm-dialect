@@ -10,6 +10,7 @@
 #ifndef TARGET_WASMSTACK_INDEXSPACE_H
 #define TARGET_WASMSTACK_INDEXSPACE_H
 
+#include "Target/WasmStack/WasmBinaryConstants.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -74,6 +75,27 @@ public:
     return memoryNames;
   }
 
+  /// Symbol information for the linking section symbol table.
+  struct SymbolInfo {
+    wasm::SymtabKind kind;
+    std::string name;
+    uint32_t elementIndex; // index in its wasm index space
+    uint32_t flags;        // WASM_SYMBOL_* flags
+    // Data symbols only:
+    uint32_t segment = 0; // data segment index
+    uint32_t offset = 0;  // offset within segment
+    uint32_t size = 0;    // data size
+  };
+
+  /// Build the symbol table (call after analyze()).
+  void buildSymbolTable(Operation *moduleOp);
+
+  /// Get the symbol index for a given name.
+  uint32_t getSymbolIndex(llvm::StringRef name) const;
+
+  /// Get all symbols in order.
+  const llvm::SmallVector<SymbolInfo> &getSymbols() const { return symbols; }
+
 private:
   /// De-duplicated type signatures.
   llvm::SmallVector<FuncSig> types;
@@ -89,6 +111,10 @@ private:
   /// Memory name -> index mapping.
   llvm::StringMap<uint32_t> memoryIndexMap;
   llvm::SmallVector<std::string> memoryNames;
+
+  /// Symbol table for linking section.
+  llvm::SmallVector<SymbolInfo> symbols;
+  llvm::StringMap<uint32_t> symbolIndexMap;
 };
 
 } // namespace mlir::wasmstack

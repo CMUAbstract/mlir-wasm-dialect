@@ -18,8 +18,19 @@
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "wasmstack/WasmStackDialect.h"
 #include "wasmstack/WasmStackOps.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace mlir;
+
+static llvm::cl::opt<bool>
+    relocatable("relocatable",
+                llvm::cl::desc("Emit relocatable object file (.o) instead of "
+                               "standalone binary"),
+                llvm::cl::init(false));
+
+static llvm::cl::alias
+    relocatableAlias("r", llvm::cl::desc("Alias for --relocatable"),
+                     llvm::cl::aliasopt(relocatable));
 
 int main(int argc, char **argv) {
   registerAllTranslations();
@@ -27,7 +38,7 @@ int main(int argc, char **argv) {
   TranslateFromMLIRRegistration registration(
       "mlir-to-wasm", "emit WasmStack dialect to WebAssembly binary",
       [](ModuleOp module, raw_ostream &output) {
-        return wasmstack::emitWasmBinary(module, output);
+        return wasmstack::emitWasmBinary(module, output, relocatable);
       },
       [](DialectRegistry &registry) {
         registry.insert<wasmstack::WasmStackDialect>();

@@ -15,9 +15,12 @@
 namespace mlir::wasmstack {
 
 /// Emit a WasmStack module as a WebAssembly binary (.wasm) to the given stream.
+/// When relocatable is true, emits a relocatable object file (.o) with
+/// linking and relocation custom sections for use with wasm-ld.
 /// Returns success/failure.
 mlir::LogicalResult emitWasmBinary(Operation *moduleOp,
-                                   llvm::raw_ostream &output);
+                                   llvm::raw_ostream &output,
+                                   bool relocatable = false);
 
 } // namespace mlir::wasmstack
 

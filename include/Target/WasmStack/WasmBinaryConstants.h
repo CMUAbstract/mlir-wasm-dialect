@@ -295,6 +295,41 @@ constexpr uint8_t RefFunc = 0xD2;
 
 } // namespace Opcode
 
+// Relocation types (used in "reloc.*" custom sections)
+enum class RelocType : uint8_t {
+  R_WASM_FUNCTION_INDEX_LEB = 0,
+  R_WASM_TABLE_INDEX_SLEB = 1,
+  R_WASM_MEMORY_ADDR_SLEB = 4,
+  R_WASM_MEMORY_ADDR_I32 = 5,
+  R_WASM_TYPE_INDEX_LEB = 6,
+  R_WASM_GLOBAL_INDEX_LEB = 7,
+};
+
+// Symbol table kinds (in linking section WASM_SYMBOL_TABLE subsection)
+enum class SymtabKind : uint8_t {
+  Function = 0,
+  Data = 1,
+  Global = 2,
+  Section = 3,
+};
+
+// Symbol flags
+constexpr uint32_t WASM_SYMBOL_BINDING_LOCAL = 0x02;
+constexpr uint32_t WASM_SYMBOL_VISIBILITY_HIDDEN = 0x04;
+constexpr uint32_t WASM_SYMBOL_EXPORTED = 0x20;
+constexpr uint32_t WASM_SYMBOL_EXPLICIT_NAME = 0x40;
+
+// Linking subsection types
+enum class LinkingSubsection : uint8_t {
+  WASM_SEGMENT_INFO = 5,
+  WASM_INIT_FUNCS = 6,
+  WASM_COMDAT_INFO = 7,
+  WASM_SYMBOL_TABLE = 8,
+};
+
+// Linking metadata version
+constexpr uint32_t WasmMetadataVersion = 2;
+
 } // namespace mlir::wasmstack::wasm
 
 #endif // TARGET_WASMSTACK_WASMBINARYCONSTANTS_H
