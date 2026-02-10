@@ -65,6 +65,16 @@ public:
     buffer.push_back((value >> 28) & 0x0F);
   }
 
+  /// Write 5-byte fixed-size signed LEB128 (for relocation slots).
+  void writeFixedSLEB128(int32_t value) {
+    uint32_t uval = static_cast<uint32_t>(value);
+    buffer.push_back((uval & 0x7F) | 0x80);
+    buffer.push_back(((uval >> 7) & 0x7F) | 0x80);
+    buffer.push_back(((uval >> 14) & 0x7F) | 0x80);
+    buffer.push_back(((uval >> 21) & 0x7F) | 0x80);
+    buffer.push_back((uval >> 28) & 0x0F);
+  }
+
   /// Write IEEE 754 f32 in little-endian.
   void writeF32(float value) {
     uint32_t bits;

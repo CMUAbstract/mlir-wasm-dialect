@@ -11,6 +11,7 @@
 
 #include "Target/WasmStack/BinaryWriter.h"
 #include "Target/WasmStack/IndexSpace.h"
+#include "Target/WasmStack/RelocationTracker.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -25,8 +26,11 @@ namespace mlir::wasmstack {
 /// indices.
 class OpcodeEmitter {
 public:
-  OpcodeEmitter(BinaryWriter &writer, IndexSpace &indexSpace)
-      : writer(writer), indexSpace(indexSpace) {}
+  OpcodeEmitter(BinaryWriter &writer, IndexSpace &indexSpace,
+                RelocationTracker *tracker = nullptr,
+                uint32_t sectionOffset = 0)
+      : writer(writer), indexSpace(indexSpace), tracker(tracker),
+        sectionOffset(sectionOffset) {}
 
   /// Emit all operations in a function body (excluding the function frame).
   /// Returns true on success.
@@ -69,6 +73,8 @@ private:
 
   BinaryWriter &writer;
   IndexSpace &indexSpace;
+  RelocationTracker *tracker;
+  uint32_t sectionOffset;
 
   /// Label stack: (label_name, is_loop) pairs.
   /// Labels are pushed when entering block/loop/if and popped on exit.
