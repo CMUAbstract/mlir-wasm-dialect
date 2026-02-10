@@ -171,13 +171,29 @@ bool OpcodeEmitter::emitGlobalOp(Operation *op) {
   if (auto globalGet = dyn_cast<GlobalGetOp>(op)) {
     writer.writeByte(wc::Opcode::GlobalGet);
     uint32_t idx = indexSpace.getGlobalIndex(globalGet.getGlobal());
-    writer.writeULEB128(idx);
+    if (tracker) {
+      uint32_t symIdx = indexSpace.getSymbolIndex(globalGet.getGlobal());
+      tracker->addCodeRelocation(
+          static_cast<uint8_t>(wc::RelocType::R_WASM_GLOBAL_INDEX_LEB),
+          sectionOffset + writer.offset(), symIdx);
+      writer.writeFixedULEB128(idx);
+    } else {
+      writer.writeULEB128(idx);
+    }
     return true;
   }
   if (auto globalSet = dyn_cast<GlobalSetOp>(op)) {
     writer.writeByte(wc::Opcode::GlobalSet);
     uint32_t idx = indexSpace.getGlobalIndex(globalSet.getGlobal());
-    writer.writeULEB128(idx);
+    if (tracker) {
+      uint32_t symIdx = indexSpace.getSymbolIndex(globalSet.getGlobal());
+      tracker->addCodeRelocation(
+          static_cast<uint8_t>(wc::RelocType::R_WASM_GLOBAL_INDEX_LEB),
+          sectionOffset + writer.offset(), symIdx);
+      writer.writeFixedULEB128(idx);
+    } else {
+      writer.writeULEB128(idx);
+    }
     return true;
   }
   return false;
@@ -931,7 +947,15 @@ bool OpcodeEmitter::emitCallOp(Operation *op) {
   if (auto callOp = dyn_cast<CallOp>(op)) {
     writer.writeByte(wc::Opcode::Call);
     uint32_t funcIdx = indexSpace.getFuncIndex(callOp.getCallee());
-    writer.writeULEB128(funcIdx);
+    if (tracker) {
+      uint32_t symIdx = indexSpace.getSymbolIndex(callOp.getCallee());
+      tracker->addCodeRelocation(
+          static_cast<uint8_t>(wc::RelocType::R_WASM_FUNCTION_INDEX_LEB),
+          sectionOffset + writer.offset(), symIdx);
+      writer.writeFixedULEB128(funcIdx);
+    } else {
+      writer.writeULEB128(funcIdx);
+    }
     return true;
   }
   if (auto callIndirectOp = dyn_cast<CallIndirectOp>(op)) {
@@ -944,7 +968,14 @@ bool OpcodeEmitter::emitCallOp(Operation *op) {
     for (Type t : funcType.getResults())
       sig.results.push_back(t);
     uint32_t typeIdx = indexSpace.getTypeIndex(sig);
-    writer.writeULEB128(typeIdx);
+    if (tracker) {
+      tracker->addCodeRelocation(
+          static_cast<uint8_t>(wc::RelocType::R_WASM_TYPE_INDEX_LEB),
+          sectionOffset + writer.offset(), typeIdx);
+      writer.writeFixedULEB128(typeIdx);
+    } else {
+      writer.writeULEB128(typeIdx);
+    }
     writer.writeByte(0x00); // table index 0
     return true;
   }
