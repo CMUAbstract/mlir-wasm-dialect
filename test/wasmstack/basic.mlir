@@ -47,6 +47,7 @@ wasmstack.module @test_module {
 
   // CHECK-LABEL: wasmstack.func @loop_example
   wasmstack.func @loop_example : (i32) -> i32 {
+    wasmstack.local 1 : i32
     // Initialize sum to 0
     wasmstack.i32.const 0
     wasmstack.local.set 1 : i32

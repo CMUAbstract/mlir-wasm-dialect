@@ -56,6 +56,7 @@ tools = [
     "mlir-opt",
     "wasm-opt",
     "wasm-translate",
+    "wasm-emit",
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
