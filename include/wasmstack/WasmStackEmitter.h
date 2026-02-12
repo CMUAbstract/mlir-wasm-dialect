@@ -39,7 +39,7 @@ class WasmStackEmitter {
   /// Counter for generating unique labels (member variable to avoid static)
   unsigned labelCounter = 0;
 
-  /// Stack of labels for control flow structures
+  /// Stack of labels for control flow structures (block/loop/if)
   /// Each entry is (label, isLoop) - isLoop determines branch behavior
   SmallVector<std::pair<std::string, bool>> labelStack;
 
@@ -56,6 +56,10 @@ public:
 
   /// Emit a single operation
   void emitOperation(Operation *op);
+
+  /// Emit operation and drop stack-resident results when all SSA results are
+  /// unused.
+  void emitOperationAndDropUnused(Operation *op);
 
 private:
   /// Emit a constant operation

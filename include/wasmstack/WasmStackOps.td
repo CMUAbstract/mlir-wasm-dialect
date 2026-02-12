@@ -717,7 +717,8 @@ def WasmStack_LoopOp : WasmStack_Op<"loop", [
 
 def WasmStack_IfOp : WasmStack_Op<"if", [
     SingleBlock,
-    NoTerminator
+    NoTerminator,
+    DeclareOpInterfaceMethods<WasmLabelOpInterface>
 ]> {
   let summary = "Conditional block";
   let description = [{
@@ -730,12 +731,13 @@ def WasmStack_IfOp : WasmStack_Op<"if", [
   }];
 
   let arguments = (ins
+    OptionalAttr<SymbolNameAttr>:$label,
     TypeArrayAttr:$param_types,
     TypeArrayAttr:$result_types
   );
   let regions = (region SizedRegion<1>:$then_body, AnyRegion:$else_body);
 
-  let assemblyFormat = "`:` `(` $param_types `)` `->` $result_types attr-dict-with-keyword `then` $then_body (`else` $else_body^)?";
+  let assemblyFormat = "`:` `(` $param_types `)` `->` $result_types `then` $then_body (`else` $else_body^)? attr-dict";
 
   let extraClassDeclaration = [{
     // +1 for the implicit i32 condition
@@ -757,7 +759,7 @@ def WasmStack_IfOp : WasmStack_Op<"if", [
 def WasmStack_BrOp : WasmStack_Op<"br"> {
   let summary = "Unconditional branch";
   let description = [{
-    Unconditional branch to a block/loop label. NOT a terminator in MLIR sense
+    Unconditional branch to a block/loop/if label. NOT a terminator in MLIR sense
     since wasmstack uses NoTerminator regions.
   }];
 
@@ -776,6 +778,7 @@ def WasmStack_BrIfOp : WasmStack_Op<"br_if"> {
   let summary = "Conditional branch";
   let description = [{
     Conditional branch. Pops an i32; if non-zero, branches to target.
+    Targets can be block/loop/if labels.
     NOT a terminator - execution can fall through if condition is false.
   }];
 
