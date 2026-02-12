@@ -93,11 +93,11 @@ private:
 
   /// Emit a comparison operation (2 inputs, 1 i32 output)
   template <typename WasmStackOp>
-  void emitCompareOp(Operation *srcOp, Value lhs, Value rhs);
+  void emitCompareOp(Operation *srcOp, Value lhs, Value rhs, Value result);
 
   /// Emit a test operation (1 input, 1 i32 output)
   template <typename WasmStackOp>
-  void emitTestOp(Operation *srcOp, Value input);
+  void emitTestOp(Operation *srcOp, Value input, Value result);
 
   /// Emit a unary operation (1 input, 1 output of same type)
   template <typename WasmStackOp>
@@ -141,6 +141,12 @@ private:
 
   /// Emit a WasmSSA call operation
   void emitCall(wasmssa::FuncCallOp callOp);
+
+  /// Materialize an operation result according to stackification policy:
+  /// - `needsTee`: keep value on stack and mirror to local
+  /// - local without `needsTee`: spill to local and keep stack clean
+  /// - no local: keep value on stack
+  void materializeResult(Location loc, Value result);
 };
 
 } // namespace mlir::wasmstack

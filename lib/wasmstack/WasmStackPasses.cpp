@@ -13,6 +13,7 @@
 
 #include "wasmstack/WasmStackPasses.h"
 #include "WAMI/WAMIDialect.h"
+#include "WAMI/WAMIOps.h"
 #include "wasmstack/LocalAllocator.h"
 #include "wasmstack/StackificationAnalysis.h"
 #include "wasmstack/TreeWalker.h"
@@ -24,6 +25,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/Twine.h"
 
 namespace mlir::wasmstack {
 
@@ -92,6 +94,28 @@ public:
     if (importsToConvert.empty() && funcsToConvert.empty())
       return;
 
+    // Emit a default linear memory when memory ops or malloc/free runtime
+    // imports are present.
+    bool needsLinearMemory = false;
+    for (auto importOp : importsToConvert) {
+      StringRef symName = importOp.getSymName();
+      if (symName == "malloc" || symName == "free") {
+        needsLinearMemory = true;
+        break;
+      }
+    }
+
+    if (!needsLinearMemory) {
+      for (auto funcOp : funcsToConvert) {
+        funcOp.walk([&](Operation *nestedOp) {
+          if (isa<wami::LoadOp, wami::StoreOp>(nestedOp))
+            needsLinearMemory = true;
+        });
+        if (needsLinearMemory)
+          break;
+      }
+    }
+
     // Create builder for emitting new operations
     OpBuilder builder(ctx);
     builder.setInsertionPointToEnd(module.getBody());
@@ -102,6 +126,26 @@ public:
     if (wasmModule.getBody().empty())
       wasmModule.getBody().push_back(new Block());
     builder.setInsertionPointToEnd(&wasmModule.getBody().front());
+
+    if (needsLinearMemory) {
+      std::string memorySym = "__linear_memory";
+      auto symbolIsTaken = [&](StringRef name) {
+        for (auto importOp : importsToConvert)
+          if (importOp.getSymName() == name)
+            return true;
+        for (auto funcOp : funcsToConvert)
+          if (funcOp.getSymName() == name)
+            return true;
+        return false;
+      };
+      for (unsigned suffix = 0; symbolIsTaken(memorySym); ++suffix)
+        memorySym = ("__linear_memory_" + llvm::Twine(suffix + 1)).str();
+
+      wasmstack::MemoryOp::create(builder, module.getLoc(),
+                                  builder.getStringAttr(memorySym),
+                                  builder.getI32IntegerAttr(1), IntegerAttr(),
+                                  builder.getStringAttr("memory"));
+    }
 
     // Preserve wasmssa.import_func as wasmstack.import_func declarations.
     for (wasmssa::FuncImportOp importOp : importsToConvert) {
@@ -129,7 +173,24 @@ public:
 
       // Get values that need locals or tee
       DenseSet<Value> needsLocal = walker.getValuesNeedingLocals();
-      const auto &needsTee = walker.getValuesNeedingTee();
+      DenseSet<Value> needsTee = walker.getValuesNeedingTee();
+
+      // Enforce local-backed values for control-flow interface operands so
+      // emitter can materialize them deterministically in operand order.
+      funcOp.walk([&](wasmssa::BlockReturnOp blockReturnOp) {
+        for (Value v : blockReturnOp.getInputs()) {
+          needsTee.erase(v);
+          needsLocal.insert(v);
+        }
+      });
+      funcOp.walk([&](wasmssa::BranchIfOp branchIfOp) {
+        needsTee.erase(branchIfOp.getCondition());
+        needsLocal.insert(branchIfOp.getCondition());
+        for (Value v : branchIfOp.getInputs()) {
+          needsTee.erase(v);
+          needsLocal.insert(v);
+        }
+      });
 
       // IMPORTANT: TreeWalker processes operations and adds block args to
       // needsLocal when it encounters them as operands. However, it may miss
