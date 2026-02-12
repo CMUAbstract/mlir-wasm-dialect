@@ -1,21 +1,36 @@
-# Interpreter
+# Wasmtime Executor
 
-Simple WebAssembly interpreter to test and debug wasm files.
-For now, we use a hard-coded input from MNIST dataset.
+Deterministic WebAssembly runner used by integration tests and benchmarks.
 
 ## Usage
-To test wasm/wat files produced from the `convert-to-wasm` pass, run the following:
-```
-cargo run -- -i <filename>
-```
-To test wasm/wat files produced from the LLVM backend, run the following:
-```
-cargo run -- -i <filename> --indirect-tensor-pointer
-```
-`<filename>` can be a path to either a `.wasm` or `.wat` file.
 
-## Debugging
-This interpreter implements host-side functions `log_i32` and `log_f32` to make
-debugging wasm code easier.
-The wasm/wat code may import these functions (from `env`) and use them to print
-stack values.
+```bash
+cargo run -- --input <file.wasm> --expect-i32 <value>
+```
+
+### Options
+
+- `--input <path>`: wasm module file path.
+- `--entry <symbol>`: entry function name (default: `main`).
+- `--expect-i32 <value>`: expected return value for `() -> i32` entry.
+- `--iterations <N>`: measured iterations (default: `1`).
+- `--warmup <N>`: warmup iterations (default: `0`).
+- `--quiet`: suppress non-essential text output.
+- `--json`: emit one-line JSON report.
+
+## Exit Codes
+
+- `0`: success.
+- `2`: module load/instantiation error.
+- `3`: entry function not found.
+- `4`: invalid args or signature mismatch.
+- `5`: runtime trap.
+- `6`: expected result mismatch.
+
+## Host Imports
+
+The runner provides host functions from `env`:
+
+- `malloc(i32) -> i32`
+- `free(i32) -> ()`
+- `print_i32(i32) -> ()`
