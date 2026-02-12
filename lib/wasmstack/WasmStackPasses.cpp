@@ -24,6 +24,7 @@
 
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/Twine.h"
@@ -117,6 +118,105 @@ static SmallVector<Value> getFilteredTeeOrder(const StackificationPlan &plan) {
   return filtered;
 }
 
+static LogicalResult emitGlobalConstExpr(wasmssa::ConstOp constOp,
+                                         OpBuilder &builder) {
+  Location loc = constOp.getLoc();
+  Type resultType = constOp.getResult().getType();
+  Attribute value = constOp.getValueAttr();
+
+  if (resultType.isInteger(32)) {
+    auto intVal = cast<IntegerAttr>(value).getInt();
+    wasmstack::I32ConstOp::create(
+        builder, loc, builder.getI32IntegerAttr(static_cast<int32_t>(intVal)));
+    return success();
+  }
+  if (resultType.isInteger(64)) {
+    auto intVal = cast<IntegerAttr>(value).getInt();
+    wasmstack::I64ConstOp::create(builder, loc,
+                                  builder.getI64IntegerAttr(intVal));
+    return success();
+  }
+  if (resultType.isF32()) {
+    auto floatVal = cast<FloatAttr>(value).getValueAsDouble();
+    wasmstack::F32ConstOp::create(
+        builder, loc, builder.getF32FloatAttr(static_cast<float>(floatVal)));
+    return success();
+  }
+  if (resultType.isF64()) {
+    auto floatVal = cast<FloatAttr>(value).getValueAsDouble();
+    wasmstack::F64ConstOp::create(builder, loc,
+                                  builder.getF64FloatAttr(floatVal));
+    return success();
+  }
+
+  constOp.emitError("unsupported wasmssa.const type in global initializer: ")
+      << resultType;
+  return failure();
+}
+
+static LogicalResult lowerGlobalInitializer(wasmssa::GlobalOp srcGlobal,
+                                            wasmstack::GlobalOp dstGlobal,
+                                            OpBuilder &builder) {
+  Region &srcInit = srcGlobal.getInitializer();
+  if (srcInit.empty()) {
+    srcGlobal.emitError("expected non-empty initializer region");
+    return failure();
+  }
+  Region &dstInit = dstGlobal.getInit();
+  if (dstInit.empty())
+    dstInit.push_back(new Block());
+
+  builder.setInsertionPointToEnd(&dstInit.front());
+
+  bool sawReturn = false;
+  for (Operation &op : srcInit.front()) {
+    if (auto constOp = dyn_cast<wasmssa::ConstOp>(op)) {
+      if (failed(emitGlobalConstExpr(constOp, builder)))
+        return failure();
+      continue;
+    }
+    if (auto globalGetOp = dyn_cast<wasmssa::GlobalGetOp>(op)) {
+      wasmstack::GlobalGetOp::create(
+          builder, globalGetOp.getLoc(), globalGetOp.getGlobalAttr(),
+          TypeAttr::get(globalGetOp.getResult().getType()));
+      continue;
+    }
+    if (auto returnOp = dyn_cast<wasmssa::ReturnOp>(op)) {
+      if (returnOp.getNumOperands() != 1) {
+        returnOp.emitError(
+            "wasmssa.global initializer return must have exactly one operand");
+        return failure();
+      }
+      sawReturn = true;
+      continue;
+    }
+
+    op.emitError("unsupported operation in wasmssa.global initializer for "
+                 "convert-to-wasmstack");
+    return failure();
+  }
+
+  if (!sawReturn) {
+    srcGlobal.emitError(
+        "wasmssa.global initializer must end with wasmssa.return");
+    return failure();
+  }
+  return success();
+}
+
+static FailureOr<StringAttr> getDataBytesAttr(wami::DataOp dataOp,
+                                              OpBuilder &builder) {
+  auto denseData = dyn_cast<DenseElementsAttr>(dataOp.getValue());
+  if (!denseData) {
+    dataOp.emitError("wami.data requires dense elements for conversion to "
+                     "wasmstack.data");
+    return failure();
+  }
+
+  ArrayRef<char> rawData = denseData.getRawData();
+  return builder.getStringAttr(StringRef(rawData.data(), rawData.size()));
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -178,12 +278,21 @@ public:
     for (auto funcOp : module.getOps<wasmssa::FuncOp>())
       funcsToConvert.push_back(funcOp);
 
-    if (importsToConvert.empty() && funcsToConvert.empty())
+    SmallVector<wasmssa::GlobalOp> globalsToConvert;
+    for (auto globalOp : module.getOps<wasmssa::GlobalOp>())
+      globalsToConvert.push_back(globalOp);
+
+    SmallVector<wami::DataOp> dataToConvert;
+    for (auto dataOp : module.getOps<wami::DataOp>())
+      dataToConvert.push_back(dataOp);
+
+    if (importsToConvert.empty() && funcsToConvert.empty() &&
+        globalsToConvert.empty() && dataToConvert.empty())
       return;
 
     // Emit a default linear memory when memory ops or malloc/free runtime
     // imports are present.
-    bool needsLinearMemory = false;
+    bool needsLinearMemory = !dataToConvert.empty();
     for (auto importOp : importsToConvert) {
       StringRef symName = importOp.getSymName();
       if (symName == "malloc" || symName == "free") {
@@ -214,14 +323,21 @@ public:
       wasmModule.getBody().push_back(new Block());
     builder.setInsertionPointToEnd(&wasmModule.getBody().front());
 
+    std::string memorySym;
     if (needsLinearMemory) {
-      std::string memorySym = "__linear_memory";
+      memorySym = "__linear_memory";
       auto symbolIsTaken = [&](StringRef name) {
         for (auto importOp : importsToConvert)
           if (importOp.getSymName() == name)
             return true;
         for (auto funcOp : funcsToConvert)
           if (funcOp.getSymName() == name)
+            return true;
+        for (auto globalOp : globalsToConvert)
+          if (globalOp.getSymName() == name)
+            return true;
+        for (auto dataOp : dataToConvert)
+          if (dataOp.getSymName() == name)
             return true;
         return false;
       };
@@ -241,6 +357,25 @@ public:
           importOp.getModuleNameAttr(), importOp.getImportNameAttr(),
           TypeAttr::get(importOp.getType()));
       importOp.erase();
+    }
+
+    for (wasmssa::GlobalOp globalOp : globalsToConvert) {
+      StringAttr exportNameAttr;
+      if (globalOp.getExported())
+        exportNameAttr = builder.getStringAttr(globalOp.getSymName());
+
+      auto newGlobal = wasmstack::GlobalOp::create(
+          builder, globalOp.getLoc(), globalOp.getSymName(), globalOp.getType(),
+          globalOp.getIsMutable(), exportNameAttr);
+
+      if (failed(lowerGlobalInitializer(globalOp, newGlobal, builder))) {
+        signalPassFailure();
+        return;
+      }
+
+      // Restore insertion point to module body after emitting init region.
+      builder.setInsertionPointToEnd(&wasmModule.getBody().front());
+      globalOp.erase();
     }
 
     // Process each WasmSSA function
@@ -291,6 +426,26 @@ public:
 
       // Remove the original WasmSSA function
       funcOp.erase();
+    }
+
+    if (!dataToConvert.empty() && memorySym.empty()) {
+      module.emitError(
+          "internal error: data conversion requires generated linear memory");
+      signalPassFailure();
+      return;
+    }
+
+    for (wami::DataOp dataOp : dataToConvert) {
+      FailureOr<StringAttr> dataBytes = getDataBytesAttr(dataOp, builder);
+      if (failed(dataBytes)) {
+        signalPassFailure();
+        return;
+      }
+
+      wasmstack::DataOp::create(
+          builder, dataOp.getLoc(), FlatSymbolRefAttr::get(ctx, memorySym),
+          builder.getI32IntegerAttr(dataOp.getOffset()), *dataBytes);
+      dataOp.erase();
     }
   }
 };
