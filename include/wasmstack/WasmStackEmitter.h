@@ -154,6 +154,9 @@ private:
   /// - no local: keep value on stack
   void materializeResult(Location loc, Value result);
 
+  /// Drop stack-resident results for operations whose SSA results are unused.
+  void dropUnusedResults(Operation *op);
+
   /// Emit a hard error and mark the emitter as failed.
   void fail(Operation *op, StringRef message);
 };

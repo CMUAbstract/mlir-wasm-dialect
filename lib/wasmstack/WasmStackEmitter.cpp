@@ -171,13 +171,12 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
       for (Operation &op : currentBlock->without_terminator()) {
         if (failed)
           break;
-        // Skip operations that have results but no users (e.g., cloned ops
-        // that were created but the original became unused after
-        // rematerialization)
-        if (op.getNumResults() > 0 && op.use_empty()) {
-          continue;
-        }
+        bool hasUnusedResults = op.getNumResults() > 0 && op.use_empty();
         emitOperation(&op);
+        if (failed)
+          break;
+        if (hasUnusedResults)
+          dropUnusedResults(&op);
       }
 
       if (failed)
@@ -194,6 +193,17 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
   }
 
   return dstFunc;
+}
+
+void WasmStackEmitter::dropUnusedResults(Operation *op) {
+  Location loc = op->getLoc();
+  // Pop in reverse result order so we consume current stack top first.
+  for (Value result : llvm::reverse(op->getResults())) {
+    if (!emittedToStack.contains(result))
+      continue;
+    DropOp::create(builder, loc, result.getType());
+    emittedToStack.erase(result);
+  }
 }
 
 void WasmStackEmitter::fail(Operation *op, StringRef message) {
