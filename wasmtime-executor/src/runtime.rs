@@ -73,18 +73,18 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
 
     for iter in 0..total_iterations {
         let started = Instant::now();
-        let actual = run_once(&engine, &module, cli)?;
-        let elapsed = started.elapsed();
+        let result = run_once(&engine, &module, cli)?;
+        let elapsed = result.toggle_duration.unwrap_or_else(|| started.elapsed());
 
         if iter >= cli.warmup {
-            measured_actual = actual;
+            measured_actual = result.actual;
             durations.push(elapsed);
 
             if let Some(expected) = cli.expect_i32 {
-                if actual != expected {
+                if result.actual != expected {
                     return Err(RunnerError::Expectation {
                         expected,
-                        actual,
+                        actual: result.actual,
                         iteration: iter - cli.warmup,
                     });
                 }
@@ -105,7 +105,12 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
     })
 }
 
-fn run_once(engine: &Engine, module: &Module, cli: &Cli) -> Result<i32, RunnerError> {
+struct IterationResult {
+    actual: i32,
+    toggle_duration: Option<Duration>,
+}
+
+fn run_once(engine: &Engine, module: &Module, cli: &Cli) -> Result<IterationResult, RunnerError> {
     let mut store = Store::new(engine, HostState::new(cli.quiet));
     let mut linker = Linker::new(engine);
     register(&mut linker).map_err(|e| RunnerError::Module(e.to_string()))?;
@@ -122,9 +127,14 @@ fn run_once(engine: &Engine, module: &Module, cli: &Cli) -> Result<i32, RunnerEr
         .typed::<(), i32>(&store)
         .map_err(|e| RunnerError::Signature(e.to_string()))?;
 
-    typed
+    let actual = typed
         .call(&mut store, ())
-        .map_err(|e| RunnerError::Trap(e.to_string()))
+        .map_err(|e| RunnerError::Trap(e.to_string()))?;
+
+    Ok(IterationResult {
+        actual,
+        toggle_duration: store.data().latest_toggle_duration(),
+    })
 }
 
 fn summarize_ms(samples: &[Duration]) -> (f64, f64, f64) {
@@ -147,9 +157,5 @@ fn summarize_ms(samples: &[Duration]) -> (f64, f64, f64) {
     }
 
     let avg = total.as_secs_f64() * 1000.0 / samples.len() as f64;
-    (
-        avg,
-        min.as_secs_f64() * 1000.0,
-        max.as_secs_f64() * 1000.0,
-    )
+    (avg, min.as_secs_f64() * 1000.0, max.as_secs_f64() * 1000.0)
 }
