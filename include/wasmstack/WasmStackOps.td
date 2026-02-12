@@ -164,6 +164,43 @@ def WasmStack_FuncOp : WasmStack_Op<"func", [
   let hasVerifier = 1;
 }
 
+def WasmStack_FuncImportOp : WasmStack_Op<"import_func", [Symbol]> {
+  let summary = "WebAssembly function import declaration";
+  let description = [{
+    Declares an imported function provided by another module. Imported
+    functions participate in the function index space before defined
+    functions, following the WebAssembly binary format.
+  }];
+
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    StrAttr:$module_name,
+    StrAttr:$import_name,
+    TypeAttrOf<FunctionType>:$func_type
+  );
+
+  let assemblyFormat = "$import_name `from` $module_name `as` $sym_name `:` $func_type attr-dict";
+
+  let extraClassDeclaration = [{
+    unsigned getStackInputs() { return 0; }
+    unsigned getStackOutputs() { return 0; }
+
+    // Helper methods
+    ::mlir::TypeRange getArgumentTypes() {
+      return getFuncType().getInputs();
+    }
+    ::mlir::TypeRange getResultTypes() {
+      return getFuncType().getResults();
+    }
+    unsigned getNumArguments() {
+      return getFuncType().getNumInputs();
+    }
+    unsigned getNumResults() {
+      return getFuncType().getNumResults();
+    }
+  }];
+}
+
 def WasmStack_MemoryOp : WasmStack_Op<"memory", [Symbol]> {
   let summary = "WebAssembly linear memory declaration";
   let description = [{

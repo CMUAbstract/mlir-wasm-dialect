@@ -945,16 +945,23 @@ bool OpcodeEmitter::emitMemoryOp(Operation *op) {
 
 bool OpcodeEmitter::emitCallOp(Operation *op) {
   if (auto callOp = dyn_cast<CallOp>(op)) {
+    auto funcIdx = indexSpace.tryGetFuncIndex(callOp.getCallee());
+    if (!funcIdx) {
+      callOp.emitOpError("unresolved function symbol '")
+          << callOp.getCallee()
+          << "' (no wasmstack.func or wasmstack.import_func)";
+      return false;
+    }
+
     writer.writeByte(wc::Opcode::Call);
-    uint32_t funcIdx = indexSpace.getFuncIndex(callOp.getCallee());
     if (tracker) {
       uint32_t symIdx = indexSpace.getSymbolIndex(callOp.getCallee());
       tracker->addCodeRelocation(
           static_cast<uint8_t>(wc::RelocType::R_WASM_FUNCTION_INDEX_LEB),
           sectionOffset + writer.offset(), symIdx);
-      writer.writeFixedULEB128(funcIdx);
+      writer.writeFixedULEB128(*funcIdx);
     } else {
-      writer.writeULEB128(funcIdx);
+      writer.writeULEB128(*funcIdx);
     }
     return true;
   }
