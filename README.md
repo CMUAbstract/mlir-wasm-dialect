@@ -54,20 +54,20 @@ cmake --build build --target check-wasm
 Run focused suites:
 
 ```sh
-llvm-lit test/WAMI
-llvm-lit test/wasmstack
+llvm-lit build/test/WAMI
+llvm-lit build/test/wasmstack
 ```
 
 Run one test file:
 
 ```sh
-llvm-lit test/wasmstack/full-pipeline-verify.mlir
+llvm-lit build/test/wasmstack/full-pipeline-verify.mlir
 ```
 
 Opt-in execution benchmarks:
 
 ```sh
-RUN_WASMTIME_BENCH=1 llvm-lit test/integration/benchmarks
+RUN_WASMTIME_BENCH=1 llvm-lit build/test/integration/benchmarks
 ```
 
 ## Tool Prerequisites
