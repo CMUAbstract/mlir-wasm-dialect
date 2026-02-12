@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use std::time::{Duration, Instant};
 use wasmtime::{Caller, Extern, Linker, Memory};
 
 const WASM_PAGE_SIZE: u64 = 65536;
@@ -8,6 +9,8 @@ const HEAP_ALIGNMENT: u64 = 8;
 pub struct HostState {
     pub quiet: bool,
     heap_ptr: Option<u64>,
+    toggle_started_at: Option<Instant>,
+    toggle_durations: Vec<Duration>,
 }
 
 impl HostState {
@@ -15,18 +18,44 @@ impl HostState {
         Self {
             quiet,
             heap_ptr: None,
+            toggle_started_at: None,
+            toggle_durations: Vec::new(),
         }
+    }
+
+    fn on_toggle(&mut self) {
+        if let Some(started_at) = self.toggle_started_at.take() {
+            self.toggle_durations.push(started_at.elapsed());
+            return;
+        }
+        self.toggle_started_at = Some(Instant::now());
+    }
+
+    pub fn latest_toggle_duration(&self) -> Option<Duration> {
+        self.toggle_durations.last().copied()
     }
 }
 
 pub fn register(linker: &mut Linker<HostState>) -> Result<()> {
-    linker.func_wrap("env", "print_i32", |caller: Caller<'_, HostState>, value: i32| {
-        if !caller.data().quiet {
-            println!("print_i32: {}", value);
-        }
+    linker.func_wrap("env", "toggle_gpio", |mut caller: Caller<'_, HostState>| {
+        caller.data_mut().on_toggle();
     })?;
 
-    linker.func_wrap("env", "free", |_caller: Caller<'_, HostState>, _ptr: i32| {})?;
+    linker.func_wrap(
+        "env",
+        "print_i32",
+        |caller: Caller<'_, HostState>, value: i32| {
+            if !caller.data().quiet {
+                println!("print_i32: {}", value);
+            }
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "free",
+        |_caller: Caller<'_, HostState>, _ptr: i32| {},
+    )?;
 
     linker.func_wrap(
         "env",
@@ -70,7 +99,11 @@ fn resolve_memory(caller: &mut Caller<'_, HostState>) -> Result<Memory> {
         .ok_or_else(|| anyhow!("module does not export memory required by env.malloc"))
 }
 
-fn ensure_capacity(memory: &Memory, caller: &mut Caller<'_, HostState>, needed_end: u64) -> Result<()> {
+fn ensure_capacity(
+    memory: &Memory,
+    caller: &mut Caller<'_, HostState>,
+    needed_end: u64,
+) -> Result<()> {
     let current = memory.data_size(&*caller) as u64;
     if needed_end <= current {
         return Ok(());
