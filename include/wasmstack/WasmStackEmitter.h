@@ -70,6 +70,11 @@ private:
   /// so that subsequent uses will fetch it via local.get.
   void emitOperandIfNeeded(Value value);
 
+  /// Materialize SSA block arguments at control-flow region entry.
+  /// Local-backed arguments are consumed from stack via local.set in reverse
+  /// order; one-shot arguments remain stack-backed.
+  void materializeEntryBlockArguments(Block &block);
+
   /// Generate a unique label for control flow structures
   std::string generateLabel(StringRef prefix);
 
