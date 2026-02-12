@@ -112,6 +112,14 @@ func.func @test_const_i64() -> i64 {
   return %0 : i64
 }
 
+// CHECK-LABEL: func @test_const_index_negative
+func.func @test_const_index_negative() -> i32 {
+  // CHECK: wasmssa.const -1 : i32
+  %idx = arith.constant -1 : index
+  %0 = arith.index_cast %idx : index to i32
+  return %0 : i32
+}
+
 // CHECK-LABEL: func @test_cmpi_eq
 func.func @test_cmpi_eq(%arg0: i32, %arg1: i32) -> i32 {
   // CHECK: wasmssa.eq %{{.*}} %{{.*}} : i32 -> i32
