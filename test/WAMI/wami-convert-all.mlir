@@ -143,3 +143,15 @@ func.func @fill_with_indices() {
   // CHECK: wasmssa.return
   return
 }
+
+//===----------------------------------------------------------------------===//
+// Test 5: math.sqrt conversion
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: wasmssa.func @sqrt_value
+func.func @sqrt_value(%x: f64) -> f64 {
+  // CHECK: wasmssa.sqrt
+  %y = math.sqrt %x : f64
+  // CHECK: wasmssa.return
+  return %y : f64
+}

@@ -4,6 +4,7 @@ add_mlir_dialect_library(MLIRWAMI
   WAMIOps.cpp
   WAMIPasses.cpp
   ConversionPatterns/WAMIConvertArith.cpp
+  ConversionPatterns/WAMIConvertMath.cpp
   ConversionPatterns/WAMIConvertFunc.cpp
   ConversionPatterns/WAMIConvertScf.cpp
   ConversionPatterns/WAMIConvertMemref.cpp
@@ -19,6 +20,7 @@ add_mlir_dialect_library(MLIRWAMI
   MLIRIR
   MLIRArithDialect
   MLIRFuncDialect
+  MLIRMathDialect
   MLIRMemRefDialect
   MLIRSCFDialect
   MLIRPass
