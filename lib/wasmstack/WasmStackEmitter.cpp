@@ -584,6 +584,22 @@ void WasmStackEmitter::emitOperandIfNeeded(Value value) {
        "operand is neither on stack nor local-backed");
 }
 
+void WasmStackEmitter::materializeEntryBlockArguments(Block &block) {
+  // Block arguments represent values on stack at block entry.
+  // Process in reverse because stack is LIFO.
+  auto args = block.getArguments();
+  for (auto it = args.rbegin(); it != args.rend(); ++it) {
+    BlockArgument arg = *it;
+    int idx = allocator.getLocalIndex(arg);
+    if (idx >= 0) {
+      LocalSetOp::create(builder, arg.getLoc(), static_cast<uint32_t>(idx),
+                         arg.getType());
+    } else {
+      emittedToStack.insert(arg);
+    }
+  }
+}
+
 std::string WasmStackEmitter::generateLabel(StringRef prefix) {
   return (prefix + "_" + Twine(labelCounter++)).str();
 }
@@ -649,28 +665,7 @@ void WasmStackEmitter::emitBlock(wasmssa::BlockOp blockOp) {
 
     while (currentBlock && !processed.contains(currentBlock)) {
       processed.insert(currentBlock);
-
-      // Block arguments represent values on the stack at block entry.
-      // If they have locals allocated, emit local.set to save them.
-      // DON'T mark them as "on stack" - they should be accessed via
-      // local.get for subsequent uses, as the stack state changes during
-      // block execution.
-      // IMPORTANT: Process in REVERSE order because stack is LIFO - the last
-      // pushed value is on top, so we must pop (local.set) in reverse order.
-      auto args = currentBlock->getArguments();
-      for (auto it = args.rbegin(); it != args.rend(); ++it) {
-        BlockArgument arg = *it;
-        int idx = allocator.getLocalIndex(arg);
-        if (idx >= 0) {
-          // Set the value to local (consumes from stack)
-          LocalSetOp::create(builder, arg.getLoc(), static_cast<uint32_t>(idx),
-                             arg.getType());
-        } else {
-          // No local allocated - this arg is used only once immediately
-          // Keep it on stack by marking as emitted
-          emittedToStack.insert(arg);
-        }
-      }
+      materializeEntryBlockArguments(*currentBlock);
 
       // Emit all operations EXCEPT the terminator
       for (Operation &op : currentBlock->without_terminator()) {
@@ -747,28 +742,7 @@ void WasmStackEmitter::emitLoop(wasmssa::LoopOp loopOp) {
 
     while (currentBlock && !processed.contains(currentBlock)) {
       processed.insert(currentBlock);
-
-      // Block arguments represent values on the stack at block entry.
-      // If they have locals allocated, emit local.set to save them.
-      // DON'T mark them as "on stack" - they should be accessed via
-      // local.get for subsequent uses, as the stack state changes during
-      // block execution.
-      // IMPORTANT: Process in REVERSE order because stack is LIFO - the last
-      // pushed value is on top, so we must pop (local.set) in reverse order.
-      auto args = currentBlock->getArguments();
-      for (auto it = args.rbegin(); it != args.rend(); ++it) {
-        BlockArgument arg = *it;
-        int idx = allocator.getLocalIndex(arg);
-        if (idx >= 0) {
-          // Set the value to local (consumes from stack)
-          LocalSetOp::create(builder, arg.getLoc(), static_cast<uint32_t>(idx),
-                             arg.getType());
-        } else {
-          // No local allocated - this arg is used only once immediately
-          // Keep it on stack by marking as emitted
-          emittedToStack.insert(arg);
-        }
-      }
+      materializeEntryBlockArguments(*currentBlock);
 
       // Emit all operations EXCEPT the terminator
       for (Operation &op : currentBlock->without_terminator()) {
@@ -836,9 +810,7 @@ void WasmStackEmitter::emitIf(wasmssa::IfOp ifOp) {
     // 4. Handle block arguments in then region
     if (!ifOp.getIf().empty()) {
       Block &bodyBlock = ifOp.getIf().front();
-      for (BlockArgument arg : bodyBlock.getArguments()) {
-        emittedToStack.insert(arg);
-      }
+      materializeEntryBlockArguments(bodyBlock);
     }
 
     // Emit then region operations
@@ -862,9 +834,7 @@ void WasmStackEmitter::emitIf(wasmssa::IfOp ifOp) {
 
     // Handle block arguments in else region
     Block &bodyBlock = ifOp.getElse().front();
-    for (BlockArgument arg : bodyBlock.getArguments()) {
-      emittedToStack.insert(arg);
-    }
+    materializeEntryBlockArguments(bodyBlock);
 
     for (Operation &op : ifOp.getElse().front()) {
       emitOperation(&op);
