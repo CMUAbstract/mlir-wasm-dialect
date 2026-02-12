@@ -18,13 +18,13 @@
 #include "wasmstack/StackificationAnalysis.h"
 #include "wasmstack/StackificationPlan.h"
 #include "wasmstack/TreeWalker.h"
+#include "wasmstack/WasmConstUtils.h"
 #include "wasmstack/WasmStackDialect.h"
 #include "wasmstack/WasmStackEmitter.h"
 #include "wasmstack/WasmStackOps.h"
 
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/Twine.h"
@@ -120,37 +120,11 @@ static SmallVector<Value> getFilteredTeeOrder(const StackificationPlan &plan) {
 
 static LogicalResult emitGlobalConstExpr(wasmssa::ConstOp constOp,
                                          OpBuilder &builder) {
-  Location loc = constOp.getLoc();
-  Type resultType = constOp.getResult().getType();
-  Attribute value = constOp.getValueAttr();
+  if (succeeded(emitWasmStackConst(builder, constOp.getLoc(),
+                                   constOp.getValueAttr())))
+    return success();
 
-  if (resultType.isInteger(32)) {
-    auto intVal = cast<IntegerAttr>(value).getInt();
-    wasmstack::I32ConstOp::create(
-        builder, loc, builder.getI32IntegerAttr(static_cast<int32_t>(intVal)));
-    return success();
-  }
-  if (resultType.isInteger(64)) {
-    auto intVal = cast<IntegerAttr>(value).getInt();
-    wasmstack::I64ConstOp::create(builder, loc,
-                                  builder.getI64IntegerAttr(intVal));
-    return success();
-  }
-  if (resultType.isF32()) {
-    auto floatVal = cast<FloatAttr>(value).getValueAsDouble();
-    wasmstack::F32ConstOp::create(
-        builder, loc, builder.getF32FloatAttr(static_cast<float>(floatVal)));
-    return success();
-  }
-  if (resultType.isF64()) {
-    auto floatVal = cast<FloatAttr>(value).getValueAsDouble();
-    wasmstack::F64ConstOp::create(builder, loc,
-                                  builder.getF64FloatAttr(floatVal));
-    return success();
-  }
-
-  constOp.emitError("unsupported wasmssa.const type in global initializer: ")
-      << resultType;
+  constOp.emitError("unsupported wasmssa.const type in global initializer");
   return failure();
 }
 
