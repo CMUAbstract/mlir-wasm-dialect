@@ -64,15 +64,17 @@ module {
   //===--------------------------------------------------------------------===//
 
   // A function that computes and returns multiple values
-  // Constants are rematerialized: original for first use, clone for subsequent
+  // Multi-result returns may materialize intermediate values to locals.
   // CHECK-LABEL: wasmstack.func @return_multiple_computed
   // CHECK:         wasmstack.i32.const 10
-  // CHECK-NEXT:    wasmstack.i32.const 20
-  // CHECK-NEXT:    wasmstack.add : i32
-  // CHECK-NEXT:    wasmstack.i32.const 10
-  // CHECK-NEXT:    wasmstack.i32.const 20
-  // CHECK-NEXT:    wasmstack.mul : i32
-  // CHECK-NEXT:    wasmstack.return
+  // CHECK:         wasmstack.i32.const 20
+  // CHECK:         wasmstack.add : i32
+  // CHECK:         wasmstack.local.set
+  // CHECK:         wasmstack.mul : i32
+  // CHECK:         wasmstack.local.set
+  // CHECK:         wasmstack.local.get
+  // CHECK:         wasmstack.local.get
+  // CHECK:         wasmstack.return
   wasmssa.func @return_multiple_computed() -> (i32, i32) {
     %a = wasmssa.const 10 : i32
     %b = wasmssa.const 20 : i32
