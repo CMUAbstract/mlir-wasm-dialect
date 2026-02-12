@@ -172,12 +172,9 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
       for (Operation &op : currentBlock->without_terminator()) {
         if (failed)
           break;
-        bool hasUnusedResults = op.getNumResults() > 0 && op.use_empty();
-        emitOperation(&op);
+        emitOperationAndDropUnused(&op);
         if (failed)
           break;
-        if (hasUnusedResults)
-          dropUnusedResults(&op);
       }
 
       if (failed)
@@ -194,6 +191,16 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
   }
 
   return dstFunc;
+}
+
+void WasmStackEmitter::emitOperationAndDropUnused(Operation *op) {
+  bool hasUnusedResults = op->getNumResults() > 0 && op->use_empty();
+  emitOperation(op);
+  if (failed)
+    return;
+  if (!hasUnusedResults)
+    return;
+  dropUnusedResults(op);
 }
 
 void WasmStackEmitter::dropUnusedResults(Operation *op) {
@@ -669,7 +676,7 @@ void WasmStackEmitter::emitBlock(wasmssa::BlockOp blockOp) {
 
       // Emit all operations EXCEPT the terminator
       for (Operation &op : currentBlock->without_terminator()) {
-        emitOperation(&op);
+        emitOperationAndDropUnused(&op);
         if (failed)
           return;
       }
@@ -746,7 +753,7 @@ void WasmStackEmitter::emitLoop(wasmssa::LoopOp loopOp) {
 
       // Emit all operations EXCEPT the terminator
       for (Operation &op : currentBlock->without_terminator()) {
-        emitOperation(&op);
+        emitOperationAndDropUnused(&op);
         if (failed)
           return;
       }
@@ -794,54 +801,63 @@ void WasmStackEmitter::emitIf(wasmssa::IfOp ifOp) {
     resultTypes.push_back(TypeAttr::get(arg.getType()));
   }
 
-  // Create WasmStack if with param and result types
-  auto wasmIf = IfOp::create(builder, loc, builder.getArrayAttr(paramTypes),
+  std::string label = generateLabel("if");
+
+  // Create WasmStack if with param and result types.
+  auto wasmIf = IfOp::create(builder, loc, builder.getStringAttr(label),
+                             builder.getArrayAttr(paramTypes),
                              builder.getArrayAttr(resultTypes));
 
-  // Create then block
-  Block *thenBlock = new Block();
-  wasmIf.getThenBody().push_back(thenBlock);
+  // Push an explicit if-frame label so branch depth resolution inside then/else
+  // matches WebAssembly semantics.
+  ScopedLabel labelGuard(*this, label, /*isLoop=*/false);
 
-  {
-    OpBuilder::InsertionGuard guard(builder);
-    ScopedStackState stackGuard(*this); // Each branch has its own stack
-    builder.setInsertionPointToStart(thenBlock);
-
-    // 4. Handle block arguments in then region
-    if (!ifOp.getIf().empty()) {
-      Block &bodyBlock = ifOp.getIf().front();
-      materializeEntryBlockArguments(bodyBlock);
+  auto emitIfRegion = [&](Region &srcRegion, Region &dstRegion,
+                          bool requireEntryBlock) {
+    if (srcRegion.empty()) {
+      if (requireEntryBlock)
+        dstRegion.push_back(new Block());
+      return;
     }
 
-    // Emit then region operations
-    if (!ifOp.getIf().empty()) {
-      for (Operation &op : ifOp.getIf().front()) {
-        emitOperation(&op);
+    Block *entryBlock = new Block();
+    dstRegion.push_back(entryBlock);
+
+    OpBuilder::InsertionGuard guard(builder);
+    ScopedStackState stackGuard(*this);
+    builder.setInsertionPointToStart(entryBlock);
+
+    Block *currentBlock = &srcRegion.front();
+    llvm::DenseSet<Block *> processed;
+
+    while (currentBlock && !processed.contains(currentBlock)) {
+      processed.insert(currentBlock);
+      materializeEntryBlockArguments(*currentBlock);
+
+      for (Operation &op : currentBlock->without_terminator()) {
+        emitOperationAndDropUnused(&op);
         if (failed)
           return;
       }
-    }
-  }
 
-  // Create else block if present
-  if (!ifOp.getElse().empty()) {
-    Block *elseBlock = new Block();
-    wasmIf.getElseBody().push_back(elseBlock);
+      Operation *terminator = currentBlock->getTerminator();
+      if (terminator) {
+        currentBlock = emitTerminatorAndGetNext(terminator, /*isInLoop=*/false);
+      } else {
+        currentBlock = nullptr;
+      }
 
-    OpBuilder::InsertionGuard guard(builder);
-    ScopedStackState stackGuard(*this); // Each branch has its own stack
-    builder.setInsertionPointToStart(elseBlock);
-
-    // Handle block arguments in else region
-    Block &bodyBlock = ifOp.getElse().front();
-    materializeEntryBlockArguments(bodyBlock);
-
-    for (Operation &op : ifOp.getElse().front()) {
-      emitOperation(&op);
       if (failed)
         return;
     }
-  }
+  };
+
+  emitIfRegion(ifOp.getIf(), wasmIf.getThenBody(), /*requireEntryBlock=*/true);
+  if (failed)
+    return;
+
+  emitIfRegion(ifOp.getElse(), wasmIf.getElseBody(),
+               /*requireEntryBlock=*/false);
 }
 
 void WasmStackEmitter::emitBranchIf(wasmssa::BranchIfOp branchIfOp) {
