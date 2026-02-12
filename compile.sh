@@ -1,16 +1,12 @@
 #!/bin/bash
-
-# Check if WASI_SDK_PATH environment variable is set
-if [ -z "$WASI_SDK_PATH" ]; then
-    echo "Error: Environment variable 'WASI_SDK_PATH' is not defined. Please set it before running this script."
-    exit 1
-fi
+set -e
 
 # Default values for input, output, and flags
 ADD_DEBUG_FUNCTIONS=false
 BINARYEN_OPT_FLAGS=""
 COMPILER=""
 CLEAN=false
+LLVM_OPT_FLAGS=""
 
 # Function to display usage information
 usage() {
@@ -77,6 +73,13 @@ elif [[ "$COMPILER" != "wami" && "$COMPILER" != "llvm" ]]; then
     usage
 fi
 
+# Check if WASI_SDK_PATH environment variable is set for LLVM flow
+if [[ "$COMPILER" == "llvm" && -z "$WASI_SDK_PATH" ]]; then
+    echo "Error: Environment variable 'WASI_SDK_PATH' is not defined."
+    echo "Please set it before running with --compiler=llvm."
+    exit 1
+fi
+
 # Final output file 
 OUTPUT_WASM="${OUTPUT_BASE}.wasm" 
 
@@ -88,49 +91,30 @@ cmake --build build
 echo "Building the project... done"
 
 if [[ "$COMPILER" == "wami" ]]; then
-    OUTPUT_MLIR="${OUTPUT_BASE}-wasm-1.mlir" # MLIR wasm dialect
-    OUTPUT_RAW_WAT="${OUTPUT_BASE}-raw-2.wat" # 1 followed by by wasm-translate
-    OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-3.wasm" # 2 followed by wat2wasm
-    OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-4.wat" # 3 followed by wasm2wat
+    OUTPUT_WASMSTACK_MLIR="${OUTPUT_BASE}-wasmstack-1.mlir"
+    OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-2.wasm"
+    OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-3.wat"
 
-    # Convert MLIR file to the Wasm dialect
-    echo "Converting $INPUT_MLIR to Wasm dialect..."
-    build/bin/wasm-opt \
-    --affine-loop-coalescing \
-    --affine-loop-invariant-code-motion \
-    --affine-loop-normalize \
-    --lower-affine \
-    --convert-math-to-ssawasm \
-    --convert-arith-to-ssawasm \
-    --convert-memref-to-ssawasm \
-    --convert-func-to-ssawasm \
-    --reconcile-unrealized-casts \
-    --canonicalize \
-    --sccp \
-    --loop-invariant-code-motion \
-    --loop-invariant-subset-hoisting \
-    --cse \
-    --control-flow-sink \
-    --convert-scf-to-ssawasm \
-    --reconcile-unrealized-casts \
-    --convert-ssawasm-global-to-wasm \
-    --introduce-locals \
-    --reconcile-unrealized-casts \
-    --convert-ssawasm-to-wasm \
-        "$INPUT_MLIR" \
-        -o "${OUTPUT_MLIR}"
-
-    # Translate the resulting MLIR file to a .wat file
-    echo "Translating $OUTPUT_MLIR to .wat format..."
     if $ADD_DEBUG_FUNCTIONS; then
-        build/bin/wasm-translate "$OUTPUT_MLIR" --mlir-to-wat --add-debug-functions -o "${OUTPUT_RAW_WAT}"
-    else
-        build/bin/wasm-translate "$OUTPUT_MLIR" --mlir-to-wat -o "${OUTPUT_RAW_WAT}"
+        echo "Warning: --add-debug-functions is not supported in the new wami->wasmstack pipeline. Ignoring."
     fi
 
-    echo "Converting $OUTPUT_RAW_WAT to .wasm format..."
-    wat2wasm "$OUTPUT_RAW_WAT" -o "$OUTPUT_BEFOREOPT_WASM"
+    # Lower standard MLIR to WasmStack using the active pipeline.
+    echo "Converting $INPUT_MLIR to WasmStack..."
+    build/bin/wasm-opt \
+    --lower-affine \
+    --wami-convert-all \
+    --reconcile-unrealized-casts \
+    --convert-to-wasmstack \
+    --verify-wasmstack \
+        "$INPUT_MLIR" \
+        -o "${OUTPUT_WASMSTACK_MLIR}"
 
+    # Emit WebAssembly binary from WasmStack MLIR.
+    echo "Emitting WebAssembly binary from $OUTPUT_WASMSTACK_MLIR..."
+    build/bin/wasm-emit "$OUTPUT_WASMSTACK_MLIR" --mlir-to-wasm -o "$OUTPUT_BEFOREOPT_WASM"
+
+    # Keep a WAT dump for debugging parity with the old script flow.
     wasm2wat "$OUTPUT_BEFOREOPT_WASM" -o "$OUTPUT_BEFOREOPT_WAT"
 
 elif [[ "$COMPILER" == "llvm" ]]; then
@@ -202,14 +186,13 @@ fi
 # Clean up temporary files if --clean flag is set
 if $CLEAN; then
     echo "Cleaning up temporary files..."
-    rm -f "$OUTPUT_MLIR" "$OUTPUT_RAW_WAT" "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_BEFOREOPT_WAT" "$OUTPUT_LLVM_MLIR" "$OUTPUT_LL" "$OUTPUT_OBJ" "$OUTPUT_WAT"
+    rm -f "$OUTPUT_WASMSTACK_MLIR" "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_BEFOREOPT_WAT" "$OUTPUT_LLVM_MLIR" "$OUTPUT_LL" "$OUTPUT_OBJ" "$OUTPUT_WAT"
 fi
 
 # Print the produced files
 echo "Produced files:"
 if [[ "$COMPILER" == "wami" ]]; then
-    echo "  - $OUTPUT_MLIR (MLIR Wasm dialect)"
-    echo "  - $OUTPUT_RAW_WAT (Raw WAT format)"
+    echo "  - $OUTPUT_WASMSTACK_MLIR (WasmStack MLIR)"
     echo "  - $OUTPUT_BEFOREOPT_WASM (Unoptimized WebAssembly)"
     echo "  - $OUTPUT_BEFOREOPT_WAT (Unoptimized WAT format)"
 elif [[ "$COMPILER" == "llvm" ]]; then
