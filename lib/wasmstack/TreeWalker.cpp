@@ -17,6 +17,30 @@
 
 namespace mlir::wasmstack {
 
+/// Returns true if any earlier operand (0..operandIdx-1) is not guaranteed to
+/// be already on stack at emission time. In that case, later operands must not
+/// be pre-emitted before the operation, or operand order can be inverted.
+static bool hasEarlierOnDemandOperand(Operation *op, unsigned operandIdx,
+                                      const DenseSet<Operation *> &stackified) {
+  for (unsigned j = 0; j < operandIdx; ++j) {
+    Value prev = op->getOperand(j);
+    Operation *prevDef = prev.getDefiningOp();
+    if (!prevDef || !stackified.contains(prevDef))
+      return true;
+  }
+  return false;
+}
+
+/// Returns true if operandIdx has an identical earlier operand.
+static bool hasEarlierEquivalentOperand(Operation *op, unsigned operandIdx) {
+  Value operand = op->getOperand(operandIdx);
+  for (unsigned j = 0; j < operandIdx; ++j) {
+    if (op->getOperand(j) == operand)
+      return true;
+  }
+  return false;
+}
+
 void TreeWalker::processBlock(Block &block) {
   // Collect operations in reverse order (bottom-up processing)
   SmallVector<Operation *> ops;
@@ -43,23 +67,12 @@ void TreeWalker::processOperation(Operation *op) {
     }
   }
 
-  // Special case: branch_if with inputs (args to pass to target block).
-  // WebAssembly requires stack order: [args..., condition] with condition on
-  // top. If we stackify the condition's defining op, it gets emitted before
-  // args, resulting in wrong order: [condition, args...]. To fix this, we
-  // ensure the condition gets a local so it can be reordered during emission.
-  if (auto branchIfOp = dyn_cast<wasmssa::BranchIfOp>(op)) {
-    if (!branchIfOp.getInputs().empty()) {
-      Value condition = branchIfOp.getCondition();
-      Operation *condDefOp = condition.getDefiningOp();
-      // If condition would be stackified (single-use, has defining op),
-      // force it to use a local instead
-      if (condDefOp && useCount.hasSingleUse(condition)) {
-        needsLocal.insert(condition);
-        // Don't return - still process other operands normally
-      }
-    }
-  }
+  // Structured control-flow interface operands should be materialized from
+  // locals rather than relying on long-lived stack values crossing region
+  // boundaries.
+  bool forceLocalOperands =
+      isa<wasmssa::BlockOp, wasmssa::LoopOp, wasmssa::IfOp,
+          wasmssa::BlockReturnOp, wasmssa::BranchIfOp>(op);
 
   // Process operands left-to-right so that after reordering:
   // - Left operand's definition ends up further from use (pushed first)
@@ -69,6 +82,8 @@ void TreeWalker::processOperation(Operation *op) {
   for (unsigned i = 0; i < op->getNumOperands(); ++i) {
     Value operand = op->getOperand(i);
     Operation *defOp = operand.getDefiningOp();
+    bool requireOnDemand = hasEarlierOnDemandOperand(op, i, stackifiedOps);
+    bool hasEarlierEquivalent = hasEarlierEquivalentOperand(op, i);
 
     // Block argument - arrives on stack at block entry.
     // Conservatively allocate a local because:
@@ -76,6 +91,25 @@ void TreeWalker::processOperation(Operation *op) {
     // 2. Single-use args may not be in correct stack position
     // Future optimization: analyze stack order to keep some args on stack.
     if (!defOp) {
+      needsTee.erase(operand);
+      needsLocal.insert(operand);
+      continue;
+    }
+
+    if (forceLocalOperands) {
+      needsTee.erase(operand);
+      needsLocal.insert(operand);
+      continue;
+    }
+
+    // If any earlier operand must be materialized on-demand, this operand must
+    // also be on-demand. Otherwise this operand could be pre-emitted and appear
+    // below earlier operands on the stack, breaking ordered semantics.
+    //
+    // Exception: repeated operands (e.g., `%x, %x`) can still use tee/local.get
+    // without violating order and should keep that optimization path.
+    if (requireOnDemand && !hasEarlierEquivalent) {
+      needsTee.erase(operand);
       needsLocal.insert(operand);
       continue;
     }
@@ -125,8 +159,10 @@ void TreeWalker::processOperation(Operation *op) {
       // Can't stackify directly - check if we can use tee
       // Tee is useful when one use can consume from stack, others from local
       if (canUseTee(defOp, operand)) {
-        needsTee.insert(operand);
+        if (!needsLocal.contains(operand))
+          needsTee.insert(operand);
       } else {
+        needsTee.erase(operand);
         needsLocal.insert(operand);
       }
     }
