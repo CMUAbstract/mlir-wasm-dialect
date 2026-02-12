@@ -14,6 +14,7 @@
 #include "wasmstack/WasmStackEmitter.h"
 #include "WAMI/WAMIOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "wasmstack/WasmConstUtils.h"
 #include "llvm/ADT/Twine.h"
 
 namespace mlir::wasmstack {
@@ -506,23 +507,10 @@ void WasmStackEmitter::emitOperation(Operation *op) {
 
 void WasmStackEmitter::emitConst(wasmssa::ConstOp constOp) {
   Location loc = constOp.getLoc();
-  Type resultType = constOp.getResult().getType();
-  Attribute value = constOp.getValueAttr();
-
-  if (resultType.isInteger(32)) {
-    auto intVal = cast<IntegerAttr>(value).getInt();
-    I32ConstOp::create(builder, loc,
-                       builder.getI32IntegerAttr(static_cast<int32_t>(intVal)));
-  } else if (resultType.isInteger(64)) {
-    auto intVal = cast<IntegerAttr>(value).getInt();
-    I64ConstOp::create(builder, loc, builder.getI64IntegerAttr(intVal));
-  } else if (resultType.isF32()) {
-    auto floatVal = cast<FloatAttr>(value).getValueAsDouble();
-    F32ConstOp::create(builder, loc,
-                       builder.getF32FloatAttr(static_cast<float>(floatVal)));
-  } else if (resultType.isF64()) {
-    auto floatVal = cast<FloatAttr>(value).getValueAsDouble();
-    F64ConstOp::create(builder, loc, builder.getF64FloatAttr(floatVal));
+  if (::mlir::failed(
+          emitWasmStackConst(builder, loc, constOp.getValueAttr()))) {
+    fail(constOp, "unsupported wasmssa.const type");
+    return;
   }
 
   materializeResult(loc, constOp.getResult());
