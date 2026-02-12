@@ -3,10 +3,6 @@
 // Test that stackification pass correctly handles return values.
 // This test verifies that return statements properly have their operands
 // on the stack before the return instruction.
-//
-// BUG: In WasmStackPasses.cpp line 480-481, ReturnOp is created without
-// explicitly emitting its operands. This works for simple cases due to
-// tree-walking order, but may fail in complex control flow scenarios.
 
 // CHECK: ConvertToWasmStack pass running on module
 

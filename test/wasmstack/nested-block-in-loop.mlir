@@ -62,14 +62,8 @@ module {
         }> ^after_nested
 
       ^after_nested(%new_counter: i32):
-        // BUG: This block_return should emit "br @loop_N" to continue the loop.
-        // But after the nested wasmssa.block above, if labelStack still has
-        // the block's label on it, labelStack.back() will return the wrong label.
-        //
-        // Expected: wasmstack.br @loop_1 (the loop label)
-        // Buggy behavior would be: wasmstack.br @block_2 (the inner block label)
-        //
-        // The CHECK patterns at the function level verify this behavior
+        // This block_return should emit "br @loop_N" to continue the loop.
+        // The CHECK patterns at the function level verify this behavior.
         wasmssa.block_return %new_counter : i32
       }> ^exit
 
