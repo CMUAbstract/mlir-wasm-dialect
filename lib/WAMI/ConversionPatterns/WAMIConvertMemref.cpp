@@ -17,6 +17,7 @@
 #include "WAMI/WAMIOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
+#include "mlir/IR/SymbolTable.h"
 
 namespace mlir::wami {
 
@@ -51,6 +52,25 @@ int64_t computeMemRefSize(MemRefType memRefType, int64_t alignment) {
       ((totalMemorySize + alignment - 1) / alignment) * alignment;
 
   return alignedMemorySize;
+}
+
+/// Ensure a wasmssa.import_func exists for a runtime function.
+/// Inserts a declaration at the module top if no symbol with the same name
+/// currently exists.
+static void ensureRuntimeImport(Operation *anchor,
+                                ConversionPatternRewriter &rewriter,
+                                StringRef symName, FunctionType type) {
+  auto module = anchor->getParentOfType<ModuleOp>();
+  if (!module)
+    return;
+
+  if (SymbolTable::lookupSymbolIn(module, symName))
+    return;
+
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointToStart(module.getBody());
+  wasmssa::FuncImportOp::create(rewriter, anchor->getLoc(), symName, "env",
+                                symName, type);
 }
 
 //===----------------------------------------------------------------------===//
@@ -310,6 +330,10 @@ struct AllocOpLowering : public OpConversionPattern<memref::AllocOp> {
     Value sizeConst = wasmssa::ConstOp::create(
         rewriter, loc, rewriter.getI32IntegerAttr(size));
 
+    ensureRuntimeImport(
+        op, rewriter, "malloc",
+        rewriter.getFunctionType(rewriter.getI32Type(), rewriter.getI32Type()));
+
     // Call malloc and return the pointer as i32
     rewriter.replaceOpWithNewOp<wasmssa::FuncCallOp>(
         op, rewriter.getI32Type(), "malloc", ValueRange{sizeConst});
@@ -324,6 +348,10 @@ struct DeallocOpLowering : public OpConversionPattern<memref::DeallocOp> {
   LogicalResult
   matchAndRewrite(memref::DeallocOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    ensureRuntimeImport(
+        op, rewriter, "free",
+        rewriter.getFunctionType(rewriter.getI32Type(), TypeRange{}));
+
     // Call free with the pointer
     rewriter.replaceOpWithNewOp<wasmssa::FuncCallOp>(
         op, TypeRange{}, "free", ValueRange{adaptor.getMemref()});
@@ -351,6 +379,10 @@ struct AllocaOpLowering : public OpConversionPattern<memref::AllocaOp> {
 
     Value sizeConst = wasmssa::ConstOp::create(
         rewriter, loc, rewriter.getI32IntegerAttr(size));
+
+    ensureRuntimeImport(
+        op, rewriter, "malloc",
+        rewriter.getFunctionType(rewriter.getI32Type(), rewriter.getI32Type()));
 
     rewriter.replaceOpWithNewOp<wasmssa::FuncCallOp>(
         op, rewriter.getI32Type(), "malloc", ValueRange{sizeConst});
