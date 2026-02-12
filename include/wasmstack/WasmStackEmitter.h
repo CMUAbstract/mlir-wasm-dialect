@@ -33,6 +33,9 @@ class WasmStackEmitter {
   /// Tracks which values have been emitted to the stack
   DenseSet<Value> emittedToStack;
 
+  /// Sticky failure bit for fail-fast emission.
+  bool failed = false;
+
   /// Counter for generating unique labels (member variable to avoid static)
   unsigned labelCounter = 0;
 
@@ -47,6 +50,9 @@ public:
 
   /// Emit a WasmStack function from a WasmSSA function
   FuncOp emitFunction(wasmssa::FuncOp srcFunc);
+
+  /// Whether emission encountered a hard failure.
+  bool hasFailed() const { return failed; }
 
   /// Emit a single operation
   void emitOperation(Operation *op);
@@ -74,7 +80,7 @@ private:
   class ScopedLabel;
 
   /// Get the branch label for a given exit level.
-  std::string getLabelForExitLevel(unsigned exitLevel);
+  std::string getLabelForExitLevel(unsigned exitLevel, Operation *contextOp);
 
   /// Emit a WasmSSA block operation
   void emitBlock(wasmssa::BlockOp blockOp);
@@ -147,6 +153,9 @@ private:
   /// - local without `needsTee`: spill to local and keep stack clean
   /// - no local: keep value on stack
   void materializeResult(Location loc, Value result);
+
+  /// Emit a hard error and mark the emitter as failed.
+  void fail(Operation *op, StringRef message);
 };
 
 } // namespace mlir::wasmstack

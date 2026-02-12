@@ -16,6 +16,7 @@
 #include "WAMI/WAMIOps.h"
 #include "wasmstack/LocalAllocator.h"
 #include "wasmstack/StackificationAnalysis.h"
+#include "wasmstack/StackificationPlan.h"
 #include "wasmstack/TreeWalker.h"
 #include "wasmstack/WasmStackDialect.h"
 #include "wasmstack/WasmStackEmitter.h"
@@ -31,6 +32,92 @@ namespace mlir::wasmstack {
 
 #define GEN_PASS_DEF_CONVERTTOWASMSTACK
 #include "wasmstack/WasmStackPasses.h.inc"
+
+namespace {
+
+/// Analyze one function and produce a deterministic stackification plan.
+static LogicalResult analyzeStackification(wasmssa::FuncOp funcOp,
+                                           StackificationPlan &plan) {
+  if (funcOp.getBody().empty())
+    return success();
+
+  UseCountAnalysis useCount(funcOp.getBody());
+  TreeWalker walker(useCount);
+  walker.processRegion(funcOp.getBody());
+
+  // Preserve deterministic order from the tree walk.
+  for (Value v : walker.getLocalOrder())
+    if (walker.getValuesNeedingLocals().contains(v))
+      plan.requireLocal(v);
+  for (Value v : walker.getTeeOrder())
+    if (walker.getValuesNeedingTee().contains(v))
+      plan.requireTee(v);
+
+  // Conservatively materialize all block arguments as locals.
+  allocateLocalsForBlockArgsOrdered(funcOp.getBody(), plan.needsLocal,
+                                    plan.localOrder);
+
+  // Local-only policy takes precedence over tee.
+  for (Value v : plan.needsLocal)
+    plan.needsTee.erase(v);
+
+  bool policyError = false;
+  for (Value v : plan.needsTee) {
+    if (plan.needsLocal.contains(v)) {
+      funcOp.emitError("internal stackification policy error: value is both "
+                       "local-only and tee-backed");
+      policyError = true;
+      break;
+    }
+  }
+  if (policyError)
+    return failure();
+
+  // Control-flow interface operands must be local-backed.
+  funcOp.walk([&](wasmssa::BlockReturnOp blockReturnOp) {
+    for (Value v : blockReturnOp.getInputs()) {
+      if (!plan.isLocal(v)) {
+        blockReturnOp.emitError("block_return operand must be local-backed "
+                                "after stackification analysis");
+        policyError = true;
+        return;
+      }
+    }
+  });
+  if (policyError)
+    return failure();
+
+  funcOp.walk([&](wasmssa::BranchIfOp branchIfOp) {
+    if (!plan.isLocal(branchIfOp.getCondition())) {
+      branchIfOp.emitError("branch_if condition must be local-backed after "
+                           "stackification analysis");
+      policyError = true;
+      return;
+    }
+    for (Value v : branchIfOp.getInputs()) {
+      if (!plan.isLocal(v)) {
+        branchIfOp.emitError("branch_if operand must be local-backed after "
+                             "stackification analysis");
+        policyError = true;
+        return;
+      }
+    }
+  });
+
+  return policyError ? failure() : success();
+}
+
+static SmallVector<Value> getFilteredTeeOrder(const StackificationPlan &plan) {
+  SmallVector<Value> filtered;
+  filtered.reserve(plan.teeOrder.size());
+  for (Value v : plan.getTeeOrder()) {
+    if (plan.isTee(v) && !plan.isLocal(v))
+      filtered.push_back(v);
+  }
+  return filtered;
+}
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // Type Converter
@@ -163,54 +250,26 @@ public:
         continue;
 
       // Analyze use counts for operation results in the function.
-      // UseCountAnalysis recursively analyzes nested regions (loops, ifs, etc.)
-      Block &entryBlock = funcOp.getBody().front();
-      UseCountAnalysis useCount(entryBlock);
+      StackificationPlan plan;
+      if (failed(analyzeStackification(funcOp, plan))) {
+        signalPassFailure();
+        return;
+      }
 
-      // Run the TreeWalker to stackify operations
-      TreeWalker walker(useCount);
-      walker.processBlock(entryBlock);
-
-      // Get values that need locals or tee
-      DenseSet<Value> needsLocal = walker.getValuesNeedingLocals();
-      DenseSet<Value> needsTee = walker.getValuesNeedingTee();
-
-      // Enforce local-backed values for control-flow interface operands so
-      // emitter can materialize them deterministically in operand order.
-      funcOp.walk([&](wasmssa::BlockReturnOp blockReturnOp) {
-        for (Value v : blockReturnOp.getInputs()) {
-          needsTee.erase(v);
-          needsLocal.insert(v);
-        }
-      });
-      funcOp.walk([&](wasmssa::BranchIfOp branchIfOp) {
-        needsTee.erase(branchIfOp.getCondition());
-        needsLocal.insert(branchIfOp.getCondition());
-        for (Value v : branchIfOp.getInputs()) {
-          needsTee.erase(v);
-          needsLocal.insert(v);
-        }
-      });
-
-      // IMPORTANT: TreeWalker processes operations and adds block args to
-      // needsLocal when it encounters them as operands. However, it may miss
-      // some block args (e.g., in function-level successor blocks). To ensure
-      // correctness, we conservatively add ALL block arguments to needsLocal.
-      // Block args arrive on the stack at block entry, but their stack position
-      // is not controlled by code motion, so using locals is the safe approach.
-      allocateLocalsForBlockArgs(funcOp.getBody(), needsLocal);
+      SmallVector<Value> teeOrder = getFilteredTeeOrder(plan);
 
       // Allocate local indices
       LocalAllocator allocator;
-      allocator.allocate(funcOp, needsLocal, needsTee);
+      allocator.allocate(funcOp, plan.getLocalOrder(), teeOrder);
 
       // Report allocation results
-      if (!needsLocal.empty()) {
-        llvm::errs() << "    Values needing locals: " << needsLocal.size()
+      if (!plan.needsLocal.empty()) {
+        llvm::errs() << "    Values needing locals: " << plan.needsLocal.size()
                      << "\n";
       }
-      if (!needsTee.empty()) {
-        llvm::errs() << "    Values needing tee: " << needsTee.size() << "\n";
+      if (!plan.needsTee.empty()) {
+        llvm::errs() << "    Values needing tee: " << plan.needsTee.size()
+                     << "\n";
       }
       if (allocator.getNumLocals() > allocator.getNumParams()) {
         llvm::errs() << "    Allocated locals: "
@@ -220,8 +279,12 @@ public:
       }
 
       // Emit WasmStack function
-      WasmStackEmitter emitter(builder, allocator, needsTee);
+      WasmStackEmitter emitter(builder, allocator, plan.needsTee);
       emitter.emitFunction(funcOp);
+      if (emitter.hasFailed()) {
+        signalPassFailure();
+        return;
+      }
 
       // Restore insertion point to wasmstack.module body for next function.
       builder.setInsertionPointToEnd(&wasmModule.getBody().front());
