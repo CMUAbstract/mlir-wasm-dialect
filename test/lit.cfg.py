@@ -3,6 +3,7 @@
 import os
 import platform
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -31,6 +32,7 @@ config.test_exec_root = os.path.join(config.wasm_obj_root, "test")
 
 config.substitutions.append(("%PATH%", config.environment["PATH"]))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
+config.substitutions.append(("%wasm_src_root", config.wasm_src_root))
 
 llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
 
@@ -74,6 +76,21 @@ llvm_config.add_tool_substitutions(
 
 if all(tool.was_resolved for tool in wabt_tools):
     config.available_features.add("wabt")
+
+# Optional wasmtime execution integration tests (opt-in).
+# Enabled only when cargo is available and RUN_WASMTIME_BENCH=1.
+run_wasmtime_bench = os.environ.get("RUN_WASMTIME_BENCH", "") == "1"
+cargo = shutil.which("cargo")
+if run_wasmtime_bench and cargo:
+    config.available_features.add("wasmtime_exec")
+    run_wasm_manifest = os.path.join(
+        config.wasm_src_root, "wasmtime-executor", "Cargo.toml"
+    )
+    run_wasm_cmd = (
+        f"{cargo} run --quiet --manifest-path {run_wasm_manifest} "
+        "--bin run_wasm_bin --"
+    )
+    config.substitutions.append(("%run_wasm_bin", run_wasm_cmd))
 
 llvm_config.with_environment(
     "PYTHONPATH",

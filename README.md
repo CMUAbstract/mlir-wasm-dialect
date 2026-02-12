@@ -56,6 +56,15 @@ and add it to `PATH`.
 We use `wat2wasm` to convert  `wat` files produced by our lowering passes to
 `wasm` binaries.
 
+### Opt-in Execution Benchmarks
+
+Integration execution benchmarks are opt-in and use `wasmtime-executor` to run
+generated wasm and assert expected `main() -> i32` results.
+
+```sh
+RUN_WASMTIME_BENCH=1 llvm-lit test/integration/benchmarks
+```
+
 ### WASI-SDK
 
 Install [WASI-SDK](https://github.com/WebAssembly/wasi-sdk) 
@@ -176,5 +185,4 @@ If the top of the stack is of type `f32`:
 ```
 call $log_f32
 ```
-
 
