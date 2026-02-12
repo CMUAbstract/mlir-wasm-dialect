@@ -18,8 +18,10 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace mlir::wasmstack {
 
@@ -54,6 +56,12 @@ bool shouldRematerialize(Operation *op);
 /// The conservative approach is to always use locals for block args.
 void allocateLocalsForBlockArgs(Region &region, DenseSet<Value> &needsLocal);
 
+/// Collect block arguments in deterministic traversal order and add them as
+/// local-required values.
+void allocateLocalsForBlockArgsOrdered(Region &region,
+                                       DenseSet<Value> &needsLocal,
+                                       SmallVectorImpl<Value> &localOrder);
+
 //===----------------------------------------------------------------------===//
 // Use Count Analysis
 //===----------------------------------------------------------------------===//
@@ -63,8 +71,9 @@ class UseCountAnalysis {
   DenseMap<Value, unsigned> useCounts;
 
 public:
-  UseCountAnalysis(Block &block) { analyze(block); }
+  UseCountAnalysis(Region &region) { analyze(region); }
 
+  void analyze(Region &region);
   void analyze(Block &block);
 
   unsigned getUseCount(Value value) const {
