@@ -945,13 +945,18 @@ Block *WasmStackEmitter::emitTerminatorAndGetNext(Operation *terminator,
 
     // If inside a loop, emit br to continue the loop.
     // INVARIANT: labelStack.back() is always the correct loop label here.
-    // This is guaranteed by ScopedLabel RAII in emitLoop/emitBlock:
-    // - Any nested blocks/ifs inside this loop have their own ScopedLabel
-    // - Those ScopedLabels are destroyed before we return to this scope
-    // - Therefore labelStack.back() is always the enclosing loop's label
-    if (isInLoop && !labelStack.empty()) {
-      assert(labelStack.back().second &&
-             "isInLoop is true but labelStack.back() is not a loop label");
+    if (isInLoop) {
+      if (labelStack.empty()) {
+        fail(blockReturnOp.getOperation(),
+             "in-loop block_return has no enclosing loop label");
+        return nullptr;
+      }
+      if (!labelStack.back().second) {
+        fail(blockReturnOp.getOperation(),
+             "in-loop block_return resolved to non-loop label");
+        return nullptr;
+      }
+
       std::string loopLabel = labelStack.back().first;
       BrOp::create(builder, loc, builder.getAttr<FlatSymbolRefAttr>(loopLabel));
     }
