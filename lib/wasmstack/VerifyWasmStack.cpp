@@ -40,7 +40,7 @@ struct ControlFrame {
   enum Kind { Block, Loop, If, Else, Function };
 
   Kind kind;
-  StringRef label;               // Label name (empty for if/function)
+  StringRef label;               // Label name (may be empty)
   SmallVector<Type> paramTypes;  // Types consumed on entry
   SmallVector<Type> resultTypes; // Types produced on exit
   size_t stackHeightAtEntry;     // Stack height when frame was entered
@@ -417,6 +417,9 @@ LogicalResult StackVerifier::handleIfOp(IfOp op) {
   {
     ControlFrame frame;
     frame.kind = ControlFrame::If;
+    auto label = op.getLabel();
+    if (label.has_value())
+      frame.label = label.value();
     frame.paramTypes = paramTypes;
     frame.resultTypes = resultTypes;
     frame.stackHeightAtEntry = stackHeight;
@@ -443,6 +446,9 @@ LogicalResult StackVerifier::handleIfOp(IfOp op) {
 
     ControlFrame frame;
     frame.kind = ControlFrame::Else;
+    auto label = op.getLabel();
+    if (label.has_value())
+      frame.label = label.value();
     frame.paramTypes = paramTypes;
     frame.resultTypes = resultTypes;
     frame.stackHeightAtEntry = stackHeight;

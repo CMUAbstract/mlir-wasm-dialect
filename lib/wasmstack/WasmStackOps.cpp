@@ -165,10 +165,26 @@ TypeRange LoopOp::getBranchResultTypes() {
 }
 
 //===----------------------------------------------------------------------===//
+// IfOp
+//===----------------------------------------------------------------------===//
+
+StringRef IfOp::getLabelName() {
+  if (auto label = getLabel())
+    return *label;
+  return {};
+}
+
+TypeRange IfOp::getBranchResultTypes() {
+  // TODO(Phase 4): Implement properly when stack verification is added.
+  // See BlockOp::getBranchResultTypes() for details.
+  return TypeRange();
+}
+
+//===----------------------------------------------------------------------===//
 // Branch Target Verification (shared by BrOp, BrIfOp)
 //===----------------------------------------------------------------------===//
 
-/// Verifies that a branch target label exists in an ancestor block or loop.
+/// Verifies that a branch target label exists in an ancestor control frame.
 /// Returns success if found, failure with appropriate error otherwise.
 static LogicalResult verifyBranchTarget(Operation *op, StringRef targetName) {
   Operation *parent = op->getParentOp();
@@ -177,9 +193,12 @@ static LogicalResult verifyBranchTarget(Operation *op, StringRef targetName) {
     if (auto block = dyn_cast<BlockOp>(parent)) {
       if (block.getLabel() == targetName)
         return success();
-    }
-    if (auto loop = dyn_cast<LoopOp>(parent)) {
+    } else if (auto loop = dyn_cast<LoopOp>(parent)) {
       if (loop.getLabel() == targetName)
+        return success();
+    } else if (auto ifOp = dyn_cast<IfOp>(parent)) {
+      auto label = ifOp.getLabel();
+      if (label.has_value() && label.value() == targetName)
         return success();
     }
     if (isa<FuncOp>(parent)) {
@@ -190,7 +209,7 @@ static LogicalResult verifyBranchTarget(Operation *op, StringRef targetName) {
   }
 
   return op->emitOpError("branch target '")
-         << targetName << "' not found in enclosing block or loop";
+         << targetName << "' not found in enclosing block/loop/if";
 }
 
 //===----------------------------------------------------------------------===//
