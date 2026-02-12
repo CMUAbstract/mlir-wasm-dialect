@@ -18,8 +18,9 @@ This branch is under active reimplementation.
 
 Preferred lowering path for new development:
 
-1. Standard MLIR (`arith`, `func`, `scf`, `memref`)
-2. `--wami-convert-all` (or explicit `--wami-convert-*` passes)
+1. Standard MLIR (`arith`, `math`, `func`, `scf`, `memref`)
+2. `--wami-convert-all` (or explicit `--wami-convert-*` passes, including
+   `--wami-convert-math`)
 3. `--reconcile-unrealized-casts`
 4. `--convert-to-wasmstack`
 5. `--verify-wasmstack`

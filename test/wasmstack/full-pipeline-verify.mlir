@@ -1,5 +1,5 @@
 // RUN: wasm-opt %s \
-// RUN:   --wami-convert-memref --wami-convert-scf --wami-convert-arith --wami-convert-func \
+// RUN:   --wami-convert-memref --wami-convert-scf --wami-convert-arith --wami-convert-math --wami-convert-func \
 // RUN:   --reconcile-unrealized-casts \
 // RUN:   --convert-to-wasmstack \
 // RUN:   --verify-wasmstack 2>&1 | FileCheck %s
@@ -181,6 +181,12 @@ func.func @f64_arithmetic(%a: f64, %b: f64) -> f64 {
   %add = arith.addf %a, %b : f64
   %mul = arith.mulf %add, %b : f64
   return %mul : f64
+}
+
+// CHECK-LABEL: wasmstack.func @f64_sqrt
+func.func @f64_sqrt(%x: f64) -> f64 {
+  %y = math.sqrt %x : f64
+  return %y : f64
 }
 
 // CHECK-LABEL: wasmstack.func @f32_comparisons

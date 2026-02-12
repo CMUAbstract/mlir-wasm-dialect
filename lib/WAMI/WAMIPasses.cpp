@@ -14,6 +14,7 @@
 #include "WAMI/WAMIPasses.h"
 #include "WAMI/ConversionPatterns/WAMIConvertArith.h"
 #include "WAMI/ConversionPatterns/WAMIConvertFunc.h"
+#include "WAMI/ConversionPatterns/WAMIConvertMath.h"
 #include "WAMI/ConversionPatterns/WAMIConvertMemref.h"
 #include "WAMI/ConversionPatterns/WAMIConvertScf.h"
 #include "WAMI/WAMIDialect.h"
@@ -21,6 +22,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
@@ -30,6 +32,7 @@
 namespace mlir::wami {
 
 #define GEN_PASS_DEF_WAMICONVERTARITH
+#define GEN_PASS_DEF_WAMICONVERTMATH
 #define GEN_PASS_DEF_WAMICONVERTFUNC
 #define GEN_PASS_DEF_WAMICONVERTMEMREF
 #define GEN_PASS_DEF_WAMICONVERTSCF
@@ -62,6 +65,39 @@ public:
 
     RewritePatternSet patterns(context);
     populateWAMIConvertArithPatterns(typeConverter, patterns);
+
+    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// WAMIConvertMath Pass
+//===----------------------------------------------------------------------===//
+
+class WAMIConvertMath : public impl::WAMIConvertMathBase<WAMIConvertMath> {
+public:
+  using impl::WAMIConvertMathBase<WAMIConvertMath>::WAMIConvertMathBase;
+
+  void runOnOperation() final {
+    auto module = getOperation();
+    MLIRContext *context = module.getContext();
+    WAMITypeConverter typeConverter(context);
+    ConversionTarget target(*context);
+
+    // WasmSSA and WAMI dialect operations are legal
+    target.addLegalDialect<wasmssa::WasmSSADialect>();
+    target.addLegalDialect<WAMIDialect>();
+
+    // Math dialect operations are illegal (we want to convert them)
+    target.addIllegalDialect<math::MathDialect>();
+
+    // Allow unrealized conversion casts for type mismatches
+    target.addLegalOp<UnrealizedConversionCastOp>();
+
+    RewritePatternSet patterns(context);
+    populateWAMIConvertMathPatterns(typeConverter, patterns);
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
@@ -201,6 +237,7 @@ public:
 
     // All source dialects are illegal (we want to convert them)
     target.addIllegalDialect<arith::ArithDialect>();
+    target.addIllegalDialect<math::MathDialect>();
     target.addIllegalDialect<func::FuncDialect>();
     target.addIllegalDialect<scf::SCFDialect>();
     target.addIllegalDialect<memref::MemRefDialect>();
@@ -211,6 +248,7 @@ public:
     // Collect all conversion patterns
     RewritePatternSet patterns(context);
     populateWAMIConvertArithPatterns(typeConverter, patterns);
+    populateWAMIConvertMathPatterns(typeConverter, patterns);
     populateWAMIConvertFuncPatterns(typeConverter, patterns);
     populateWAMIConvertScfPatterns(typeConverter, patterns);
     populateWAMIConvertMemrefPatterns(typeConverter, patterns,
