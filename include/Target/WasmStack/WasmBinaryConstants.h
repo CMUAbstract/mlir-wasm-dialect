@@ -314,6 +314,7 @@ enum class SymtabKind : uint8_t {
 };
 
 // Symbol flags
+constexpr uint32_t WASM_SYMBOL_UNDEFINED = 0x10;
 constexpr uint32_t WASM_SYMBOL_BINDING_LOCAL = 0x02;
 constexpr uint32_t WASM_SYMBOL_VISIBILITY_HIDDEN = 0x04;
 constexpr uint32_t WASM_SYMBOL_EXPORTED = 0x20;

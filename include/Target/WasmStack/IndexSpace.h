@@ -16,6 +16,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include <optional>
 
 namespace mlir::wasmstack {
 
@@ -50,6 +51,9 @@ public:
 
   /// Get function index by symbol name.
   uint32_t getFuncIndex(llvm::StringRef name) const;
+
+  /// Try to get function index by symbol name.
+  std::optional<uint32_t> tryGetFuncIndex(llvm::StringRef name) const;
 
   /// Get global index by symbol name.
   uint32_t getGlobalIndex(llvm::StringRef name) const;
