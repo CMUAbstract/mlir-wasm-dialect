@@ -2,7 +2,7 @@
 
 These tests validate end-to-end execution:
 
-1. High-level MLIR (`arith`, `memref`, `scf`, `func`)
+1. High-level MLIR (`arith`, `math`, `memref`, `scf`, `func`)
 2. `wami-convert-all`
 3. `reconcile-unrealized-casts`
 4. `convert-to-wasmstack`

@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-memref --wami-convert-scf --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-memref --wami-convert-scf --wami-convert-arith --wami-convert-math --wami-convert-func --reconcile-unrealized-casts | FileCheck %s
 
 // Verify no unrealized conversion casts remain after the full pipeline
 // CHECK-NOT: unrealized_conversion_cast
@@ -157,6 +157,19 @@ func.func @float_ops(%a: f32, %b: f32) -> f32 {
   %prod = arith.mulf %sum, %b : f32
   // CHECK: wasmssa.return
   return %prod : f32
+}
+
+//===----------------------------------------------------------------------===//
+// Math operations
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: wasmssa.func @sqrt_f64
+// CHECK-SAME: (%{{.*}}: !wasmssa<local ref to f64>) -> f64
+func.func @sqrt_f64(%x: f64) -> f64 {
+  // CHECK: wasmssa.sqrt
+  %y = math.sqrt %x : f64
+  // CHECK: wasmssa.return
+  return %y : f64
 }
 
 //===----------------------------------------------------------------------===//

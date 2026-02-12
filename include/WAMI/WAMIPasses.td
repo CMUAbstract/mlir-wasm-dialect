@@ -30,6 +30,22 @@ def WAMIConvertArith : Pass<"wami-convert-arith", "ModuleOp"> {
   ];
 }
 
+def WAMIConvertMath : Pass<"wami-convert-math", "ModuleOp"> {
+  let summary = "Convert Math dialect to WasmSSA dialect";
+  let description = [{
+    This pass converts supported operations from the MLIR Math dialect to the
+    upstream WasmSSA dialect. In this iteration, it lowers:
+    - math.sqrt -> wasmssa.sqrt
+
+    Unsupported math operations are rejected to keep the pipeline behavior
+    deterministic.
+  }];
+  let dependentDialects = [
+    "wasmssa::WasmSSADialect",
+    "math::MathDialect"
+  ];
+}
+
 def WAMIConvertFunc : Pass<"wami-convert-func", "ModuleOp"> {
   let summary = "Convert Func dialect to WasmSSA dialect";
   let description = [{
@@ -81,7 +97,7 @@ def WAMIConvertMemref : Pass<"wami-convert-memref", "ModuleOp"> {
 def WAMIConvertAll : Pass<"wami-convert-all", "ModuleOp"> {
   let summary = "Convert all supported dialects to WasmSSA/WAMI";
   let description = [{
-    Unified pass that converts arith, func, scf, and memref dialects to
+    Unified pass that converts arith, math, func, scf, and memref dialects to
     WasmSSA and WAMI dialects in a single conversion. This handles cases
     where operations from different dialects are interleaved (e.g., scf.for
     with memref.load inside the loop body).
@@ -95,6 +111,7 @@ def WAMIConvertAll : Pass<"wami-convert-all", "ModuleOp"> {
     "wasmssa::WasmSSADialect",
     "wami::WAMIDialect",
     "arith::ArithDialect",
+    "math::MathDialect",
     "func::FuncDialect",
     "scf::SCFDialect",
     "memref::MemRefDialect"
