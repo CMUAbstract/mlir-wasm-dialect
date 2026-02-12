@@ -42,8 +42,8 @@ public:
   static Type unwrapLocalRefType(Type type);
 
   /// Allocate locals for a function
-  void allocate(wasmssa::FuncOp funcOp, const DenseSet<Value> &needsLocal,
-                const DenseSet<Value> &needsTee);
+  void allocate(wasmssa::FuncOp funcOp, ArrayRef<Value> needsLocalOrdered,
+                ArrayRef<Value> needsTeeOrdered);
 
   /// Get the local index for a value, or -1 if not allocated
   int getLocalIndex(Value value) const;

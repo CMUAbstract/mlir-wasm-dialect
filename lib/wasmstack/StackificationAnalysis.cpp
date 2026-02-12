@@ -13,6 +13,7 @@
 #include "wasmstack/StackificationAnalysis.h"
 #include "WAMI/WAMIOps.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 namespace mlir::wasmstack {
 
@@ -23,38 +24,75 @@ namespace mlir::wasmstack {
 DepInfo queryDependencies(Operation *op) {
   DepInfo info;
 
-  // Memory loads
-  if (isa<wami::LoadOp>(op)) {
-    info.readsMemory = true;
+  // Cheap SSA-only operations are safe to reorder.
+  if (isa<wasmssa::ConstOp, wasmssa::LocalGetOp, wasmssa::LocalSetOp,
+          wasmssa::LocalTeeOp>(op)) {
+    return info;
   }
 
-  // Memory stores - both write memory AND have side effects
-  // (order of stores must be preserved)
+  // Memory loads.
+  if (isa<wami::LoadOp>(op)) {
+    info.readsMemory = true;
+    return info;
+  }
+
+  // Memory stores - both write memory and have side effects.
   if (isa<wami::StoreOp>(op)) {
     info.writesMemory = true;
     info.hasSideEffects = true;
+    return info;
   }
 
-  // Global reads - treat like memory reads for ordering purposes
+  // Global reads behave like memory reads for ordering.
   if (isa<wasmssa::GlobalGetOp>(op)) {
     info.readsMemory = true;
+    return info;
   }
 
-  // Note: WasmSSA doesn't have GlobalSetOp - mutable globals are
-  // handled differently. If added later, it would have side effects.
-
-  // Calls have side effects and may read/write memory
+  // Calls conservatively read/write memory and have side effects.
   if (isa<wasmssa::FuncCallOp>(op)) {
     info.hasSideEffects = true;
     info.readsMemory = true;
     info.writesMemory = true;
+    return info;
   }
 
-  // Local operations don't have side effects - they're SSA values
-  // LocalGetOp, LocalSetOp, LocalTeeOp are fine to reorder
+  // Trapping operations must not be moved across side effects.
+  if (isa<wasmssa::DivSIOp, wasmssa::DivUIOp, wasmssa::RemSIOp,
+          wasmssa::RemUIOp, wami::TruncSOp, wami::TruncUOp>(op)) {
+    info.hasSideEffects = true;
+    return info;
+  }
 
-  // TODO: Add stack switching operations when implemented
-  // suspend, resume, switch all have significant side effects
+  // Use memory effects interface when available.
+  if (auto effectIface = dyn_cast<MemoryEffectOpInterface>(op)) {
+    SmallVector<MemoryEffects::EffectInstance, 4> effects;
+    effectIface.getEffects(effects);
+    for (const auto &effect : effects) {
+      if (isa<MemoryEffects::Read>(effect.getEffect())) {
+        info.readsMemory = true;
+        continue;
+      }
+      if (isa<MemoryEffects::Write>(effect.getEffect())) {
+        info.writesMemory = true;
+        continue;
+      }
+      if (isa<MemoryEffects::Allocate, MemoryEffects::Free>(
+              effect.getEffect())) {
+        info.readsMemory = true;
+        info.writesMemory = true;
+        info.hasSideEffects = true;
+        continue;
+      }
+      info.hasSideEffects = true;
+    }
+    return info;
+  }
+
+  // Unknown operations are treated conservatively.
+  info.readsMemory = true;
+  info.writesMemory = true;
+  info.hasSideEffects = true;
 
   return info;
 }
@@ -116,9 +154,29 @@ void allocateLocalsForBlockArgs(Region &region, DenseSet<Value> &needsLocal) {
   }
 }
 
+void allocateLocalsForBlockArgsOrdered(Region &region,
+                                       DenseSet<Value> &needsLocal,
+                                       SmallVectorImpl<Value> &localOrder) {
+  for (Block &block : region) {
+    for (BlockArgument arg : block.getArguments()) {
+      if (needsLocal.insert(arg).second)
+        localOrder.push_back(arg);
+    }
+    for (Operation &op : block) {
+      for (Region &nestedRegion : op.getRegions())
+        allocateLocalsForBlockArgsOrdered(nestedRegion, needsLocal, localOrder);
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Use Count Analysis
 //===----------------------------------------------------------------------===//
+
+void UseCountAnalysis::analyze(Region &region) {
+  for (Block &block : region)
+    analyze(block);
+}
 
 void UseCountAnalysis::analyze(Block &block) {
   for (Operation &op : block) {

@@ -16,9 +16,13 @@
 
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
 #include "wasmstack/StackificationAnalysis.h"
+#include "wasmstack/StackificationPlan.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace mlir::wasmstack {
 
@@ -37,6 +41,10 @@ class TreeWalker {
   /// local.get)
   DenseSet<Value> needsTee;
 
+  /// Deterministic insertion order for local/tee allocation.
+  SmallVector<Value> localOrder;
+  SmallVector<Value> teeOrder;
+
   /// Use count analysis
   const UseCountAnalysis &useCount;
 
@@ -49,11 +57,20 @@ public:
   /// Get the set of values that should use tee (first use from stack)
   const DenseSet<Value> &getValuesNeedingTee() const { return needsTee; }
 
+  /// Get stable insertion order for local-backed values.
+  ArrayRef<Value> getLocalOrder() const { return localOrder; }
+
+  /// Get stable insertion order for tee-backed values.
+  ArrayRef<Value> getTeeOrder() const { return teeOrder; }
+
   /// Check if an operation has been stackified
   bool isStackified(Operation *op) const { return stackifiedOps.contains(op); }
 
   /// Process a block, attempting to stackify operations
   void processBlock(Block &block);
+
+  /// Process all blocks in a region.
+  void processRegion(Region &region);
 
   /// Process a single operation, trying to stackify its operands
   void processOperation(Operation *op);
@@ -66,6 +83,12 @@ private:
 
   /// Check if defOp can be stackified (moved immediately before useOp)
   bool canStackify(Operation *defOp, Operation *useOp);
+
+  /// Mark value as local-only and keep deterministic ordering.
+  void requireLocal(Value value);
+
+  /// Mark value as tee-backed and keep deterministic ordering.
+  void requireTee(Value value);
 };
 
 } // namespace mlir::wasmstack

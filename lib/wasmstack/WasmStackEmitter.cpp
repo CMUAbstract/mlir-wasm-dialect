@@ -13,9 +13,31 @@
 
 #include "wasmstack/WasmStackEmitter.h"
 #include "WAMI/WAMIOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "llvm/ADT/Twine.h"
 
 namespace mlir::wasmstack {
+
+static bool isNoOpCastPair(Type srcType, Type dstType) {
+  if (srcType == dstType)
+    return true;
+
+  if ((srcType.isIndex() && dstType.isInteger(32)) ||
+      (dstType.isIndex() && srcType.isInteger(32)))
+    return true;
+
+  if (auto srcInt = dyn_cast<IntegerType>(srcType)) {
+    if (auto dstInt = dyn_cast<IntegerType>(dstType))
+      return srcInt.getWidth() == dstInt.getWidth();
+  }
+
+  if (auto srcFloat = dyn_cast<FloatType>(srcType)) {
+    if (auto dstFloat = dyn_cast<FloatType>(dstType))
+      return srcFloat.getWidth() == dstFloat.getWidth();
+  }
+
+  return false;
+}
 
 //===----------------------------------------------------------------------===//
 // RAII Guards
@@ -147,6 +169,8 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
 
       // Emit all operations EXCEPT the terminator
       for (Operation &op : currentBlock->without_terminator()) {
+        if (failed)
+          break;
         // Skip operations that have results but no users (e.g., cloned ops
         // that were created but the original became unused after
         // rematerialization)
@@ -155,6 +179,9 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
         }
         emitOperation(&op);
       }
+
+      if (failed)
+        break;
 
       // Handle terminator and get next block to process
       Operation *terminator = currentBlock->getTerminator();
@@ -167,6 +194,13 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
   }
 
   return dstFunc;
+}
+
+void WasmStackEmitter::fail(Operation *op, StringRef message) {
+  if (failed)
+    return;
+  failed = true;
+  op->emitError(message);
 }
 
 void WasmStackEmitter::materializeResult(Location loc, Value result) {
@@ -192,6 +226,9 @@ void WasmStackEmitter::materializeResult(Location loc, Value result) {
 }
 
 void WasmStackEmitter::emitOperation(Operation *op) {
+  if (failed)
+    return;
+
   Location loc = op->getLoc();
 
   // Handle different operation types
@@ -375,8 +412,14 @@ void WasmStackEmitter::emitOperation(Operation *op) {
     // Pops: condition (i32), false_val, true_val
     // Pushes: condition ? true_val : false_val
     emitOperandIfNeeded(selectOp.getTrueValue());
+    if (failed)
+      return;
     emitOperandIfNeeded(selectOp.getFalseValue());
+    if (failed)
+      return;
     emitOperandIfNeeded(selectOp.getCondition());
+    if (failed)
+      return;
     SelectOp::create(builder, loc, TypeAttr::get(selectOp.getType()));
     materializeResult(loc, selectOp.getResult());
   }
@@ -388,6 +431,35 @@ void WasmStackEmitter::emitOperation(Operation *op) {
   else if (auto callOp = dyn_cast<wasmssa::FuncCallOp>(op)) {
     emitCall(callOp);
   }
+  // Canonicalized away in ideal pipelines, but keep explicit support so
+  // stackification remains robust when reconciliation is incomplete.
+  else if (auto castOp = dyn_cast<UnrealizedConversionCastOp>(op)) {
+    if (castOp.getNumOperands() != 1 || castOp.getNumResults() != 1) {
+      fail(op, "unsupported unrealized_conversion_cast arity");
+      return;
+    }
+
+    Value src = castOp.getOperand(0);
+    Value dst = castOp.getResult(0);
+    int idx = allocator.getLocalIndex(src);
+    if (idx >= 0) {
+      LocalGetOp::create(builder, loc, static_cast<uint32_t>(idx),
+                         dst.getType());
+      materializeResult(loc, dst);
+      return;
+    }
+
+    emitOperandIfNeeded(src);
+    if (failed)
+      return;
+    if (!isNoOpCastPair(src.getType(), dst.getType())) {
+      fail(
+          op,
+          "unsupported unrealized_conversion_cast without local-backed source");
+      return;
+    }
+    materializeResult(loc, dst);
+  }
   // Control flow
   else if (auto returnOp = dyn_cast<wasmssa::ReturnOp>(op)) {
     // Emit return operands to ensure they're on the stack
@@ -395,6 +467,8 @@ void WasmStackEmitter::emitOperation(Operation *op) {
     // robustness)
     for (Value operand : returnOp.getOperands()) {
       emitOperandIfNeeded(operand);
+      if (failed)
+        return;
     }
     ReturnOp::create(builder, loc);
   } else if (auto blockOp = dyn_cast<wasmssa::BlockOp>(op)) {
@@ -410,12 +484,13 @@ void WasmStackEmitter::emitOperation(Operation *op) {
     // These values must be on the stack when control exits the block
     for (Value input : blockReturnOp.getInputs()) {
       emitOperandIfNeeded(input);
+      if (failed)
+        return;
     }
     // No explicit wasmstack instruction needed - values are now on stack
     // and control flows to the block's end
   } else {
-    // Report unhandled operations to avoid silent failures
-    op->emitWarning("unhandled operation in stackification: ") << op->getName();
+    fail(op, "unhandled operation in stackification emitter");
   }
 }
 
@@ -454,6 +529,8 @@ void WasmStackEmitter::emitBinaryOp(Operation *srcOp, Value lhs, Value rhs,
   // the stack carefully - one may be on stack, but we need two copies
   if (lhs == rhs) {
     emitOperandIfNeeded(lhs);
+    if (failed)
+      return;
     // For the second operand with same value, always use local.get if
     // available
     int idx = allocator.getLocalIndex(lhs);
@@ -461,15 +538,16 @@ void WasmStackEmitter::emitBinaryOp(Operation *srcOp, Value lhs, Value rhs,
       LocalGetOp::create(builder, loc, static_cast<uint32_t>(idx),
                          lhs.getType());
     } else {
-      // Fallback: re-emit the defining operation (shouldn't happen for
-      // well-stackified code)
-      if (Operation *defOp = lhs.getDefiningOp()) {
-        emitOperation(defOp);
-      }
+      fail(srcOp, "repeated operand requires a local-backed value");
+      return;
     }
   } else {
     emitOperandIfNeeded(lhs);
+    if (failed)
+      return;
     emitOperandIfNeeded(rhs);
+    if (failed)
+      return;
   }
 
   // Emit the operation
@@ -478,6 +556,9 @@ void WasmStackEmitter::emitBinaryOp(Operation *srcOp, Value lhs, Value rhs,
 }
 
 void WasmStackEmitter::emitOperandIfNeeded(Value value) {
+  if (failed)
+    return;
+
   // If already emitted to stack, mark as consumed and return
   if (emittedToStack.contains(value)) {
     emittedToStack.erase(value); // Mark as consumed
@@ -492,20 +573,29 @@ void WasmStackEmitter::emitOperandIfNeeded(Value value) {
     return;
   }
 
-  // Otherwise, we need to emit the defining operation
-  // This should have been handled by stackification, but as a fallback:
   if (Operation *defOp = value.getDefiningOp()) {
-    emitOperation(defOp);
+    fail(defOp, "value is neither on stack nor local-backed");
+    return;
   }
+  if (auto blockArg = dyn_cast<BlockArgument>(value)) {
+    Operation *contextOp = blockArg.getOwner()->getParentOp();
+    fail(contextOp, "block argument is neither on stack nor local-backed");
+    return;
+  }
+  fail(builder.getBlock()->getParentOp(),
+       "operand is neither on stack nor local-backed");
 }
 
 std::string WasmStackEmitter::generateLabel(StringRef prefix) {
   return (prefix + "_" + Twine(labelCounter++)).str();
 }
 
-std::string WasmStackEmitter::getLabelForExitLevel(unsigned exitLevel) {
-  assert(exitLevel < labelStack.size() &&
-         "Exit level exceeds label stack depth - invalid WasmSSA IR");
+std::string WasmStackEmitter::getLabelForExitLevel(unsigned exitLevel,
+                                                   Operation *contextOp) {
+  if (exitLevel >= labelStack.size()) {
+    fail(contextOp, "exit level exceeds label stack depth");
+    return {};
+  }
   // Labels are indexed from the top of the stack (innermost first)
   return labelStack[labelStack.size() - 1 - exitLevel].first;
 }
@@ -517,6 +607,8 @@ void WasmStackEmitter::emitBlock(wasmssa::BlockOp blockOp) {
   // These become the block's parameters in WebAssembly
   for (Value input : blockOp.getInputs()) {
     emitOperandIfNeeded(input);
+    if (failed)
+      return;
   }
 
   // Generate label for this block
@@ -585,6 +677,8 @@ void WasmStackEmitter::emitBlock(wasmssa::BlockOp blockOp) {
       // Emit all operations EXCEPT the terminator
       for (Operation &op : currentBlock->without_terminator()) {
         emitOperation(&op);
+        if (failed)
+          return;
       }
 
       // Handle terminator and get next block to process
@@ -594,6 +688,8 @@ void WasmStackEmitter::emitBlock(wasmssa::BlockOp blockOp) {
       } else {
         currentBlock = nullptr;
       }
+      if (failed)
+        return;
     }
   }
   // ScopedLabel destructor pops the label automatically
@@ -606,6 +702,8 @@ void WasmStackEmitter::emitLoop(wasmssa::LoopOp loopOp) {
   // These become the loop's parameters in WebAssembly
   for (Value input : loopOp.getInputs()) {
     emitOperandIfNeeded(input);
+    if (failed)
+      return;
   }
 
   // Generate label for this loop
@@ -677,6 +775,8 @@ void WasmStackEmitter::emitLoop(wasmssa::LoopOp loopOp) {
       // Emit all operations EXCEPT the terminator
       for (Operation &op : currentBlock->without_terminator()) {
         emitOperation(&op);
+        if (failed)
+          return;
       }
 
       // Handle terminator and get next block to process
@@ -686,6 +786,8 @@ void WasmStackEmitter::emitLoop(wasmssa::LoopOp loopOp) {
       } else {
         currentBlock = nullptr;
       }
+      if (failed)
+        return;
     }
   }
   // ScopedLabel destructor pops the label automatically
@@ -698,10 +800,14 @@ void WasmStackEmitter::emitIf(wasmssa::IfOp ifOp) {
   // (In WebAssembly, params are consumed before condition)
   for (Value input : ifOp.getInputs()) {
     emitOperandIfNeeded(input);
+    if (failed)
+      return;
   }
 
   // Emit the condition to the stack (always last, as it's popped first)
   emitOperandIfNeeded(ifOp.getCondition());
+  if (failed)
+    return;
 
   // 2. Extract param types from the if's inputs (not including condition)
   SmallVector<Attribute> paramTypes;
@@ -741,6 +847,8 @@ void WasmStackEmitter::emitIf(wasmssa::IfOp ifOp) {
     if (!ifOp.getIf().empty()) {
       for (Operation &op : ifOp.getIf().front()) {
         emitOperation(&op);
+        if (failed)
+          return;
       }
     }
   }
@@ -762,6 +870,8 @@ void WasmStackEmitter::emitIf(wasmssa::IfOp ifOp) {
 
     for (Operation &op : ifOp.getElse().front()) {
       emitOperation(&op);
+      if (failed)
+        return;
     }
   }
 }
@@ -771,10 +881,15 @@ void WasmStackEmitter::emitBranchIf(wasmssa::BranchIfOp branchIfOp) {
 
   // Emit the condition to the stack
   emitOperandIfNeeded(branchIfOp.getCondition());
+  if (failed)
+    return;
 
   // Resolve the exit level to the actual enclosing block/loop label
   unsigned exitLevel = branchIfOp.getExitLevel();
-  std::string label = getLabelForExitLevel(exitLevel);
+  std::string label =
+      getLabelForExitLevel(exitLevel, branchIfOp.getOperation());
+  if (failed)
+    return;
 
   BrIfOp::create(builder, loc, builder.getAttr<FlatSymbolRefAttr>(label));
 }
@@ -815,14 +930,21 @@ Block *WasmStackEmitter::emitTerminatorAndGetNext(Operation *terminator,
     // 1. Emit exit args to stack first (they stay if branch not taken).
     for (Value arg : branchIfOp.getInputs()) {
       emitOperandIfNeeded(arg);
+      if (failed)
+        return nullptr;
     }
 
     // 2. Emit condition (must be on top of stack for br_if).
     emitOperandIfNeeded(branchIfOp.getCondition());
+    if (failed)
+      return nullptr;
 
     // 3. Emit br_if to the exit level
     unsigned exitLevel = branchIfOp.getExitLevel();
-    std::string label = getLabelForExitLevel(exitLevel);
+    std::string label =
+        getLabelForExitLevel(exitLevel, branchIfOp.getOperation());
+    if (failed)
+      return nullptr;
     BrIfOp::create(builder, loc, builder.getAttr<FlatSymbolRefAttr>(label));
 
     // 4. Return the else successor to continue processing (fallthrough path)
@@ -833,6 +955,8 @@ Block *WasmStackEmitter::emitTerminatorAndGetNext(Operation *terminator,
     // Emit return values to stack
     for (Value input : blockReturnOp.getInputs()) {
       emitOperandIfNeeded(input);
+      if (failed)
+        return nullptr;
     }
 
     // If inside a loop, emit br to continue the loop.
@@ -857,6 +981,8 @@ Block *WasmStackEmitter::emitTerminatorAndGetNext(Operation *terminator,
     // Emit return operands to ensure they're on the stack
     for (Value operand : returnOp.getOperands()) {
       emitOperandIfNeeded(operand);
+      if (failed)
+        return nullptr;
     }
     ReturnOp::create(builder, loc);
     return nullptr; // Stop processing - function ends
@@ -874,16 +1000,23 @@ void WasmStackEmitter::emitCompareOp(Operation *srcOp, Value lhs, Value rhs,
 
   if (lhs == rhs) {
     emitOperandIfNeeded(lhs);
+    if (failed)
+      return;
     int idx = allocator.getLocalIndex(lhs);
     if (idx >= 0) {
       LocalGetOp::create(builder, loc, static_cast<uint32_t>(idx),
                          lhs.getType());
-    } else if (Operation *defOp = lhs.getDefiningOp()) {
-      emitOperation(defOp);
+    } else {
+      fail(srcOp, "repeated compare operand requires a local-backed value");
+      return;
     }
   } else {
     emitOperandIfNeeded(lhs);
+    if (failed)
+      return;
     emitOperandIfNeeded(rhs);
+    if (failed)
+      return;
   }
 
   WasmStackOp::create(builder, loc, TypeAttr::get(operandType));
@@ -896,6 +1029,8 @@ void WasmStackEmitter::emitTestOp(Operation *srcOp, Value input, Value result) {
   Type inputType = input.getType();
 
   emitOperandIfNeeded(input);
+  if (failed)
+    return;
   WasmStackOp::create(builder, loc, TypeAttr::get(inputType));
   materializeResult(loc, result);
 }
@@ -907,6 +1042,8 @@ void WasmStackEmitter::emitUnaryOp(Operation *srcOp, Value input,
   Type resultType = result.getType();
 
   emitOperandIfNeeded(input);
+  if (failed)
+    return;
   WasmStackOp::create(builder, loc, TypeAttr::get(resultType));
   materializeResult(loc, result);
 }
@@ -919,6 +1056,8 @@ void WasmStackEmitter::emitConvertOp(Operation *srcOp, bool isSigned) {
   Type resultType = result.getType();
 
   emitOperandIfNeeded(input);
+  if (failed)
+    return;
 
   // Emit the appropriate convert instruction based on types
   if (resultType.isF32()) {
@@ -957,6 +1096,8 @@ void WasmStackEmitter::emitPromoteOp(wasmssa::PromoteOp promoteOp) {
   Type resultType = result.getType();
 
   emitOperandIfNeeded(input);
+  if (failed)
+    return;
   F64PromoteF32Op::create(builder, loc, inputType, resultType);
   materializeResult(loc, result);
 }
@@ -969,6 +1110,8 @@ void WasmStackEmitter::emitDemoteOp(wasmssa::DemoteOp demoteOp) {
   Type resultType = result.getType();
 
   emitOperandIfNeeded(input);
+  if (failed)
+    return;
   F32DemoteF64Op::create(builder, loc, inputType, resultType);
   materializeResult(loc, result);
 }
@@ -981,6 +1124,8 @@ void WasmStackEmitter::emitExtendI32Op(Operation *srcOp, bool isSigned) {
   Type resultType = result.getType();
 
   emitOperandIfNeeded(input);
+  if (failed)
+    return;
 
   if (isSigned)
     I64ExtendI32SOp::create(builder, loc, inputType, resultType);
@@ -997,6 +1142,8 @@ void WasmStackEmitter::emitWrapOp(wasmssa::WrapOp wrapOp) {
   Type resultType = result.getType();
 
   emitOperandIfNeeded(input);
+  if (failed)
+    return;
   I32WrapI64Op::create(builder, loc, inputType, resultType);
   materializeResult(loc, result);
 }
@@ -1009,6 +1156,8 @@ void WasmStackEmitter::emitTruncOp(Operation *srcOp, bool isSigned) {
   Type resultType = result.getType();
 
   emitOperandIfNeeded(input);
+  if (failed)
+    return;
 
   // Emit appropriate truncation instruction based on types
   if (resultType.isInteger(32)) {
@@ -1048,6 +1197,10 @@ void WasmStackEmitter::emitSourceLocalGet(wasmssa::LocalGetOp localGetOp) {
   if (idx >= 0) {
     LocalGetOp::create(builder, loc, static_cast<uint32_t>(idx),
                        result.getType());
+  } else {
+    fail(localGetOp.getOperation(),
+         "source local.get references a value without allocated local");
+    return;
   }
   materializeResult(loc, result);
 }
@@ -1058,11 +1211,16 @@ void WasmStackEmitter::emitSourceLocalSet(wasmssa::LocalSetOp localSetOp) {
   Value value = localSetOp.getValue();
 
   emitOperandIfNeeded(value);
+  if (failed)
+    return;
 
   int idx = allocator.getLocalIndex(localRef);
   if (idx >= 0) {
     LocalSetOp::create(builder, loc, static_cast<uint32_t>(idx),
                        value.getType());
+  } else {
+    fail(localSetOp.getOperation(),
+         "source local.set references a value without allocated local");
   }
 }
 
@@ -1073,11 +1231,17 @@ void WasmStackEmitter::emitSourceLocalTee(wasmssa::LocalTeeOp localTeeOp) {
   Value result = localTeeOp.getResult();
 
   emitOperandIfNeeded(value);
+  if (failed)
+    return;
 
   int idx = allocator.getLocalIndex(localRef);
   if (idx >= 0) {
     LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
                        value.getType());
+  } else {
+    fail(localTeeOp.getOperation(),
+         "source local.tee references a value without allocated local");
+    return;
   }
   materializeResult(loc, result);
 }
@@ -1089,6 +1253,8 @@ void WasmStackEmitter::emitLoad(wami::LoadOp loadOp) {
   Type resultType = result.getType();
 
   emitOperandIfNeeded(addr);
+  if (failed)
+    return;
 
   // Emit appropriate load instruction based on type
   if (resultType.isInteger(32)) {
@@ -1114,7 +1280,11 @@ void WasmStackEmitter::emitStore(wami::StoreOp storeOp) {
   Type valueType = value.getType();
 
   emitOperandIfNeeded(addr);
+  if (failed)
+    return;
   emitOperandIfNeeded(value);
+  if (failed)
+    return;
 
   // Emit appropriate store instruction based on type
   if (valueType.isInteger(32)) {
@@ -1151,6 +1321,8 @@ void WasmStackEmitter::emitCall(wasmssa::FuncCallOp callOp) {
   // Emit all operands to the stack
   for (Value operand : callOp.getOperands()) {
     emitOperandIfNeeded(operand);
+    if (failed)
+      return;
   }
 
   // Get function type from operands and results

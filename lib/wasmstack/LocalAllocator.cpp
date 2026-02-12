@@ -23,8 +23,8 @@ Type LocalAllocator::unwrapLocalRefType(Type type) {
 }
 
 void LocalAllocator::allocate(wasmssa::FuncOp funcOp,
-                              const DenseSet<Value> &needsLocal,
-                              const DenseSet<Value> &needsTee) {
+                              ArrayRef<Value> needsLocalOrdered,
+                              ArrayRef<Value> needsTeeOrdered) {
   // First, assign indices to parameters
   // WasmSSA functions use !wasmssa<local ref to T> for parameters
   // The block arguments in the entry block are the parameters
@@ -43,7 +43,7 @@ void LocalAllocator::allocate(wasmssa::FuncOp funcOp,
   unsigned nextLocalIdx = numParams;
 
   // Assign indices to values that need full locals (local.set/local.get)
-  for (Value value : needsLocal) {
+  for (Value value : needsLocalOrdered) {
     if (!localIndices.count(value)) {
       localIndices[value] = nextLocalIdx++;
       localTypes.push_back(value.getType());
@@ -51,7 +51,7 @@ void LocalAllocator::allocate(wasmssa::FuncOp funcOp,
   }
 
   // Assign indices to values that use tee (local.tee + local.get)
-  for (Value value : needsTee) {
+  for (Value value : needsTeeOrdered) {
     if (!localIndices.count(value)) {
       localIndices[value] = nextLocalIdx++;
       localTypes.push_back(value.getType());

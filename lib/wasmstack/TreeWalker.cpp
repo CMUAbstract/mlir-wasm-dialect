@@ -14,6 +14,8 @@
 #include "wasmstack/TreeWalker.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/OpDefinition.h"
+#include "llvm/ADT/STLExtras.h"
 
 namespace mlir::wasmstack {
 
@@ -39,6 +41,48 @@ static bool hasEarlierEquivalentOperand(Operation *op, unsigned operandIdx) {
       return true;
   }
   return false;
+}
+
+/// Try commuting a binary commutative op to satisfy operand-order constraints.
+/// Returns true if the commute was applied.
+static bool maybeCommuteForOrdering(Operation *op, unsigned operandIdx) {
+  if (operandIdx != 1)
+    return false;
+  if (op->getNumOperands() != 2)
+    return false;
+  if (!op->hasTrait<OpTrait::IsCommutative>())
+    return false;
+  if (op->getOperand(0) == op->getOperand(1))
+    return false;
+
+  Value lhs = op->getOperand(0);
+  Value rhs = op->getOperand(1);
+  op->setOperand(0, rhs);
+  op->setOperand(1, lhs);
+  return true;
+}
+
+void TreeWalker::requireLocal(Value value) {
+  needsTee.erase(value);
+  if (needsLocal.insert(value).second)
+    localOrder.push_back(value);
+}
+
+void TreeWalker::requireTee(Value value) {
+  if (needsLocal.contains(value))
+    return;
+  if (needsTee.insert(value).second)
+    teeOrder.push_back(value);
+}
+
+void TreeWalker::processRegion(Region &region) {
+  SmallVector<Block *> blocks;
+  blocks.reserve(region.getBlocks().size());
+  for (Block &block : region)
+    blocks.push_back(&block);
+
+  for (Block *block : llvm::reverse(blocks))
+    processBlock(*block);
 }
 
 void TreeWalker::processBlock(Block &block) {
@@ -85,20 +129,26 @@ void TreeWalker::processOperation(Operation *op) {
     bool requireOnDemand = hasEarlierOnDemandOperand(op, i, stackifiedOps);
     bool hasEarlierEquivalent = hasEarlierEquivalentOperand(op, i);
 
+    if (requireOnDemand && !hasEarlierEquivalent &&
+        maybeCommuteForOrdering(op, i)) {
+      operand = op->getOperand(i);
+      defOp = operand.getDefiningOp();
+      requireOnDemand = hasEarlierOnDemandOperand(op, i, stackifiedOps);
+      hasEarlierEquivalent = hasEarlierEquivalentOperand(op, i);
+    }
+
     // Block argument - arrives on stack at block entry.
     // Conservatively allocate a local because:
     // 1. Multi-use args need locals (first use consumes from stack)
     // 2. Single-use args may not be in correct stack position
     // Future optimization: analyze stack order to keep some args on stack.
     if (!defOp) {
-      needsTee.erase(operand);
-      needsLocal.insert(operand);
+      requireLocal(operand);
       continue;
     }
 
     if (forceLocalOperands) {
-      needsTee.erase(operand);
-      needsLocal.insert(operand);
+      requireLocal(operand);
       continue;
     }
 
@@ -109,8 +159,7 @@ void TreeWalker::processOperation(Operation *op) {
     // Exception: repeated operands (e.g., `%x, %x`) can still use tee/local.get
     // without violating order and should keep that optimization path.
     if (requireOnDemand && !hasEarlierEquivalent) {
-      needsTee.erase(operand);
-      needsLocal.insert(operand);
+      requireLocal(operand);
       continue;
     }
 
@@ -159,11 +208,9 @@ void TreeWalker::processOperation(Operation *op) {
       // Can't stackify directly - check if we can use tee
       // Tee is useful when one use can consume from stack, others from local
       if (canUseTee(defOp, operand)) {
-        if (!needsLocal.contains(operand))
-          needsTee.insert(operand);
+        requireTee(operand);
       } else {
-        needsTee.erase(operand);
-        needsLocal.insert(operand);
+        requireLocal(operand);
       }
     }
   }
