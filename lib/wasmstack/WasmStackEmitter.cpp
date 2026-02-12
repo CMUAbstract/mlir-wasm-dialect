@@ -1350,8 +1350,9 @@ void WasmStackEmitter::emitCall(wasmssa::FuncCallOp callOp) {
 
   CallOp::create(builder, loc, callOp.getCalleeAttr(), TypeAttr::get(funcType));
 
-  // Mark results as emitted to stack
-  for (Value result : callOp.getResults()) {
+  // WebAssembly pushes multi-value results with the last result on top.
+  // Materialize in reverse so local-backed assignment preserves SSA order.
+  for (Value result : llvm::reverse(callOp.getResults())) {
     materializeResult(loc, result);
   }
 }
