@@ -71,14 +71,33 @@ public:
     llvm::errs() << "ConvertToWasmStack pass running on module\n";
     llvm::errs().flush();
 
+    // This pass expects pre-wasmstack input and materializes exactly one
+    // wasmstack.module wrapper for emitted WasmStack functions.
+    if (!module.getOps<wasmstack::ModuleOp>().empty()) {
+      module.emitError("convert-to-wasmstack expects input without existing "
+                       "wasmstack.module");
+      signalPassFailure();
+      return;
+    }
+
     // Collect functions to process
     SmallVector<wasmssa::FuncOp> funcsToConvert;
     module.walk(
         [&](wasmssa::FuncOp funcOp) { funcsToConvert.push_back(funcOp); });
 
+    if (funcsToConvert.empty())
+      return;
+
     // Create builder for emitting new operations
     OpBuilder builder(ctx);
     builder.setInsertionPointToEnd(module.getBody());
+
+    // Create the canonical WasmStack wrapper module for conversion output.
+    auto wasmModule = wasmstack::ModuleOp::create(builder, module.getLoc(),
+                                                  /*sym_name=*/StringAttr());
+    if (wasmModule.getBody().empty())
+      wasmModule.getBody().push_back(new Block());
+    builder.setInsertionPointToEnd(&wasmModule.getBody().front());
 
     // Process each WasmSSA function
     for (wasmssa::FuncOp funcOp : funcsToConvert) {
@@ -130,8 +149,8 @@ public:
       WasmStackEmitter emitter(builder, allocator, needsTee);
       emitter.emitFunction(funcOp);
 
-      // Restore insertion point to module body for next function
-      builder.setInsertionPointToEnd(module.getBody());
+      // Restore insertion point to wasmstack.module body for next function.
+      builder.setInsertionPointToEnd(&wasmModule.getBody().front());
 
       // Remove the original WasmSSA function
       funcOp.erase();
