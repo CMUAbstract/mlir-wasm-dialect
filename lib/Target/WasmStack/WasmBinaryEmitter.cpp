@@ -43,6 +43,38 @@ static void emitTypeSection(BinaryWriter &output, IndexSpace &indexSpace) {
   output.writeSection(wc::SectionId::Type, section);
 }
 
+/// Emit the import section (section 2).
+static void emitImportSection(BinaryWriter &output, IndexSpace &indexSpace,
+                              Operation *moduleOp) {
+  SmallVector<FuncImportOp> imports;
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto importOp = dyn_cast<FuncImportOp>(op))
+      imports.push_back(importOp);
+  }
+
+  if (imports.empty())
+    return;
+
+  BinaryWriter section;
+  section.writeULEB128(imports.size());
+  for (auto importOp : imports) {
+    section.writeString(importOp.getModuleName());
+    section.writeString(importOp.getImportName());
+    section.writeByte(static_cast<uint8_t>(wc::ImportKind::Func));
+
+    IndexSpace::FuncSig sig;
+    FunctionType funcType = importOp.getFuncType();
+    for (Type t : funcType.getInputs())
+      sig.params.push_back(t);
+    for (Type t : funcType.getResults())
+      sig.results.push_back(t);
+    uint32_t typeIdx = indexSpace.getTypeIndex(sig);
+    section.writeULEB128(typeIdx);
+  }
+
+  output.writeSection(wc::SectionId::Import, section);
+}
+
 /// Emit the function section (section 3) - maps function index to type index.
 static void emitFunctionSection(BinaryWriter &output, IndexSpace &indexSpace,
                                 Operation *moduleOp) {
@@ -447,6 +479,7 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
 
   // Emit sections in order.
   emitTypeSection(writer, indexSpace);
+  emitImportSection(writer, indexSpace, wasmModule);
   emitFunctionSection(writer, indexSpace, wasmModule);
   emitMemorySection(writer, wasmModule);
   emitGlobalSection(writer, indexSpace, wasmModule);
@@ -458,8 +491,9 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
   emitDataCountSection(writer, wasmModule);
 
   // The code section index: count sections emitted before it.
-  // type(1) + function(3) + memory(5) + global(6) + export(7, if !reloc) +
-  // datacount(12). We need the actual section index in the binary.
+  // type(1) + import(2, if any) + function(3) + memory(5) + global(6) +
+  // export(7, if !reloc) + datacount(12). We need the actual section index
+  // in the binary.
   // Section indices are sequential starting from 0 for each section in the
   // binary, not by section ID.
   // Let's count properly.
@@ -469,6 +503,15 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
     // Count sections before code section
     uint32_t idx = 0;
     idx++; // type
+    // import section may be absent
+    bool hasFuncImports = false;
+    for (Operation &mop : wasmModule->getRegion(0).front())
+      if (isa<FuncImportOp>(mop)) {
+        hasFuncImports = true;
+        break;
+      }
+    if (hasFuncImports)
+      idx++;
     idx++; // function
     // memory section may be absent
     bool hasMemory = false;

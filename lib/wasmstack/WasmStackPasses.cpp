@@ -80,12 +80,16 @@ public:
       return;
     }
 
-    // Collect functions to process
-    SmallVector<wasmssa::FuncOp> funcsToConvert;
-    module.walk(
-        [&](wasmssa::FuncOp funcOp) { funcsToConvert.push_back(funcOp); });
+    // Collect imports and functions to process.
+    SmallVector<wasmssa::FuncImportOp> importsToConvert;
+    for (auto importOp : module.getOps<wasmssa::FuncImportOp>())
+      importsToConvert.push_back(importOp);
 
-    if (funcsToConvert.empty())
+    SmallVector<wasmssa::FuncOp> funcsToConvert;
+    for (auto funcOp : module.getOps<wasmssa::FuncOp>())
+      funcsToConvert.push_back(funcOp);
+
+    if (importsToConvert.empty() && funcsToConvert.empty())
       return;
 
     // Create builder for emitting new operations
@@ -98,6 +102,15 @@ public:
     if (wasmModule.getBody().empty())
       wasmModule.getBody().push_back(new Block());
     builder.setInsertionPointToEnd(&wasmModule.getBody().front());
+
+    // Preserve wasmssa.import_func as wasmstack.import_func declarations.
+    for (wasmssa::FuncImportOp importOp : importsToConvert) {
+      wasmstack::FuncImportOp::create(
+          builder, importOp.getLoc(), importOp.getSymNameAttr(),
+          importOp.getModuleNameAttr(), importOp.getImportNameAttr(),
+          TypeAttr::get(importOp.getType()));
+      importOp.erase();
+    }
 
     // Process each WasmSSA function
     for (wasmssa::FuncOp funcOp : funcsToConvert) {

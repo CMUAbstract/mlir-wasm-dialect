@@ -22,22 +22,29 @@ void IndexSpace::analyze(Operation *moduleOp) {
   memoryIndexMap.clear();
   memoryNames.clear();
 
-  // Collect all operations in the module
+  auto registerFunction = [&](llvm::StringRef symName, FunctionType funcType) {
+    FuncSig sig;
+    for (Type t : funcType.getInputs())
+      sig.params.push_back(t);
+    for (Type t : funcType.getResults())
+      sig.results.push_back(t);
+    getOrCreateTypeIndex(sig);
+
+    uint32_t idx = funcNames.size();
+    funcIndexMap[symName] = idx;
+    funcNames.push_back(symName.str());
+  };
+
+  // Imported functions are indexed before defined functions in wasm binaries.
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto importOp = dyn_cast<FuncImportOp>(op))
+      registerFunction(importOp.getSymName(), importOp.getFuncType());
+  }
+
+  // Defined functions come after imports.
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto funcOp = dyn_cast<FuncOp>(op)) {
-      // Register the function signature as a type
-      FuncSig sig;
-      FunctionType funcType = funcOp.getFuncType();
-      for (Type t : funcType.getInputs())
-        sig.params.push_back(t);
-      for (Type t : funcType.getResults())
-        sig.results.push_back(t);
-      getOrCreateTypeIndex(sig);
-
-      // Register function index
-      uint32_t idx = funcNames.size();
-      funcIndexMap[funcOp.getSymName()] = idx;
-      funcNames.push_back(funcOp.getSymName().str());
+      registerFunction(funcOp.getSymName(), funcOp.getFuncType());
 
       // Scan function body for block types that need type section entries
       funcOp.getBody().walk([&](Operation *innerOp) {
@@ -77,7 +84,12 @@ void IndexSpace::analyze(Operation *moduleOp) {
           }
         }
       });
-    } else if (auto globalOp = dyn_cast<GlobalOp>(op)) {
+    }
+  }
+
+  // Globals and memories retain declaration order.
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto globalOp = dyn_cast<GlobalOp>(op)) {
       uint32_t idx = globalNames.size();
       globalIndexMap[globalOp.getSymName()] = idx;
       globalNames.push_back(globalOp.getSymName().str());
@@ -115,6 +127,14 @@ uint32_t IndexSpace::getFuncIndex(llvm::StringRef name) const {
   return it->second;
 }
 
+std::optional<uint32_t>
+IndexSpace::tryGetFuncIndex(llvm::StringRef name) const {
+  auto it = funcIndexMap.find(name);
+  if (it == funcIndexMap.end())
+    return std::nullopt;
+  return it->second;
+}
+
 uint32_t IndexSpace::getGlobalIndex(llvm::StringRef name) const {
   auto it = globalIndexMap.find(name);
   assert(it != globalIndexMap.end() && "global not found in index space");
@@ -131,7 +151,21 @@ void IndexSpace::buildSymbolTable(Operation *moduleOp) {
   symbols.clear();
   symbolIndexMap.clear();
 
-  // Functions first
+  // Imported functions first.
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto importOp = dyn_cast<FuncImportOp>(op)) {
+      SymbolInfo sym;
+      sym.kind = wasm::SymtabKind::Function;
+      sym.name = importOp.getSymName().str();
+      sym.elementIndex = getFuncIndex(importOp.getSymName());
+      sym.flags = wasm::WASM_SYMBOL_UNDEFINED | wasm::WASM_SYMBOL_EXPLICIT_NAME;
+      uint32_t idx = symbols.size();
+      symbolIndexMap[sym.name] = idx;
+      symbols.push_back(std::move(sym));
+    }
+  }
+
+  // Defined functions second.
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto funcOp = dyn_cast<FuncOp>(op)) {
       SymbolInfo sym;
