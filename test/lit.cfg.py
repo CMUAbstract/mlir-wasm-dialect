@@ -61,6 +61,20 @@ tools = [
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
+# Optional wabt tools used by integration tests.
+wabt_tools = [
+    ToolSubst("wasm-validate", command=FindTool("wasm-validate"),
+              unresolved="ignore"),
+    ToolSubst("wasm-objdump", command=FindTool("wasm-objdump"),
+              unresolved="ignore"),
+]
+llvm_config.add_tool_substitutions(
+    wabt_tools, tool_dirs + [config.environment.get("PATH", "")]
+)
+
+if all(tool.was_resolved for tool in wabt_tools):
+    config.available_features.add("wabt")
+
 llvm_config.with_environment(
     "PYTHONPATH",
     [
