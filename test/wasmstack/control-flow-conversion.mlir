@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-func --reconcile-unrealized-casts --convert-to-wasmstack 2>&1 | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-scf --wami-convert-arith --wami-convert-math --wami-convert-func --reconcile-unrealized-casts --convert-to-wasmstack 2>&1 | FileCheck %s
 
 // Test end-to-end conversion of SCF control flow operations through WasmSSA to WasmStack dialect.
 // This verifies that block/loop parameters and results are correctly handled during stackification.
