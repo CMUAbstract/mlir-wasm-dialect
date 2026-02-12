@@ -86,9 +86,13 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
   // Get function type
   FunctionType funcType = srcFunc.getFunctionType();
 
+  StringAttr exportName;
+  if (srcFunc.getExported())
+    exportName = builder.getStringAttr(srcFunc.getSymName());
+
   // Create WasmStack function
   auto dstFunc =
-      FuncOp::create(builder, loc, srcFunc.getName(), funcType, StringAttr());
+      FuncOp::create(builder, loc, srcFunc.getName(), funcType, exportName);
 
   // Create entry block
   Block *entryBlock = new Block();
@@ -163,6 +167,28 @@ FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
   }
 
   return dstFunc;
+}
+
+void WasmStackEmitter::materializeResult(Location loc, Value result) {
+  Type resultType = result.getType();
+  int idx = allocator.getLocalIndex(result);
+
+  // No local allocated: keep result on value stack.
+  if (idx < 0) {
+    emittedToStack.insert(result);
+    return;
+  }
+
+  // Tee policy: keep stack value for first consumer while also storing it.
+  if (needsTee.contains(result)) {
+    LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
+    emittedToStack.insert(result);
+    return;
+  }
+
+  // Local-only policy: materialize into local and keep stack clean.
+  LocalSetOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
+  emittedToStack.erase(result);
 }
 
 void WasmStackEmitter::emitOperation(Operation *op) {
@@ -242,54 +268,47 @@ void WasmStackEmitter::emitOperation(Operation *op) {
   }
   // Integer comparison operations
   else if (auto eqOp = dyn_cast<wasmssa::EqOp>(op)) {
-    emitCompareOp<EqOp>(eqOp, eqOp.getLhs(), eqOp.getRhs());
-    emittedToStack.insert(eqOp.getResult());
+    emitCompareOp<EqOp>(eqOp, eqOp.getLhs(), eqOp.getRhs(), eqOp.getResult());
   } else if (auto neOp = dyn_cast<wasmssa::NeOp>(op)) {
-    emitCompareOp<NeOp>(neOp, neOp.getLhs(), neOp.getRhs());
-    emittedToStack.insert(neOp.getResult());
+    emitCompareOp<NeOp>(neOp, neOp.getLhs(), neOp.getRhs(), neOp.getResult());
   } else if (auto ltSIOp = dyn_cast<wasmssa::LtSIOp>(op)) {
-    emitCompareOp<LtSOp>(ltSIOp, ltSIOp.getLhs(), ltSIOp.getRhs());
-    emittedToStack.insert(ltSIOp.getResult());
+    emitCompareOp<LtSOp>(ltSIOp, ltSIOp.getLhs(), ltSIOp.getRhs(),
+                         ltSIOp.getResult());
   } else if (auto ltUIOp = dyn_cast<wasmssa::LtUIOp>(op)) {
-    emitCompareOp<LtUOp>(ltUIOp, ltUIOp.getLhs(), ltUIOp.getRhs());
-    emittedToStack.insert(ltUIOp.getResult());
+    emitCompareOp<LtUOp>(ltUIOp, ltUIOp.getLhs(), ltUIOp.getRhs(),
+                         ltUIOp.getResult());
   } else if (auto leSIOp = dyn_cast<wasmssa::LeSIOp>(op)) {
-    emitCompareOp<LeSOp>(leSIOp, leSIOp.getLhs(), leSIOp.getRhs());
-    emittedToStack.insert(leSIOp.getResult());
+    emitCompareOp<LeSOp>(leSIOp, leSIOp.getLhs(), leSIOp.getRhs(),
+                         leSIOp.getResult());
   } else if (auto leUIOp = dyn_cast<wasmssa::LeUIOp>(op)) {
-    emitCompareOp<LeUOp>(leUIOp, leUIOp.getLhs(), leUIOp.getRhs());
-    emittedToStack.insert(leUIOp.getResult());
+    emitCompareOp<LeUOp>(leUIOp, leUIOp.getLhs(), leUIOp.getRhs(),
+                         leUIOp.getResult());
   } else if (auto gtSIOp = dyn_cast<wasmssa::GtSIOp>(op)) {
-    emitCompareOp<GtSOp>(gtSIOp, gtSIOp.getLhs(), gtSIOp.getRhs());
-    emittedToStack.insert(gtSIOp.getResult());
+    emitCompareOp<GtSOp>(gtSIOp, gtSIOp.getLhs(), gtSIOp.getRhs(),
+                         gtSIOp.getResult());
   } else if (auto gtUIOp = dyn_cast<wasmssa::GtUIOp>(op)) {
-    emitCompareOp<GtUOp>(gtUIOp, gtUIOp.getLhs(), gtUIOp.getRhs());
-    emittedToStack.insert(gtUIOp.getResult());
+    emitCompareOp<GtUOp>(gtUIOp, gtUIOp.getLhs(), gtUIOp.getRhs(),
+                         gtUIOp.getResult());
   } else if (auto geSIOp = dyn_cast<wasmssa::GeSIOp>(op)) {
-    emitCompareOp<GeSOp>(geSIOp, geSIOp.getLhs(), geSIOp.getRhs());
-    emittedToStack.insert(geSIOp.getResult());
+    emitCompareOp<GeSOp>(geSIOp, geSIOp.getLhs(), geSIOp.getRhs(),
+                         geSIOp.getResult());
   } else if (auto geUIOp = dyn_cast<wasmssa::GeUIOp>(op)) {
-    emitCompareOp<GeUOp>(geUIOp, geUIOp.getLhs(), geUIOp.getRhs());
-    emittedToStack.insert(geUIOp.getResult());
+    emitCompareOp<GeUOp>(geUIOp, geUIOp.getLhs(), geUIOp.getRhs(),
+                         geUIOp.getResult());
   }
   // Float comparison operations
   else if (auto ltOp = dyn_cast<wasmssa::LtOp>(op)) {
-    emitCompareOp<FLtOp>(ltOp, ltOp.getLhs(), ltOp.getRhs());
-    emittedToStack.insert(ltOp.getResult());
+    emitCompareOp<FLtOp>(ltOp, ltOp.getLhs(), ltOp.getRhs(), ltOp.getResult());
   } else if (auto leOp = dyn_cast<wasmssa::LeOp>(op)) {
-    emitCompareOp<FLeOp>(leOp, leOp.getLhs(), leOp.getRhs());
-    emittedToStack.insert(leOp.getResult());
+    emitCompareOp<FLeOp>(leOp, leOp.getLhs(), leOp.getRhs(), leOp.getResult());
   } else if (auto gtOp = dyn_cast<wasmssa::GtOp>(op)) {
-    emitCompareOp<FGtOp>(gtOp, gtOp.getLhs(), gtOp.getRhs());
-    emittedToStack.insert(gtOp.getResult());
+    emitCompareOp<FGtOp>(gtOp, gtOp.getLhs(), gtOp.getRhs(), gtOp.getResult());
   } else if (auto geOp = dyn_cast<wasmssa::GeOp>(op)) {
-    emitCompareOp<FGeOp>(geOp, geOp.getLhs(), geOp.getRhs());
-    emittedToStack.insert(geOp.getResult());
+    emitCompareOp<FGeOp>(geOp, geOp.getLhs(), geOp.getRhs(), geOp.getResult());
   }
   // Test operation
   else if (auto eqzOp = dyn_cast<wasmssa::EqzOp>(op)) {
-    emitTestOp<EqzOp>(eqzOp, eqzOp.getInput());
-    emittedToStack.insert(eqzOp.getResult());
+    emitTestOp<EqzOp>(eqzOp, eqzOp.getInput(), eqzOp.getResult());
   }
   // Unary integer operations
   else if (auto clzOp = dyn_cast<wasmssa::ClzOp>(op)) {
@@ -359,15 +378,7 @@ void WasmStackEmitter::emitOperation(Operation *op) {
     emitOperandIfNeeded(selectOp.getFalseValue());
     emitOperandIfNeeded(selectOp.getCondition());
     SelectOp::create(builder, loc, TypeAttr::get(selectOp.getType()));
-
-    if (needsTee.contains(selectOp.getResult())) {
-      int idx = allocator.getLocalIndex(selectOp.getResult());
-      if (idx >= 0) {
-        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
-                           selectOp.getType());
-      }
-    }
-    emittedToStack.insert(selectOp.getResult());
+    materializeResult(loc, selectOp.getResult());
   }
   // Global variable operations
   else if (auto globalGetOp = dyn_cast<wasmssa::GlobalGetOp>(op)) {
@@ -429,15 +440,7 @@ void WasmStackEmitter::emitConst(wasmssa::ConstOp constOp) {
     F64ConstOp::create(builder, loc, builder.getF64FloatAttr(floatVal));
   }
 
-  // Check if this value needs tee
-  Value result = constOp.getResult();
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, constOp.getResult());
 }
 
 template <typename WasmStackOp>
@@ -471,15 +474,7 @@ void WasmStackEmitter::emitBinaryOp(Operation *srcOp, Value lhs, Value rhs,
 
   // Emit the operation
   WasmStackOp::create(builder, loc, TypeAttr::get(resultType));
-
-  // Check if this value needs tee
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitOperandIfNeeded(Value value) {
@@ -817,53 +812,13 @@ Block *WasmStackEmitter::emitTerminatorAndGetNext(Operation *terminator,
     // if false, fall through (args remain on stack).
     // Stack order must be: [args..., condition] with condition on top.
 
-    Value condition = branchIfOp.getCondition();
-    bool conditionAlreadyOnStack = emittedToStack.contains(condition);
-
-    if (conditionAlreadyOnStack && !branchIfOp.getInputs().empty()) {
-      // The condition was already emitted to stack (e.g., from a comparison
-      // that was stackified). We need to move it so args can go below it.
-      // Strategy: save condition to a temporary local, emit args, restore
-      // condition.
-
-      // Find or allocate a local for the condition
-      int condIdx = allocator.getLocalIndex(condition);
-      if (condIdx >= 0) {
-        // Condition has a local - save it there
-        LocalSetOp::create(builder, loc, static_cast<uint32_t>(condIdx),
-                           condition.getType());
-        emittedToStack.erase(condition);
-
-        // Emit exit args
-        for (Value arg : branchIfOp.getInputs()) {
-          emitOperandIfNeeded(arg);
-        }
-
-        // Restore condition
-        LocalGetOp::create(builder, loc, static_cast<uint32_t>(condIdx),
-                           condition.getType());
-      } else {
-        // Condition has no local - this shouldn't happen in practice
-        // because TreeWalker allocates locals for values that need them.
-        // Fall back to emitting args then condition (wrong order, but
-        // the verifier will catch this and we can debug).
-        for (Value arg : branchIfOp.getInputs()) {
-          emitOperandIfNeeded(arg);
-        }
-        // Note: Condition is still on stack from before args, which is wrong.
-        // For a proper fix, TreeWalker should ensure conditions for
-        // branch_if with args get locals allocated.
-      }
-    } else {
-      // Standard case: emit args first, then condition
-      // 1. Emit exit args to stack first (they stay if branch not taken)
-      for (Value arg : branchIfOp.getInputs()) {
-        emitOperandIfNeeded(arg);
-      }
-
-      // 2. Emit condition (must be on top of stack for br_if)
-      emitOperandIfNeeded(condition);
+    // 1. Emit exit args to stack first (they stay if branch not taken).
+    for (Value arg : branchIfOp.getInputs()) {
+      emitOperandIfNeeded(arg);
     }
+
+    // 2. Emit condition (must be on top of stack for br_if).
+    emitOperandIfNeeded(branchIfOp.getCondition());
 
     // 3. Emit br_if to the exit level
     unsigned exitLevel = branchIfOp.getExitLevel();
@@ -912,7 +867,8 @@ Block *WasmStackEmitter::emitTerminatorAndGetNext(Operation *terminator,
 }
 
 template <typename WasmStackOp>
-void WasmStackEmitter::emitCompareOp(Operation *srcOp, Value lhs, Value rhs) {
+void WasmStackEmitter::emitCompareOp(Operation *srcOp, Value lhs, Value rhs,
+                                     Value result) {
   Location loc = srcOp->getLoc();
   Type operandType = lhs.getType();
 
@@ -931,15 +887,17 @@ void WasmStackEmitter::emitCompareOp(Operation *srcOp, Value lhs, Value rhs) {
   }
 
   WasmStackOp::create(builder, loc, TypeAttr::get(operandType));
+  materializeResult(loc, result);
 }
 
 template <typename WasmStackOp>
-void WasmStackEmitter::emitTestOp(Operation *srcOp, Value input) {
+void WasmStackEmitter::emitTestOp(Operation *srcOp, Value input, Value result) {
   Location loc = srcOp->getLoc();
   Type inputType = input.getType();
 
   emitOperandIfNeeded(input);
   WasmStackOp::create(builder, loc, TypeAttr::get(inputType));
+  materializeResult(loc, result);
 }
 
 template <typename WasmStackOp>
@@ -950,14 +908,7 @@ void WasmStackEmitter::emitUnaryOp(Operation *srcOp, Value input,
 
   emitOperandIfNeeded(input);
   WasmStackOp::create(builder, loc, TypeAttr::get(resultType));
-
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitConvertOp(Operation *srcOp, bool isSigned) {
@@ -995,14 +946,7 @@ void WasmStackEmitter::emitConvertOp(Operation *srcOp, bool isSigned) {
         F64ConvertI64UOp::create(builder, loc, inputType, resultType);
     }
   }
-
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitPromoteOp(wasmssa::PromoteOp promoteOp) {
@@ -1014,14 +958,7 @@ void WasmStackEmitter::emitPromoteOp(wasmssa::PromoteOp promoteOp) {
 
   emitOperandIfNeeded(input);
   F64PromoteF32Op::create(builder, loc, inputType, resultType);
-
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitDemoteOp(wasmssa::DemoteOp demoteOp) {
@@ -1033,14 +970,7 @@ void WasmStackEmitter::emitDemoteOp(wasmssa::DemoteOp demoteOp) {
 
   emitOperandIfNeeded(input);
   F32DemoteF64Op::create(builder, loc, inputType, resultType);
-
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitExtendI32Op(Operation *srcOp, bool isSigned) {
@@ -1056,14 +986,7 @@ void WasmStackEmitter::emitExtendI32Op(Operation *srcOp, bool isSigned) {
     I64ExtendI32SOp::create(builder, loc, inputType, resultType);
   else
     I64ExtendI32UOp::create(builder, loc, inputType, resultType);
-
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitWrapOp(wasmssa::WrapOp wrapOp) {
@@ -1075,14 +998,7 @@ void WasmStackEmitter::emitWrapOp(wasmssa::WrapOp wrapOp) {
 
   emitOperandIfNeeded(input);
   I32WrapI64Op::create(builder, loc, inputType, resultType);
-
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitTruncOp(Operation *srcOp, bool isSigned) {
@@ -1120,14 +1036,7 @@ void WasmStackEmitter::emitTruncOp(Operation *srcOp, bool isSigned) {
         I64TruncF64UOp::create(builder, loc, inputType, resultType);
     }
   }
-
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitSourceLocalGet(wasmssa::LocalGetOp localGetOp) {
@@ -1140,15 +1049,7 @@ void WasmStackEmitter::emitSourceLocalGet(wasmssa::LocalGetOp localGetOp) {
     LocalGetOp::create(builder, loc, static_cast<uint32_t>(idx),
                        result.getType());
   }
-
-  if (needsTee.contains(result)) {
-    int resIdx = allocator.getLocalIndex(result);
-    if (resIdx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(resIdx),
-                         result.getType());
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitSourceLocalSet(wasmssa::LocalSetOp localSetOp) {
@@ -1178,7 +1079,7 @@ void WasmStackEmitter::emitSourceLocalTee(wasmssa::LocalTeeOp localTeeOp) {
     LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
                        value.getType());
   }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitLoad(wami::LoadOp loadOp) {
@@ -1203,14 +1104,7 @@ void WasmStackEmitter::emitLoad(wami::LoadOp loadOp) {
     F64LoadOp::create(builder, loc, builder.getI32IntegerAttr(0),
                       builder.getI32IntegerAttr(8), TypeAttr::get(resultType));
   }
-
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitStore(wami::StoreOp storeOp) {
@@ -1248,15 +1142,7 @@ void WasmStackEmitter::emitGlobalGet(wasmssa::GlobalGetOp globalGetOp) {
 
   // Emit wasmstack.global.get operation
   GlobalGetOp::create(builder, loc, globalName, TypeAttr::get(resultType));
-
-  // Handle multi-use values with local.tee
-  if (needsTee.contains(result)) {
-    int idx = allocator.getLocalIndex(result);
-    if (idx >= 0) {
-      LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
-    }
-  }
-  emittedToStack.insert(result);
+  materializeResult(loc, result);
 }
 
 void WasmStackEmitter::emitCall(wasmssa::FuncCallOp callOp) {
@@ -1284,14 +1170,7 @@ void WasmStackEmitter::emitCall(wasmssa::FuncCallOp callOp) {
 
   // Mark results as emitted to stack
   for (Value result : callOp.getResults()) {
-    if (needsTee.contains(result)) {
-      int idx = allocator.getLocalIndex(result);
-      if (idx >= 0) {
-        LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
-                           result.getType());
-      }
-    }
-    emittedToStack.insert(result);
+    materializeResult(loc, result);
   }
 }
 
@@ -1336,23 +1215,37 @@ template void WasmStackEmitter::emitBinaryOp<FCopysignOp>(Operation *, Value,
                                                           Value, Value);
 
 // Explicit template instantiations for comparison operations
-template void WasmStackEmitter::emitCompareOp<EqOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<NeOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<LtSOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<LtUOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<LeSOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<LeUOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<GtSOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<GtUOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<GeSOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<GeUOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<FLtOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<FLeOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<FGtOp>(Operation *, Value, Value);
-template void WasmStackEmitter::emitCompareOp<FGeOp>(Operation *, Value, Value);
+template void WasmStackEmitter::emitCompareOp<EqOp>(Operation *, Value, Value,
+                                                    Value);
+template void WasmStackEmitter::emitCompareOp<NeOp>(Operation *, Value, Value,
+                                                    Value);
+template void WasmStackEmitter::emitCompareOp<LtSOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<LtUOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<LeSOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<LeUOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<GtSOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<GtUOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<GeSOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<GeUOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<FLtOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<FLeOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<FGtOp>(Operation *, Value, Value,
+                                                     Value);
+template void WasmStackEmitter::emitCompareOp<FGeOp>(Operation *, Value, Value,
+                                                     Value);
 
 // Explicit template instantiations for test operations
-template void WasmStackEmitter::emitTestOp<EqzOp>(Operation *, Value);
+template void WasmStackEmitter::emitTestOp<EqzOp>(Operation *, Value, Value);
 
 // Explicit template instantiations for unary operations
 template void WasmStackEmitter::emitUnaryOp<ClzOp>(Operation *, Value, Value);
