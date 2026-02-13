@@ -17,3 +17,7 @@ RUN_WASMTIME_BENCH=1 llvm-lit test/integration/benchmarks
 ```
 
 The suite is intentionally opt-in and non-gating by default.
+
+For stack-switching runtime integration using Wizard Engine, see:
+
+- `test/integration/stack-switching/README.md`
