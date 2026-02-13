@@ -17,6 +17,9 @@ cargo run -- --input <file.wasm> --expect-i32 <value>
 - `--warmup <N>`: warmup iterations (default: `0`).
 - `--quiet`: suppress non-essential text output.
 - `--json`: emit one-line JSON report.
+- `--print-mode <normal|hash>`: print values normally (`normal`) or suppress
+  prints while hashing/counting the `print_i32` stream (`hash`).
+- `--print-hash-seed <u64>`: initial seed for print stream hash.
 
 ## Exit Codes
 
@@ -34,3 +37,11 @@ The runner provides host functions from `env`:
 - `malloc(i32) -> i32`
 - `free(i32) -> ()`
 - `print_i32(i32) -> ()`
+- `toggle_gpio() -> ()`
+
+## Output Fields
+
+Both text and JSON reports include:
+
+- `print_count`: number of `print_i32` calls observed in the run.
+- `print_hash`: deterministic 64-bit hash of the `print_i32` value stream.
