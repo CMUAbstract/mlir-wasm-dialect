@@ -159,6 +159,7 @@ private:
   void emitSuspend(wami::SuspendOp suspendOp);
   void emitResume(wami::ResumeOp resumeOp);
   void emitResumeThrow(wami::ResumeThrowOp resumeThrowOp);
+  void emitBarrier(wami::BarrierOp barrierOp);
 
   /// Emit a wasmssa.global_get operation
   void emitGlobalGet(wasmssa::GlobalGetOp globalGetOp);

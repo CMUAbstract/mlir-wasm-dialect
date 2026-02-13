@@ -16,11 +16,14 @@ module {
     %c = wami.cont.new %f : !wami.funcref<@driver> as @gen_ct -> !wami.cont<@gen_ct>
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
     // CHECK: "wami.resume"
-    // CHECK: wami.handler.yield
-    %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handler_tags = [@yield]}> ({
-    ^bb0(%payload: i32):
-      wami.handler.yield %payload : i32
-    }) : (!wami.cont<@gen_ct>, i32) -> i32
-    wasmssa.return %r : i32
+    // CHECK: handlers = [#wami.on_label<tag = @yield, level = 0>]
+    wasmssa.block : {
+    ^bb0:
+      %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [#wami.on_label<tag = @yield, level = 0>]}> : (!wami.cont<@gen_ct>, i32) -> i32
+      wasmssa.return %r : i32
+    }> ^on_yield
+
+  ^on_yield(%payload: i32, %k: !wami.cont<@gen_ct>):
+    wasmssa.return %payload : i32
   }
 }

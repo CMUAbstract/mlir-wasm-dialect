@@ -15,6 +15,7 @@
 #ifndef WAMI_WAMIOPS_H
 #define WAMI_WAMIOPS_H
 
+#include "WAMI/WAMIAttrs.h"
 #include "WAMI/WAMIDialect.h"
 #include "WAMI/WAMITypes.h"
 #include "mlir/IR/BuiltinTypes.h"

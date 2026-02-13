@@ -26,11 +26,15 @@ module {
     %c = wami.cont.new %f : !wami.funcref<@worker> as @worker_ct -> !wami.cont<@worker_ct>
     %arg = wasmssa.const 7 : i32
     wasmssa.call @print_i32(%arg) : (i32) -> ()
-    %r = "wami.resume"(%c, %arg) <{cont_type = @worker_ct, handler_tags = [@yield]}> ({
-    ^bb0(%payload: i32):
-      wami.handler.yield %payload : i32
-    }) : (!wami.cont<@worker_ct>, i32) -> i32
-    wasmssa.call @print_i32(%r) : (i32) -> ()
-    wasmssa.return %r : i32
+
+    wasmssa.block : {
+    ^bb0:
+      %r = "wami.resume"(%c, %arg) <{cont_type = @worker_ct, handlers = [#wami.on_label<tag = @yield, level = 0>]}> : (!wami.cont<@worker_ct>, i32) -> i32
+      wasmssa.return %r : i32
+    }> ^on_yield
+
+  ^on_yield(%payload: i32, %k: !wami.cont<@worker_ct>):
+    wasmssa.call @print_i32(%payload) : (i32) -> ()
+    wasmssa.return %payload : i32
   }
 }

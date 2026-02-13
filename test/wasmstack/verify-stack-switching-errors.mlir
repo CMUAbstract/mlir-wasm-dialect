@@ -61,3 +61,52 @@ wasmstack.module {
     wasmstack.return
   }
 }
+
+// -----
+
+wasmstack.module {
+  wasmstack.type.func @takes_i32 = (i32) -> i32
+  wasmstack.type.cont @cont_i32 = cont @takes_i32
+  wasmstack.tag @yield_i32 : (i32) -> i32
+
+  wasmstack.func @worker_i32 : (i32) -> i32 {
+    wasmstack.i32.const 0
+    wasmstack.return
+  }
+
+  wasmstack.func @bad_resume_unknown_label : () -> i32 {
+    wasmstack.ref.func @worker_i32
+    wasmstack.cont.new @cont_i32
+    wasmstack.i32.const 1
+    // expected-error @+1 {{unknown handler label @missing_label}}
+    wasmstack.resume @cont_i32 (@yield_i32 -> @missing_label)
+    wasmstack.i32.const 0
+    wasmstack.return
+  }
+}
+
+// -----
+
+wasmstack.module {
+  wasmstack.type.func @takes_i32 = (i32) -> i32
+  wasmstack.type.cont @cont_i32 = cont @takes_i32
+  wasmstack.tag @yield_i32 : (i32) -> i32
+
+  wasmstack.func @worker_i32 : (i32) -> i32 {
+    wasmstack.i32.const 0
+    wasmstack.return
+  }
+
+  wasmstack.func @bad_resume_label_type : () -> i32 {
+    wasmstack.block @h : ([]) -> [] {
+      wasmstack.ref.func @worker_i32
+      wasmstack.cont.new @cont_i32
+      wasmstack.i32.const 1
+      // expected-error @+1 {{handler label @h expects 0 values but handler passes 2}}
+      wasmstack.resume @cont_i32 (@yield_i32 -> @h)
+      wasmstack.drop : i32
+    }
+    wasmstack.i32.const 0
+    wasmstack.return
+  }
+}

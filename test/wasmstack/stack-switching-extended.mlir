@@ -12,22 +12,22 @@ wasmstack.module {
   }
 
   // CHECK-LABEL: wasmstack.func @resume_ok
-  // CHECK: wasmstack.resume @c (@yield -> @h)
+  // CHECK: wasmstack.resume @c (@yield -> @switch)
   wasmstack.func @resume_ok : () -> i32 {
     wasmstack.ref.func @worker
     wasmstack.cont.new @c
     wasmstack.i32.const 7
-    wasmstack.resume @c (@yield -> @h)
+    wasmstack.resume @c (@yield -> @switch)
     wasmstack.return
   }
 
   // CHECK-LABEL: wasmstack.func @resume_throw_ok
-  // CHECK: wasmstack.resume_throw @c (@yield -> @h)
+  // CHECK: wasmstack.resume_throw @c (@yield -> @switch)
   wasmstack.func @resume_throw_ok : () -> () {
     wasmstack.ref.func @worker
     wasmstack.cont.new @c
     wasmstack.i32.const 9
-    wasmstack.resume_throw @c (@yield -> @h)
+    wasmstack.resume_throw @c (@yield -> @switch)
     wasmstack.return
   }
 
