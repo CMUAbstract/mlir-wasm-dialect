@@ -70,6 +70,8 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
     let total_iterations = cli.warmup + cli.iterations;
     let mut durations: Vec<Duration> = Vec::with_capacity(cli.iterations);
     let mut measured_actual = 0;
+    let mut measured_print_count = 0;
+    let mut measured_print_hash = 0;
 
     for iter in 0..total_iterations {
         let started = Instant::now();
@@ -78,6 +80,8 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
 
         if iter >= cli.warmup {
             measured_actual = result.actual;
+            measured_print_count = result.print_count;
+            measured_print_hash = result.print_hash;
             durations.push(elapsed);
 
             if let Some(expected) = cli.expect_i32 {
@@ -102,16 +106,23 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
         avg_ms,
         min_ms,
         max_ms,
+        print_count: measured_print_count,
+        print_hash: measured_print_hash,
     })
 }
 
 struct IterationResult {
     actual: i32,
     toggle_duration: Option<Duration>,
+    print_count: u64,
+    print_hash: u64,
 }
 
 fn run_once(engine: &Engine, module: &Module, cli: &Cli) -> Result<IterationResult, RunnerError> {
-    let mut store = Store::new(engine, HostState::new(cli.quiet));
+    let mut store = Store::new(
+        engine,
+        HostState::new(cli.quiet, cli.print_mode.is_hash(), cli.print_hash_seed),
+    );
     let mut linker = Linker::new(engine);
     register(&mut linker).map_err(|e| RunnerError::Module(e.to_string()))?;
 
@@ -123,17 +134,28 @@ fn run_once(engine: &Engine, module: &Module, cli: &Cli) -> Result<IterationResu
         .get_func(&mut store, &cli.entry)
         .ok_or_else(|| RunnerError::MissingEntry(cli.entry.clone()))?;
 
-    let typed = entry
-        .typed::<(), i32>(&store)
-        .map_err(|e| RunnerError::Signature(e.to_string()))?;
+    let actual = if let Ok(typed) = entry.typed::<(), i32>(&store) {
+        typed
+            .call(&mut store, ())
+            .map_err(|e| RunnerError::Trap(e.to_string()))?
+    } else if let Ok(typed) = entry.typed::<(i32, i32), i32>(&store) {
+        typed
+            .call(&mut store, (0, 0))
+            .map_err(|e| RunnerError::Trap(e.to_string()))?
+    } else {
+        return Err(RunnerError::Signature(
+            "expected entry signature () -> i32 or (i32, i32) -> i32".to_string(),
+        ));
+    };
 
-    let actual = typed
-        .call(&mut store, ())
-        .map_err(|e| RunnerError::Trap(e.to_string()))?;
+    let print_count = store.data().print_count();
+    let print_hash = store.data().print_hash();
 
     Ok(IterationResult {
         actual,
         toggle_duration: store.data().latest_toggle_duration(),
+        print_count,
+        print_hash,
     })
 }
 
