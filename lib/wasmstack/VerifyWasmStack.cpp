@@ -22,6 +22,7 @@
 #include "mlir/IR/SymbolTable.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 
@@ -765,22 +766,56 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
   if (failed(contSig))
     return failure();
 
+  Type contRefType = ContRefType::get(op.getContext(), op.getContTypeAttr());
   SmallVector<Type> expected;
-  expected.push_back(ContRefType::get(op.getContext(), op.getContTypeAttr()));
+  expected.push_back(contRefType);
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   if (failed(popValues(expected)))
     return failure();
 
-  // Validate tag symbols in handlers.
+  // Validate handler clauses.
   for (Attribute attr : op.getHandlers()) {
     auto pair = dyn_cast<ArrayAttr>(attr);
     if (!pair || pair.size() != 2)
       return op.emitError("invalid handler format");
     auto tag = dyn_cast<FlatSymbolRefAttr>(pair[0]);
-    if (!tag)
-      return op.emitError("handler tag must be a symbol reference");
-    if (failed(resolveTagSig(op, tag, "resume handler")))
+    auto label = dyn_cast<FlatSymbolRefAttr>(pair[1]);
+    if (!tag || !label)
+      return op.emitError("handler must be (tag -> label) pair");
+
+    FailureOr<FunctionType> tagSig = resolveTagSig(op, tag, "resume handler");
+    if (failed(tagSig))
       return failure();
+
+    // "switch" is the wasmstack sentinel for on-switch handlers.
+    if (label.getValue() == "switch")
+      continue;
+
+    ControlFrame *target = findLabelFrame(label.getValue());
+    if (!target)
+      return op.emitError("unknown handler label ") << label;
+
+    SmallVector<Type> expectedBranchTypes(tagSig->getInputs().begin(),
+                                          tagSig->getInputs().end());
+    expectedBranchTypes.push_back(contRefType);
+    ArrayRef<Type> targetTypes = target->getBranchTypes();
+
+    if (targetTypes.size() != expectedBranchTypes.size()) {
+      return op.emitError("handler label ")
+             << label << " expects " << targetTypes.size()
+             << " values but handler passes " << expectedBranchTypes.size();
+    }
+
+    for (auto [idx, pairTypes] :
+         llvm::enumerate(llvm::zip(targetTypes, expectedBranchTypes))) {
+      Type targetType = std::get<0>(pairTypes);
+      Type expectedType = std::get<1>(pairTypes);
+      if (targetType != expectedType) {
+        return op.emitError("handler label type mismatch at index ")
+               << idx << " for " << label << ": expected " << targetType
+               << " but handler provides " << expectedType;
+      }
+    }
   }
 
   for (Type result : contSig->getResults())
@@ -794,8 +829,9 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
   if (failed(contSig))
     return failure();
 
+  Type contRefType = ContRefType::get(op.getContext(), op.getContTypeAttr());
   SmallVector<Type> expected;
-  expected.push_back(ContRefType::get(op.getContext(), op.getContTypeAttr()));
+  expected.push_back(contRefType);
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   if (failed(popValues(expected)))
     return failure();
@@ -805,10 +841,43 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
     if (!pair || pair.size() != 2)
       return op.emitError("invalid handler format");
     auto tag = dyn_cast<FlatSymbolRefAttr>(pair[0]);
-    if (!tag)
-      return op.emitError("handler tag must be a symbol reference");
-    if (failed(resolveTagSig(op, tag, "resume_throw handler")))
+    auto label = dyn_cast<FlatSymbolRefAttr>(pair[1]);
+    if (!tag || !label)
+      return op.emitError("handler must be (tag -> label) pair");
+
+    FailureOr<FunctionType> tagSig =
+        resolveTagSig(op, tag, "resume_throw handler");
+    if (failed(tagSig))
       return failure();
+
+    if (label.getValue() == "switch")
+      continue;
+
+    ControlFrame *target = findLabelFrame(label.getValue());
+    if (!target)
+      return op.emitError("unknown handler label ") << label;
+
+    SmallVector<Type> expectedBranchTypes(tagSig->getInputs().begin(),
+                                          tagSig->getInputs().end());
+    expectedBranchTypes.push_back(contRefType);
+    ArrayRef<Type> targetTypes = target->getBranchTypes();
+
+    if (targetTypes.size() != expectedBranchTypes.size()) {
+      return op.emitError("handler label ")
+             << label << " expects " << targetTypes.size()
+             << " values but handler passes " << expectedBranchTypes.size();
+    }
+
+    for (auto [idx, pairTypes] :
+         llvm::enumerate(llvm::zip(targetTypes, expectedBranchTypes))) {
+      Type targetType = std::get<0>(pairTypes);
+      Type expectedType = std::get<1>(pairTypes);
+      if (targetType != expectedType) {
+        return op.emitError("handler label type mismatch at index ")
+               << idx << " for " << label << ": expected " << targetType
+               << " but handler provides " << expectedType;
+      }
+    }
   }
 
   return success();

@@ -28,13 +28,13 @@ wasmstack.module @spec_generator {
     wasmstack.return
   }
 
-  // CHECK: wasmstack.resume @gen_ct (@gen -> @on_gen)
+  // CHECK: wasmstack.resume @gen_ct (@gen -> @switch)
   wasmstack.func @consumer_once : () -> () {
     wasmstack.ref.func @generator
     wasmstack.cont.new @gen_ct
     wasmstack.i32.const 1111
     wasmstack.call @print_i32 : (i32) -> ()
-    wasmstack.resume @gen_ct (@gen -> @on_gen)
+    wasmstack.resume @gen_ct (@gen -> @switch)
     wasmstack.i32.const 1112
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.return
@@ -105,8 +105,8 @@ wasmstack.module @spec_fun_pipes {
   }
 
   // From: examples/fun-pipes.wast
-  // CHECK: wasmstack.resume @consumer_ct (@receive -> @on_receive)
-  // CHECK: wasmstack.resume @producer_ct (@send -> @on_send)
+  // CHECK: wasmstack.resume @consumer_ct (@receive -> @switch)
+  // CHECK: wasmstack.resume @producer_ct (@send -> @switch)
   wasmstack.func @pipe_once : () -> () {
     wasmstack.ref.func @producer
     wasmstack.cont.new @producer_ct
@@ -116,12 +116,12 @@ wasmstack.module @spec_fun_pipes {
     wasmstack.i32.const 1311
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.i32.const 7
-    wasmstack.resume @consumer_ct (@receive -> @on_receive)
+    wasmstack.resume @consumer_ct (@receive -> @switch)
     wasmstack.call @print_i32 : (i32) -> ()
 
     wasmstack.i32.const 1312
     wasmstack.call @print_i32 : (i32) -> ()
-    wasmstack.resume @producer_ct (@send -> @on_send)
+    wasmstack.resume @producer_ct (@send -> @switch)
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.return
   }
