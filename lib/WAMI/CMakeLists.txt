@@ -3,6 +3,7 @@ add_mlir_dialect_library(MLIRWAMI
   WAMITypes.cpp
   WAMIOps.cpp
   WAMIPasses.cpp
+  ConversionPatterns/WAMIConversionUtils.cpp
   ConversionPatterns/WAMIConvertArith.cpp
   ConversionPatterns/WAMIConvertMath.cpp
   ConversionPatterns/WAMIConvertFunc.cpp
