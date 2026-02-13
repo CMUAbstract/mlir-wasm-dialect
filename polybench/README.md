@@ -44,3 +44,29 @@ configuration of compilers, optimization levels, and evaluation setups.
 Please manually verify that the Wasm files run successfully without errors (for
 example, by using minicom), and confirm that you are measuring intended behavior
 before collecting performance numbers.
+
+## Small-Only Correctness Check (WAMI vs LLVM)
+
+You can run a differential correctness sweep for `polybench/small` with:
+
+```sh
+./validate_small_correctness.py
+```
+
+What this does:
+- Compiles each `polybench/small/*.mlir` with both `--compiler=wami` and
+  `--compiler=llvm`.
+- Runs both outputs with `wasmtime-executor` in `--print-mode=hash`.
+- Compares `actual` return value, `print_count`, and `print_hash`.
+
+Useful options:
+
+```sh
+./validate_small_correctness.py --filter floyd-warshall
+./validate_small_correctness.py --keep-temp
+./validate_small_correctness.py --binaryen-opt-flags=-O2 --llvm-opt-flags=-O3
+```
+
+Requirements:
+- `WASI_SDK_PATH` must be set (LLVM flow in `compile.sh`).
+- `cargo +nightly` must be available for building `wasmtime-executor`.

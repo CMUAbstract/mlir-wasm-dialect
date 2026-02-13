@@ -10,6 +10,8 @@ pub struct RunReport {
     pub avg_ms: f64,
     pub min_ms: f64,
     pub max_ms: f64,
+    pub print_count: u64,
+    pub print_hash: u64,
 }
 
 impl RunReport {
@@ -22,7 +24,7 @@ impl RunReport {
             .unwrap_or_else(|| "none".to_string());
         let _ = write!(
             out,
-            "RESULT status={} expected={} actual={} iterations={} warmup={} ms_avg={:.6} ms_min={:.6} ms_max={:.6}",
+            "RESULT status={} expected={} actual={} iterations={} warmup={} ms_avg={:.6} ms_min={:.6} ms_max={:.6} print_count={} print_hash=0x{:016x}",
             status,
             expected,
             self.actual,
@@ -30,7 +32,9 @@ impl RunReport {
             self.warmup,
             self.avg_ms,
             self.min_ms,
-            self.max_ms
+            self.max_ms,
+            self.print_count,
+            self.print_hash
         );
         out
     }
@@ -41,7 +45,7 @@ impl RunReport {
             .map(|v| v.to_string())
             .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"pass\":{},\"expected\":{},\"actual\":{},\"iterations\":{},\"warmup\":{},\"ms_avg\":{:.6},\"ms_min\":{:.6},\"ms_max\":{:.6}}}",
+            "{{\"pass\":{},\"expected\":{},\"actual\":{},\"iterations\":{},\"warmup\":{},\"ms_avg\":{:.6},\"ms_min\":{:.6},\"ms_max\":{:.6},\"print_count\":{},\"print_hash\":\"0x{:016x}\"}}",
             if self.pass { "true" } else { "false" },
             expected,
             self.actual,
@@ -49,7 +53,9 @@ impl RunReport {
             self.warmup,
             self.avg_ms,
             self.min_ms,
-            self.max_ms
+            self.max_ms,
+            self.print_count,
+            self.print_hash
         )
     }
 }

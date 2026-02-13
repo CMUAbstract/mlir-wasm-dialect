@@ -142,6 +142,7 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     --convert-func-to-llvm="index-bitwidth=32" \
     --memref-expand --expand-strided-metadata \
     --finalize-memref-to-llvm="index-bitwidth=32" \
+    --convert-cf-to-llvm="index-bitwidth=32" \
     --canonicalize \
     --sccp \
     --loop-invariant-code-motion \
@@ -167,8 +168,17 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_WAT"
 
     echo "Linking the object file with stdlib using wasm-ld..."
+    WASM_LD_BIN="${WASM_LD_BIN:-}"
+    if [[ -z "$WASM_LD_BIN" ]]; then
+        if command -v wasm-ld > /dev/null 2>&1; then
+            WASM_LD_BIN="$(command -v wasm-ld)"
+        else
+            WASM_LD_BIN="$WASI_SDK_PATH/bin/wasm-ld"
+        fi
+    fi
+    echo "Using wasm-ld binary: $WASM_LD_BIN"
     # We always use -O3 optimization level
-    $WASI_SDK_PATH/bin/wasm-ld --no-entry --allow-undefined \
+    "$WASM_LD_BIN" --no-entry --allow-undefined \
     --export-memory --export=main --export=malloc --export=free \
     --export=__heap_end -export=__data_base \
     -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
