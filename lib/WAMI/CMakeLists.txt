@@ -14,6 +14,7 @@ add_mlir_dialect_library(MLIRWAMI
   ${PROJECT_SOURCE_DIR}/include/WAMI
 
   DEPENDS
+  MLIRWAMIAttrsIncGen
   MLIRWAMIOpsIncGen
   MLIRWAMIPassesIncGen
 

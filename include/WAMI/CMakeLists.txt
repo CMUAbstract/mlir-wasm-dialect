@@ -1,3 +1,9 @@
+set(LLVM_TARGET_DEFINITIONS WAMIAttrs.td)
+mlir_tablegen(WAMIAttrs.h.inc -gen-attrdef-decls -attrdefs-dialect=wami)
+mlir_tablegen(WAMIAttrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=wami)
+add_public_tablegen_target(MLIRWAMIAttrsIncGen)
+add_dependencies(mlir-headers MLIRWAMIAttrsIncGen)
+
 set(LLVM_TARGET_DEFINITIONS WAMIOps.td)
 mlir_tablegen(WAMIOps.h.inc -gen-op-decls)
 mlir_tablegen(WAMIOps.cpp.inc -gen-op-defs)
@@ -15,4 +21,5 @@ add_dependencies(mlir-headers MLIRWAMIPassesIncGen)
 
 add_mlir_doc(WAMIDialect WAMIDialect WAMI/ -gen-dialect-doc)
 add_mlir_doc(WAMIOps WAMIOps WAMI/ -gen-op-doc)
+add_mlir_doc(WAMIAttrs WAMIAttrs WAMI/ -gen-attrdef-doc)
 add_mlir_doc(WAMITypes WAMITypes WAMI/ -gen-typedef-doc)

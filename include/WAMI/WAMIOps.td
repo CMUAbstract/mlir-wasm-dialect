@@ -10,6 +10,7 @@
 #define WAMI_OPS
 
 include "WAMI/WAMITypes.td"
+include "WAMI/WAMIAttrs.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -226,22 +227,15 @@ def WAMI_SuspendOp : WAMI_Op<"suspend"> {
   let hasVerifier = 1;
 }
 
-def WAMI_HandlerYieldOp : WAMI_Op<"handler.yield", [Terminator]> {
-  let summary = "Yield values from resume handler";
-  let arguments = (ins Variadic<AnyType>:$values);
-  let assemblyFormat = "$values attr-dict `:` type($values)";
-}
-
 def WAMI_ResumeOp : WAMI_Op<"resume"> {
   let summary = "Resume continuation with typed handlers";
   let arguments = (ins
     WAMI_ContType:$cont,
     Variadic<AnyType>:$args,
     FlatSymbolRefAttr:$cont_type,
-    ArrayAttr:$handler_tags
+    ArrayAttr:$handlers
   );
   let results = (outs Variadic<AnyType>:$results);
-  let regions = (region AnyRegion:$handlers);
   let hasVerifier = 1;
 }
 
@@ -251,9 +245,8 @@ def WAMI_ResumeThrowOp : WAMI_Op<"resume_throw"> {
     WAMI_ContType:$cont,
     Variadic<AnyType>:$args,
     FlatSymbolRefAttr:$cont_type,
-    ArrayAttr:$handler_tags
+    ArrayAttr:$handlers
   );
-  let regions = (region AnyRegion:$handlers);
   let hasVerifier = 1;
 }
 
