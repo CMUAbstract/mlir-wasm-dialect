@@ -5,6 +5,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 import lit.formats
@@ -34,7 +35,17 @@ config.substitutions.append(("%PATH%", config.environment["PATH"]))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%wasm_src_root", config.wasm_src_root))
 
-llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
+llvm_config.with_system_environment([
+    "HOME",
+    "INCLUDE",
+    "LIB",
+    "TMP",
+    "TEMP",
+    "RUN_WIZARD_STACK_SWITCHING",
+    "WIZARD_ENGINE_DIR",
+    "WIZARD_WIZENG_BIN",
+    "WIZARD_WIZENG_OPTS",
+])
 
 llvm_config.use_default_substitutions()
 
@@ -91,6 +102,22 @@ if run_wasmtime_bench and cargo:
         "--bin run_wasm_bin --"
     )
     config.substitutions.append(("%run_wasm_bin", run_wasm_cmd))
+
+# Optional wizard-engine execution integration tests (opt-in).
+# Enabled only when WIZARD_ENGINE_DIR is set and RUN_WIZARD_STACK_SWITCHING=1.
+run_wizard_stack = os.environ.get("RUN_WIZARD_STACK_SWITCHING", "") == "1"
+wizard_engine_dir = os.environ.get("WIZARD_ENGINE_DIR", "")
+wizard_runner = os.path.join(
+    config.wasm_src_root, "test", "integration", "stack-switching",
+    "run_wizard_bin.py"
+)
+if (run_wizard_stack and wizard_engine_dir and
+        os.path.isdir(wizard_engine_dir) and
+        os.path.isfile(wizard_runner)):
+    config.available_features.add("wizard_exec")
+    config.substitutions.append(
+        ("%run_wizard_bin", f"{sys.executable} {wizard_runner}")
+    )
 
 llvm_config.with_environment(
     "PYTHONPATH",
