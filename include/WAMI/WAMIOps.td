@@ -148,15 +148,126 @@ def WAMI_TruncUOp : WAMI_Op<"trunc_u", [Pure]> {
 
 //===----------------------------------------------------------------------===//
 // Stack Switching Operations (WebAssembly Stack Switching Proposal)
-//
-// These operations will be added incrementally as needed:
-// - wami.tag           : Tag declaration for continuations
-// - wami.cont_new      : Create continuation from function ref
-// - wami.resume        : Resume a continuation
-// - wami.suspend       : Suspend current continuation
-// - wami.null_cont_ref : Create null continuation reference
 //===----------------------------------------------------------------------===//
 
-// Placeholder: Operations will be added in Phase 6
+def WAMI_TypeFuncOp : WAMI_Op<"type.func", [Symbol]> {
+  let summary = "Declare a function type";
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    TypeAttrOf<FunctionType>:$type
+  );
+  let assemblyFormat = "$sym_name `=` $type attr-dict";
+}
+
+def WAMI_TypeContOp : WAMI_Op<"type.cont", [Symbol]> {
+  let summary = "Declare a continuation type";
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    FlatSymbolRefAttr:$func_type
+  );
+  let assemblyFormat = "$sym_name `=` `cont` $func_type attr-dict";
+  let hasVerifier = 1;
+}
+
+def WAMI_TagOp : WAMI_Op<"tag", [Symbol]> {
+  let summary = "Declare a suspension tag";
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    TypeAttrOf<FunctionType>:$type,
+    OptionalAttr<StrAttr>:$export_name
+  );
+  let assemblyFormat = "$sym_name `:` $type (`export` $export_name^)? attr-dict";
+}
+
+def WAMI_RefFuncOp : WAMI_Op<"ref.func", [Pure]> {
+  let summary = "Create function reference";
+  let arguments = (ins FlatSymbolRefAttr:$func);
+  let results = (outs WAMI_FuncRefType:$result);
+  let assemblyFormat = "$func attr-dict `:` type($result)";
+}
+
+def WAMI_RefNullOp : WAMI_Op<"ref.null", [Pure]> {
+  let summary = "Create null reference";
+  let results = (outs WAMI_RefType:$result);
+  let assemblyFormat = "`:` type($result) attr-dict";
+  let hasVerifier = 1;
+}
+
+def WAMI_ContNewOp : WAMI_Op<"cont.new"> {
+  let summary = "Create continuation from function reference";
+  let arguments = (ins
+    WAMI_FuncRefType:$func,
+    FlatSymbolRefAttr:$cont_type
+  );
+  let results = (outs WAMI_ContType:$result);
+  let assemblyFormat = "$func `:` type($func) `as` $cont_type attr-dict `->` type($result)";
+  let hasVerifier = 1;
+}
+
+def WAMI_ContBindOp : WAMI_Op<"cont.bind"> {
+  let summary = "Bind arguments to continuation";
+  let arguments = (ins
+    WAMI_ContType:$cont,
+    Variadic<AnyType>:$bound_args,
+    FlatSymbolRefAttr:$src_cont_type,
+    FlatSymbolRefAttr:$dst_cont_type
+  );
+  let results = (outs WAMI_ContType:$result);
+  let hasVerifier = 1;
+}
+
+def WAMI_SuspendOp : WAMI_Op<"suspend"> {
+  let summary = "Suspend current continuation";
+  let arguments = (ins
+    FlatSymbolRefAttr:$tag,
+    Variadic<AnyType>:$payload
+  );
+  let results = (outs Variadic<AnyType>:$results);
+  let hasVerifier = 1;
+}
+
+def WAMI_HandlerYieldOp : WAMI_Op<"handler.yield", [Terminator]> {
+  let summary = "Yield values from resume handler";
+  let arguments = (ins Variadic<AnyType>:$values);
+  let assemblyFormat = "$values attr-dict `:` type($values)";
+}
+
+def WAMI_ResumeOp : WAMI_Op<"resume"> {
+  let summary = "Resume continuation with typed handlers";
+  let arguments = (ins
+    WAMI_ContType:$cont,
+    Variadic<AnyType>:$args,
+    FlatSymbolRefAttr:$cont_type,
+    ArrayAttr:$handler_tags
+  );
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region AnyRegion:$handlers);
+  let hasVerifier = 1;
+}
+
+def WAMI_ResumeThrowOp : WAMI_Op<"resume_throw"> {
+  let summary = "Resume continuation and throw on suspension";
+  let arguments = (ins
+    WAMI_ContType:$cont,
+    Variadic<AnyType>:$args,
+    FlatSymbolRefAttr:$cont_type,
+    ArrayAttr:$handler_tags
+  );
+  let regions = (region AnyRegion:$handlers);
+  let hasVerifier = 1;
+}
+
+def WAMI_BarrierYieldOp : WAMI_Op<"barrier.yield", [Terminator]> {
+  let summary = "Yield values from barrier";
+  let arguments = (ins Variadic<AnyType>:$values);
+  let assemblyFormat = "$values attr-dict `:` type($values)";
+}
+
+def WAMI_BarrierOp : WAMI_Op<"barrier", [SingleBlock, NoTerminator]> {
+  let summary = "Barrier for stack switching boundary";
+  let results = (outs Variadic<AnyType>:$results);
+  let regions = (region SizedRegion<1>:$body);
+  let hasVerifier = 1;
+}
 
 #endif // WAMI_OPS
