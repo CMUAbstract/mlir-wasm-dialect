@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "WAMI/WAMIOps.h"
+#include "WAMI/WAMIAttrs.h"
 #include "WAMI/WAMIDialect.h"
 #include "WAMI/WAMITypes.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
@@ -126,6 +127,57 @@ static LogicalResult verifyContValueType(Operation *op, Type contValueType,
     return op->emitError(context) << ": continuation value type " << contTy
                                   << " does not match symbol " << expectedSym;
   }
+  return success();
+}
+
+static unsigned countEnclosingStructuredLabels(Operation *op) {
+  unsigned depth = 0;
+  for (Operation *parent = op->getParentOp(); parent;
+       parent = parent->getParentOp()) {
+    if (isa<wasmssa::BlockOp, wasmssa::LoopOp, wasmssa::IfOp>(parent))
+      ++depth;
+  }
+  return depth;
+}
+
+static LogicalResult verifyResumeHandlers(Operation *op, ArrayAttr handlers,
+                                          StringRef context) {
+  llvm::StringSet<> seenTags;
+  unsigned labelDepth = countEnclosingStructuredLabels(op);
+
+  for (Attribute handlerAttr : handlers) {
+    if (auto onLabel = dyn_cast<OnLabelHandlerAttr>(handlerAttr)) {
+      FlatSymbolRefAttr tagRef = onLabel.getTag();
+      if (!seenTags.insert(tagRef.getValue()).second)
+        return op->emitError("duplicate handler tag ") << tagRef;
+
+      int64_t level = onLabel.getLevel();
+      if (level < 0)
+        return op->emitError("on_label level must be non-negative");
+      if (static_cast<uint64_t>(level) >= labelDepth) {
+        return op->emitError("on_label level ")
+               << level << " exceeds enclosing structured label depth "
+               << labelDepth;
+      }
+
+      if (failed(resolveTagSignature(op, tagRef, context)))
+        return failure();
+      continue;
+    }
+
+    if (auto onSwitch = dyn_cast<OnSwitchHandlerAttr>(handlerAttr)) {
+      FlatSymbolRefAttr tagRef = onSwitch.getTag();
+      if (!seenTags.insert(tagRef.getValue()).second)
+        return op->emitError("duplicate handler tag ") << tagRef;
+      if (failed(resolveTagSignature(op, tagRef, context)))
+        return failure();
+      continue;
+    }
+
+    return op->emitError(
+        "handlers must contain #wami.on_label or #wami.on_switch attributes");
+  }
+
   return success();
 }
 
@@ -256,9 +308,9 @@ LogicalResult SuspendOp::verify() {
 
 LogicalResult ResumeOp::verify() {
   auto contTypeRef = (*this)->getAttrOfType<FlatSymbolRefAttr>("cont_type");
-  auto tagArray = (*this)->getAttrOfType<ArrayAttr>("handler_tags");
-  if (!contTypeRef || !tagArray)
-    return emitOpError("missing cont_type or handler_tags attribute");
+  auto handlerArray = (*this)->getAttrOfType<ArrayAttr>("handlers");
+  if (!contTypeRef || !handlerArray)
+    return emitOpError("missing cont_type or handlers attribute");
 
   FailureOr<FunctionType> contSig =
       resolveContSignature(*this, contTypeRef, "resume");
@@ -282,58 +334,14 @@ LogicalResult ResumeOp::verify() {
                                 contSig->getResults(), *this)))
     return failure();
 
-  llvm::StringSet<> seenTags;
-  SmallVector<FlatSymbolRefAttr> handlerTags;
-  handlerTags.reserve(tagArray.size());
-  for (Attribute attr : tagArray) {
-    auto tagRef = dyn_cast<FlatSymbolRefAttr>(attr);
-    if (!tagRef)
-      return emitOpError("handler_tags must contain symbol references");
-    if (!seenTags.insert(tagRef.getValue()).second)
-      return emitOpError("duplicate handler tag ") << tagRef;
-    handlerTags.push_back(tagRef);
-  }
-
-  Region &handlers = (*this)->getRegion(0);
-  if (handlers.getBlocks().size() != handlerTags.size()) {
-    return emitOpError("handler region block count must match handler_tags "
-                       "count");
-  }
-
-  for (auto [idx, block] : llvm::enumerate(handlers.getBlocks())) {
-    FailureOr<FunctionType> tagSig =
-        resolveTagSignature(*this, handlerTags[idx], "resume handler");
-    if (failed(tagSig))
-      return failure();
-
-    if (failed(verifyTypeSequence("handler block argument types",
-                                  block.getArgumentTypes(), tagSig->getInputs(),
-                                  *this)))
-      return failure();
-
-    Operation *terminator = block.getTerminator();
-    if (!terminator)
-      return emitOpError("handler block must end with wami.handler.yield");
-
-    auto yieldOp = dyn_cast<HandlerYieldOp>(terminator);
-    if (!yieldOp)
-      return emitOpError(
-          "handler block must terminate with wami.handler.yield");
-
-    if (failed(verifyTypeSequence("handler yield types",
-                                  yieldOp.getValues().getTypes(),
-                                  contSig->getResults(), *this)))
-      return failure();
-  }
-
-  return success();
+  return verifyResumeHandlers(*this, handlerArray, "resume handler");
 }
 
 LogicalResult ResumeThrowOp::verify() {
   auto contTypeRef = (*this)->getAttrOfType<FlatSymbolRefAttr>("cont_type");
-  auto tagArray = (*this)->getAttrOfType<ArrayAttr>("handler_tags");
-  if (!contTypeRef || !tagArray)
-    return emitOpError("missing cont_type or handler_tags attribute");
+  auto handlerArray = (*this)->getAttrOfType<ArrayAttr>("handlers");
+  if (!contTypeRef || !handlerArray)
+    return emitOpError("missing cont_type or handlers attribute");
 
   FailureOr<FunctionType> contSig =
       resolveContSignature(*this, contTypeRef, "resume_throw");
@@ -356,45 +364,7 @@ LogicalResult ResumeThrowOp::verify() {
   if ((*this)->getNumResults() != 0)
     return emitOpError("resume_throw must not produce normal results");
 
-  llvm::StringSet<> seenTags;
-  SmallVector<FlatSymbolRefAttr> handlerTags;
-  handlerTags.reserve(tagArray.size());
-  for (Attribute attr : tagArray) {
-    auto tagRef = dyn_cast<FlatSymbolRefAttr>(attr);
-    if (!tagRef)
-      return emitOpError("handler_tags must contain symbol references");
-    if (!seenTags.insert(tagRef.getValue()).second)
-      return emitOpError("duplicate handler tag ") << tagRef;
-    handlerTags.push_back(tagRef);
-  }
-
-  Region &handlers = (*this)->getRegion(0);
-  if (handlers.getBlocks().size() != handlerTags.size()) {
-    return emitOpError("handler region block count must match handler_tags "
-                       "count");
-  }
-
-  for (auto [idx, block] : llvm::enumerate(handlers.getBlocks())) {
-    FailureOr<FunctionType> tagSig =
-        resolveTagSignature(*this, handlerTags[idx], "resume_throw handler");
-    if (failed(tagSig))
-      return failure();
-
-    if (failed(verifyTypeSequence("handler block argument types",
-                                  block.getArgumentTypes(), tagSig->getInputs(),
-                                  *this)))
-      return failure();
-
-    Operation *terminator = block.getTerminator();
-    if (!terminator)
-      return emitOpError("handler block must have a terminator");
-    if (isa<HandlerYieldOp>(terminator)) {
-      return emitOpError(
-          "resume_throw handlers must not terminate with wami.handler.yield");
-    }
-  }
-
-  return success();
+  return verifyResumeHandlers(*this, handlerArray, "resume_throw handler");
 }
 
 LogicalResult BarrierOp::verify() {
