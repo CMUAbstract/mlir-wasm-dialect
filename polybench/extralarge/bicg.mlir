@@ -1,5 +1,5 @@
 module {
-  func.func @main() -> i32 {
+  func.func @main() -> i32 attributes { exported } {
     %c2200 = arith.constant 2200 : index
     %c1800 = arith.constant 1800 : index
     %cst = arith.constant 2.200000e+03 : f64

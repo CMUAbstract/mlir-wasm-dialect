@@ -5,7 +5,7 @@
 #set1 = affine_set<(d0, d1) : (d0 - 1 >= 0, d1 - 1 >= 0)>
 #set2 = affine_set<(d0, d1) : (d0 + d1 - 181 >= 0)>
 module {
-  func.func @main() -> i32 {
+  func.func @main() -> i32 attributes { exported } {
     %c180 = arith.constant 180 : index
     %c3_i32 = arith.constant 3 : i32
     %c1_i32 = arith.constant 1 : i32
