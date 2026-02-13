@@ -4,22 +4,29 @@ use wasmtime::{Caller, Extern, Linker, Memory};
 
 const WASM_PAGE_SIZE: u64 = 65536;
 const HEAP_ALIGNMENT: u64 = 8;
+const FNV1A64_PRIME: u64 = 1099511628211;
 
 #[derive(Debug, Clone)]
 pub struct HostState {
     pub quiet: bool,
+    print_hash_only: bool,
     heap_ptr: Option<u64>,
     toggle_started_at: Option<Instant>,
     toggle_durations: Vec<Duration>,
+    print_count: u64,
+    print_hash: u64,
 }
 
 impl HostState {
-    pub fn new(quiet: bool) -> Self {
+    pub fn new(quiet: bool, print_hash_only: bool, print_hash_seed: u64) -> Self {
         Self {
             quiet,
+            print_hash_only,
             heap_ptr: None,
             toggle_started_at: None,
             toggle_durations: Vec::new(),
+            print_count: 0,
+            print_hash: print_hash_seed,
         }
     }
 
@@ -34,6 +41,26 @@ impl HostState {
     pub fn latest_toggle_duration(&self) -> Option<Duration> {
         self.toggle_durations.last().copied()
     }
+
+    fn on_print_i32(&mut self, value: i32) {
+        self.print_count += 1;
+        for byte in value.to_le_bytes() {
+            self.print_hash ^= u64::from(byte);
+            self.print_hash = self.print_hash.wrapping_mul(FNV1A64_PRIME);
+        }
+
+        if !self.print_hash_only && !self.quiet {
+            println!("print_i32: {}", value);
+        }
+    }
+
+    pub fn print_count(&self) -> u64 {
+        self.print_count
+    }
+
+    pub fn print_hash(&self) -> u64 {
+        self.print_hash
+    }
 }
 
 pub fn register(linker: &mut Linker<HostState>) -> Result<()> {
@@ -44,10 +71,8 @@ pub fn register(linker: &mut Linker<HostState>) -> Result<()> {
     linker.func_wrap(
         "env",
         "print_i32",
-        |caller: Caller<'_, HostState>, value: i32| {
-            if !caller.data().quiet {
-                println!("print_i32: {}", value);
-            }
+        |mut caller: Caller<'_, HostState>, value: i32| {
+            caller.data_mut().on_print_i32(value);
         },
     )?;
 
