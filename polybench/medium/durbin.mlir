@@ -1,7 +1,7 @@
 #map = affine_map<(d0) -> (d0)>
 #map1 = affine_map<(d0, d1) -> (d0 - d1 - 1)>
 module {
-  func.func @main() -> i32 {
+  func.func @main() -> i32 attributes { exported } {
     %cst = arith.constant -4.010000e+02 : f64
     %c0_i32 = arith.constant 0 : i32
     %c0 = arith.constant 0 : index

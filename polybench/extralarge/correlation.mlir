@@ -1,6 +1,6 @@
 #map = affine_map<(d0) -> (d0 + 1)>
 module {
-  func.func @main() -> i32 {
+  func.func @main() -> i32 attributes { exported } {
     %cst = arith.constant 54.772255750516614 : f64
     %c0 = arith.constant 0 : index
     %c2600 = arith.constant 2600 : index
