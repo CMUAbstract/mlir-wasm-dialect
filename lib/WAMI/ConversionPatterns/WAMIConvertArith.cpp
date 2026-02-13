@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "WAMI/ConversionPatterns/WAMIConvertArith.h"
+#include "WAMI/ConversionPatterns/WAMIConversionUtils.h"
 
 #include "WAMI/WAMIOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -167,11 +168,8 @@ struct SelectOpLowering : public OpConversionPattern<arith::SelectOp> {
     Type resultType = getTypeConverter()->convertType(op.getType());
 
     // Ensure condition is i32 (WebAssembly select requires i32 condition)
-    Value cond = adaptor.getCondition();
-    if (!cond.getType().isInteger(32)) {
-      cond = arith::ExtUIOp::create(rewriter, op.getLoc(),
-                                    rewriter.getI32Type(), cond);
-    }
+    Value cond =
+        ensureI32Condition(adaptor.getCondition(), op.getLoc(), rewriter);
 
     rewriter.replaceOpWithNewOp<SelectOp>(
         op, resultType, adaptor.getTrueValue(), adaptor.getFalseValue(), cond);
