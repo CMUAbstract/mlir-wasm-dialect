@@ -71,6 +71,14 @@ Opt-in execution benchmarks:
 RUN_WASMTIME_BENCH=1 llvm-lit build/test/integration/benchmarks
 ```
 
+Opt-in stack-switching runtime tests with Wizard Engine:
+
+```sh
+RUN_WIZARD_STACK_SWITCHING=1 \
+WIZARD_ENGINE_DIR=/path/to/wizard-engine \
+llvm-lit build/test/integration/stack-switching
+```
+
 ## Tool Prerequisites
 
 - [WABT](https://github.com/WebAssembly/wabt) (`wasm-validate`, `wasm-objdump`,
@@ -86,6 +94,7 @@ Example environment variables:
 export WASI_SDK_PATH=/path/to/wasi-sdk
 export ZEPHYR_BASE=/path/to/zephyrproject/zephyr
 export WAMR_ROOT_DIR=/path/to/wasm-micro-runtime
+export WIZARD_ENGINE_DIR=/path/to/wizard-engine
 ```
 
 ## Usage
