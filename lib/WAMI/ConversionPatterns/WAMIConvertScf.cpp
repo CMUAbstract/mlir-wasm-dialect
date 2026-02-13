@@ -12,35 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "WAMI/ConversionPatterns/WAMIConvertScf.h"
+#include "WAMI/ConversionPatterns/WAMIConversionUtils.h"
 
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 
 namespace mlir::wami {
 
 namespace {
-
-//===----------------------------------------------------------------------===//
-// Helper Functions
-//===----------------------------------------------------------------------===//
-
-/// Ensure condition is i32 for WasmSSA (which expects i32 conditions).
-/// If the condition is i1 (from arith.cmpi), extends it to i32 using
-/// arith.extui which will be converted by the subsequent arith pass.
-static Value ensureConditionIsI32(Value cond, Location loc,
-                                  ConversionPatternRewriter &rewriter) {
-  if (cond.getType().isInteger(32))
-    return cond;
-
-  if (cond.getType().isInteger(1)) {
-    // Extend i1 to i32 - this will be converted by wami-convert-arith
-    return arith::ExtUIOp::create(rewriter, loc, rewriter.getI32Type(), cond);
-  }
-
-  // For other types, return as-is
-  return cond;
-}
 
 //===----------------------------------------------------------------------===//
 // IfOp Lowering
@@ -55,8 +34,7 @@ struct IfOpLowering : public OpConversionPattern<scf::IfOp> {
     Location loc = op.getLoc();
 
     // Convert condition to i32 (WasmSSA expects i32)
-    Value condition =
-        ensureConditionIsI32(adaptor.getCondition(), loc, rewriter);
+    Value condition = ensureI32Condition(adaptor.getCondition(), loc, rewriter);
 
     // Convert result types
     SmallVector<Type, 4> resultTypes;
@@ -106,8 +84,11 @@ struct IfOpLowering : public OpConversionPattern<scf::IfOp> {
     // Erase the original terminator
     rewriter.eraseOp(origThenBlock->getTerminator());
 
-    // Create wasmssa.block_return with yielded values
-    wasmssa::BlockReturnOp::create(rewriter, loc, thenYieldOperands);
+    SmallVector<Value, 4> normalizedThenYieldOperands;
+    if (failed(normalizeOperandsToTypes(thenYieldOperands, resultTypes, loc,
+                                        rewriter, normalizedThenYieldOperands)))
+      return failure();
+    wasmssa::BlockReturnOp::create(rewriter, loc, normalizedThenYieldOperands);
 
     // Create and populate the 'else' region
     Block *elseBlock = ifOp.createElseBlock();
@@ -134,8 +115,13 @@ struct IfOpLowering : public OpConversionPattern<scf::IfOp> {
       // Erase the original terminator
       rewriter.eraseOp(origElseBlock->getTerminator());
 
-      // Create wasmssa.block_return with yielded values
-      wasmssa::BlockReturnOp::create(rewriter, loc, elseYieldOperands);
+      SmallVector<Value, 4> normalizedElseYieldOperands;
+      if (failed(normalizeOperandsToTypes(elseYieldOperands, resultTypes, loc,
+                                          rewriter,
+                                          normalizedElseYieldOperands)))
+        return failure();
+      wasmssa::BlockReturnOp::create(rewriter, loc,
+                                     normalizedElseYieldOperands);
     } else {
       wasmssa::BlockReturnOp::create(rewriter, loc, ValueRange{});
     }
@@ -163,19 +149,14 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     Value upperBound = adaptor.getUpperBound();
     Value step = adaptor.getStep();
 
-    // Ensure bounds are i32
-    if (!lowerBound.getType().isInteger(32)) {
-      lowerBound = arith::IndexCastOp::create(
-          rewriter, loc, rewriter.getI32Type(), lowerBound);
-    }
-    if (!upperBound.getType().isInteger(32)) {
-      upperBound = arith::IndexCastOp::create(
-          rewriter, loc, rewriter.getI32Type(), upperBound);
-    }
-    if (!step.getType().isInteger(32)) {
-      step = arith::IndexCastOp::create(rewriter, loc, rewriter.getI32Type(),
-                                        step);
-    }
+    // Ensure loop control values are i32.
+    Type i32Type = rewriter.getI32Type();
+    if (failed(normalizeToType(lowerBound, i32Type, loc, rewriter, lowerBound)))
+      return failure();
+    if (failed(normalizeToType(upperBound, i32Type, loc, rewriter, upperBound)))
+      return failure();
+    if (failed(normalizeToType(step, i32Type, loc, rewriter, step)))
+      return failure();
 
     // Collect initial values: induction variable + iter_args
     SmallVector<Value, 4> initValues;
@@ -190,6 +171,15 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
       resultTypes.push_back(getTypeConverter()->convertType(t));
     }
 
+    SmallVector<Type, 4> initTypes;
+    initTypes.push_back(i32Type);
+    initTypes.append(resultTypes.begin(), resultTypes.end());
+
+    SmallVector<Value, 4> normalizedInitValues;
+    if (failed(normalizeOperandsToTypes(initValues, initTypes, loc, rewriter,
+                                        normalizedInitValues)))
+      return failure();
+
     // Create successor block for after the loop
     Block *currentBlock = rewriter.getInsertionBlock();
     Block *afterBlock =
@@ -202,8 +192,8 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     rewriter.setInsertionPointToEnd(currentBlock);
 
     // Create outer block for break-out
-    auto blockOp =
-        wasmssa::BlockOp::create(rewriter, loc, initValues, afterBlock);
+    auto blockOp = wasmssa::BlockOp::create(rewriter, loc, normalizedInitValues,
+                                            afterBlock);
 
     // Create block entry
     Block *blockEntry = blockOp.createBlock();
@@ -283,6 +273,11 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     // Erase the original terminator to avoid "value still has uses" error
     rewriter.eraseOp(origBody->getTerminator());
 
+    SmallVector<Value, 4> normalizedYieldedValues;
+    if (failed(normalizeOperandsToTypes(yieldedValues, resultTypes, loc,
+                                        rewriter, normalizedYieldedValues)))
+      return failure();
+
     // Update induction variable
     Value nextInduction =
         wasmssa::AddOp::create(rewriter, loc, loopInductionVar, step);
@@ -290,7 +285,7 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
     // Continue loop with updated values
     SmallVector<Value, 4> continueValues;
     continueValues.push_back(nextInduction);
-    for (Value v : yieldedValues) {
+    for (Value v : normalizedYieldedValues) {
       continueValues.push_back(v);
     }
     wasmssa::BlockReturnOp::create(rewriter, loc, continueValues);
@@ -316,11 +311,21 @@ struct WhileOpLowering : public OpConversionPattern<scf::WhileOp> {
     // Get initial values
     SmallVector<Value, 4> initValues(adaptor.getInits());
 
+    SmallVector<Type, 4> beforeTypes;
+    for (Type t : op.getBefore().getArgumentTypes()) {
+      beforeTypes.push_back(getTypeConverter()->convertType(t));
+    }
+
     // Convert result types
     SmallVector<Type, 4> resultTypes;
     for (Type t : op.getResultTypes()) {
       resultTypes.push_back(getTypeConverter()->convertType(t));
     }
+
+    SmallVector<Value, 4> normalizedInitValues;
+    if (failed(normalizeOperandsToTypes(initValues, beforeTypes, loc, rewriter,
+                                        normalizedInitValues)))
+      return failure();
 
     // Create successor block for after the loop
     Block *currentBlock = rewriter.getInsertionBlock();
@@ -334,8 +339,8 @@ struct WhileOpLowering : public OpConversionPattern<scf::WhileOp> {
     rewriter.setInsertionPointToEnd(currentBlock);
 
     // Create outer block
-    auto blockOp =
-        wasmssa::BlockOp::create(rewriter, loc, initValues, afterBlock);
+    auto blockOp = wasmssa::BlockOp::create(rewriter, loc, normalizedInitValues,
+                                            afterBlock);
 
     // Create block entry
     Block *blockEntry = blockOp.createBlock();
@@ -374,13 +379,18 @@ struct WhileOpLowering : public OpConversionPattern<scf::WhileOp> {
     auto conditionOp =
         cast<scf::ConditionOp>(op.getBefore().front().getTerminator());
     Value cond = beforeMapping.lookupOrDefault(conditionOp.getCondition());
-    cond = ensureConditionIsI32(cond, loc, rewriter);
+    cond = ensureI32Condition(cond, loc, rewriter);
 
     // Get values to pass to after region
     SmallVector<Value, 4> condArgs;
     for (Value v : conditionOp.getArgs()) {
       condArgs.push_back(beforeMapping.lookupOrDefault(v));
     }
+
+    SmallVector<Value, 4> normalizedCondArgs;
+    if (failed(normalizeOperandsToTypes(condArgs, resultTypes, loc, rewriter,
+                                        normalizedCondArgs)))
+      return failure();
 
     // Create continuation block for body
     Block *bodyBlock = rewriter.createBlock(&loopOp.getBody());
@@ -390,7 +400,7 @@ struct WhileOpLowering : public OpConversionPattern<scf::WhileOp> {
     rewriter.setInsertionPointToEnd(loopBody);
     Value notCond = wasmssa::EqzOp::create(rewriter, loc, cond);
     wasmssa::BranchIfOp::create(rewriter, loc, notCond,
-                                /*exitLevel=*/1, condArgs, bodyBlock);
+                                /*exitLevel=*/1, normalizedCondArgs, bodyBlock);
 
     // In body block, execute after region
     rewriter.setInsertionPointToEnd(bodyBlock);
@@ -398,7 +408,7 @@ struct WhileOpLowering : public OpConversionPattern<scf::WhileOp> {
     // Map after region arguments to condArgs
     IRMapping afterMapping;
     for (auto [oldArg, newArg] :
-         llvm::zip(op.getAfter().getArguments(), condArgs)) {
+         llvm::zip(op.getAfter().getArguments(), normalizedCondArgs)) {
       afterMapping.map(oldArg, newArg);
     }
 
@@ -414,8 +424,13 @@ struct WhileOpLowering : public OpConversionPattern<scf::WhileOp> {
       yieldValues.push_back(afterMapping.lookupOrDefault(v));
     }
 
+    SmallVector<Value, 4> normalizedYieldValues;
+    if (failed(normalizeOperandsToTypes(yieldValues, beforeTypes, loc, rewriter,
+                                        normalizedYieldValues)))
+      return failure();
+
     // Continue loop
-    wasmssa::BlockReturnOp::create(rewriter, loc, yieldValues);
+    wasmssa::BlockReturnOp::create(rewriter, loc, normalizedYieldValues);
 
     // Replace the original op
     rewriter.replaceOp(op, afterBlock->getArguments());
