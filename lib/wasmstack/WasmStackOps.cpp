@@ -229,10 +229,11 @@ LogicalResult BrIfOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ResumeOp
+// Resume-Like Operations
 //===----------------------------------------------------------------------===//
 
-ParseResult ResumeOp::parse(OpAsmParser &parser, OperationState &result) {
+static ParseResult parseResumeLike(OpAsmParser &parser,
+                                   OperationState &result) {
   // Parse continuation type reference
   FlatSymbolRefAttr contType;
   if (parser.parseAttribute(contType))
@@ -266,11 +267,11 @@ ParseResult ResumeOp::parse(OpAsmParser &parser, OperationState &result) {
   return success();
 }
 
-void ResumeOp::print(OpAsmPrinter &p) {
+static void printResumeLike(OpAsmPrinter &p, Operation *op,
+                            FlatSymbolRefAttr contType, ArrayAttr handlers) {
   p << ' ';
-  p.printSymbolName(getContTypeAttr().getValue());
+  p.printSymbolName(contType.getValue());
 
-  auto handlers = getHandlers();
   if (!handlers.empty()) {
     p << " (";
     llvm::interleaveComma(handlers, p, [&](Attribute handler) {
@@ -282,17 +283,41 @@ void ResumeOp::print(OpAsmPrinter &p) {
     p << ")";
   }
 
-  p.printOptionalAttrDict((*this)->getAttrs(), {"cont_type", "handlers"});
+  p.printOptionalAttrDict(op->getAttrs(), {"cont_type", "handlers"});
+}
+
+static LogicalResult verifyResumeHandlers(Operation *op, ArrayAttr handlers) {
+  // Verify handler format
+  for (auto handler : handlers) {
+    auto pair = dyn_cast<ArrayAttr>(handler);
+    if (!pair || pair.size() != 2)
+      return op->emitOpError("invalid handler format");
+    if (!isa<FlatSymbolRefAttr>(pair[0]) || !isa<FlatSymbolRefAttr>(pair[1]))
+      return op->emitOpError("handler must be (tag -> label) pair");
+  }
+  return success();
+}
+
+ParseResult ResumeOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseResumeLike(parser, result);
+}
+
+void ResumeOp::print(OpAsmPrinter &p) {
+  printResumeLike(p, *this, getContTypeAttr(), getHandlers());
 }
 
 LogicalResult ResumeOp::verify() {
-  // Verify handler format
-  for (auto handler : getHandlers()) {
-    auto pair = dyn_cast<ArrayAttr>(handler);
-    if (!pair || pair.size() != 2)
-      return emitOpError("invalid handler format");
-    if (!isa<FlatSymbolRefAttr>(pair[0]) || !isa<FlatSymbolRefAttr>(pair[1]))
-      return emitOpError("handler must be (tag -> label) pair");
-  }
-  return success();
+  return verifyResumeHandlers(*this, getHandlers());
+}
+
+ParseResult ResumeThrowOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseResumeLike(parser, result);
+}
+
+void ResumeThrowOp::print(OpAsmPrinter &p) {
+  printResumeLike(p, *this, getContTypeAttr(), getHandlers());
+}
+
+LogicalResult ResumeThrowOp::verify() {
+  return verifyResumeHandlers(*this, getHandlers());
 }

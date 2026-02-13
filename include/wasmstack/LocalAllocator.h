@@ -41,6 +41,9 @@ public:
   /// Unwrap a WasmSSA local ref type to get the underlying value type
   static Type unwrapLocalRefType(Type type);
 
+  /// Convert source dialect reference types to wasmstack reference types.
+  static Type normalizeType(Type type);
+
   /// Allocate locals for a function
   void allocate(wasmssa::FuncOp funcOp, ArrayRef<Value> needsLocalOrdered,
                 ArrayRef<Value> needsTeeOrdered);

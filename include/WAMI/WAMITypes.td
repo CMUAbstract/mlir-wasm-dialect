@@ -23,16 +23,27 @@ class WAMI_Type<string name, string typeMnemonic, list<Trait> traits = []>
 // Continuation Types (for WebAssembly Stack Switching proposal)
 //===----------------------------------------------------------------------===//
 
+def WAMI_FuncRefType : WAMI_Type<"FuncRef", "funcref"> {
+  let summary = "Function reference type for stack switching";
+  let description = [{
+    Represents a typed function reference used by continuation construction.
+  }];
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$func_name);
+  let assemblyFormat = "`<` $func_name `>`";
+}
+
 def WAMI_ContType : WAMI_Type<"Cont", "cont"> {
   let summary = "Continuation type for stack switching";
   let description = [{
     Represents a continuation type in the WAMI dialect.
     Continuations are used for the WebAssembly Stack Switching proposal.
-    The type is parametrized by a type ID string that refers to a
-    declared continuation type.
+    The type is parametrized by a symbol reference to a declared continuation
+    type.
   }];
-  let parameters = (ins "StringAttr":$id);
-  let assemblyFormat = "$id";
+  let parameters = (ins "::mlir::FlatSymbolRefAttr":$type_name);
+  let assemblyFormat = "`<` $type_name `>`";
 }
+
+def WAMI_RefType : AnyTypeOf<[WAMI_FuncRefType, WAMI_ContType], "wami reference type">;
 
 #endif // WAMI_TYPES
