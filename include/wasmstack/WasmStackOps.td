@@ -1317,6 +1317,10 @@ def WasmStack_RefFuncOp : WasmStack_Op<"ref.func"> {
   let extraClassDeclaration = [{
     unsigned getStackInputs() { return 0; }
     unsigned getStackOutputs() { return 1; }
+    ::llvm::SmallVector<::mlir::Type> getStackOutputTypes() {
+      return {::mlir::wasmstack::FuncRefType::get(getContext(),
+                                                  getFuncAttr())};
+    }
   }];
 }
 
@@ -1395,6 +1399,28 @@ def WasmStack_ResumeOp : WasmStack_Op<"resume"> {
   }];
 }
 
+def WasmStack_ResumeThrowOp : WasmStack_Op<"resume_throw"> {
+  let summary = "Resume a continuation and throw on suspension";
+  let description = [{
+    Like `resume`, but handles suspension as an exceptional transfer. The
+    operation does not produce normal continuation results.
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$cont_type,
+    ArrayAttr:$handlers
+  );
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    // Stack effects depend on continuation type
+    unsigned getStackInputs() { return 1; }  // cont_ref + args
+    unsigned getStackOutputs() { return 0; }
+  }];
+}
+
 def WasmStack_SuspendOp : WasmStack_Op<"suspend"> {
   let summary = "Suspend current continuation";
   let description = [{
@@ -1412,11 +1438,35 @@ def WasmStack_SuspendOp : WasmStack_Op<"suspend"> {
   }];
 }
 
+def WasmStack_BarrierOp : WasmStack_Op<"barrier"> {
+  let summary = "Barrier for stack switching";
+  let description = [{
+    Delimits execution across stack-switching boundaries. Stack effects are
+    expressed as a function type.
+  }];
+
+  let arguments = (ins TypeAttrOf<FunctionType>:$type);
+  let assemblyFormat = "`:` $type attr-dict";
+
+  let extraClassDeclaration = [{
+    unsigned getStackInputs() { return getType().getNumInputs(); }
+    unsigned getStackOutputs() { return getType().getNumResults(); }
+    ::llvm::SmallVector<::mlir::Type> getStackInputTypes() {
+      return llvm::to_vector(getType().getInputs());
+    }
+    ::llvm::SmallVector<::mlir::Type> getStackOutputTypes() {
+      return llvm::to_vector(getType().getResults());
+    }
+  }];
+}
+
 def WasmStack_SwitchOp : WasmStack_Op<"switch"> {
   let summary = "Switch to another continuation";
   let description = [{
     Direct switch to another continuation, suspending the current one.
     More efficient than suspend+resume for symmetric coroutines.
+    This operation is kept for compatibility; prefer resume_throw + barrier
+    in new IR.
   }];
 
   let arguments = (ins
