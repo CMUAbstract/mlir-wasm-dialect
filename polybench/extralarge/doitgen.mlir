@@ -25,7 +25,7 @@ module {
     }
     return
   }
-  func.func @main() -> i32 {
+  func.func @main() -> i32 attributes { exported } {
     %c250 = arith.constant 250 : index
     %c270 = arith.constant 270 : index
     %c220 = arith.constant 220 : index
