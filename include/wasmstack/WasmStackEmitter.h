@@ -151,6 +151,15 @@ private:
   /// Emit a wami.store operation
   void emitStore(wami::StoreOp storeOp);
 
+  /// Emit WAMI stack-switching operations.
+  void emitRefFunc(wami::RefFuncOp refFuncOp);
+  void emitRefNull(wami::RefNullOp refNullOp);
+  void emitContNew(wami::ContNewOp contNewOp);
+  void emitContBind(wami::ContBindOp contBindOp);
+  void emitSuspend(wami::SuspendOp suspendOp);
+  void emitResume(wami::ResumeOp resumeOp);
+  void emitResumeThrow(wami::ResumeThrowOp resumeThrowOp);
+
   /// Emit a wasmssa.global_get operation
   void emitGlobalGet(wasmssa::GlobalGetOp globalGetOp);
 

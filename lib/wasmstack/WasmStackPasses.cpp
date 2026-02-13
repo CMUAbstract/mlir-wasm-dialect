@@ -260,8 +260,22 @@ public:
     for (auto dataOp : module.getOps<wami::DataOp>())
       dataToConvert.push_back(dataOp);
 
+    SmallVector<wami::TypeFuncOp> typeFuncsToConvert;
+    for (auto typeFunc : module.getOps<wami::TypeFuncOp>())
+      typeFuncsToConvert.push_back(typeFunc);
+
+    SmallVector<wami::TypeContOp> typeContsToConvert;
+    for (auto typeCont : module.getOps<wami::TypeContOp>())
+      typeContsToConvert.push_back(typeCont);
+
+    SmallVector<wami::TagOp> tagsToConvert;
+    for (auto tag : module.getOps<wami::TagOp>())
+      tagsToConvert.push_back(tag);
+
     if (importsToConvert.empty() && funcsToConvert.empty() &&
-        globalsToConvert.empty() && dataToConvert.empty())
+        globalsToConvert.empty() && dataToConvert.empty() &&
+        typeFuncsToConvert.empty() && typeContsToConvert.empty() &&
+        tagsToConvert.empty())
       return;
 
     // Emit a default linear memory when memory ops or malloc/free runtime
@@ -313,6 +327,15 @@ public:
         for (auto dataOp : dataToConvert)
           if (dataOp.getSymName() == name)
             return true;
+        for (auto typeFunc : typeFuncsToConvert)
+          if (typeFunc.getSymName() == name)
+            return true;
+        for (auto typeCont : typeContsToConvert)
+          if (typeCont.getSymName() == name)
+            return true;
+        for (auto tag : tagsToConvert)
+          if (tag.getSymName() == name)
+            return true;
         return false;
       };
       for (unsigned suffix = 0; symbolIsTaken(memorySym); ++suffix)
@@ -331,6 +354,28 @@ public:
           importOp.getModuleNameAttr(), importOp.getImportNameAttr(),
           TypeAttr::get(importOp.getType()));
       importOp.erase();
+    }
+
+    // Preserve WAMI stack-switching symbols as WasmStack declarations.
+    for (wami::TypeFuncOp typeFunc : typeFuncsToConvert) {
+      wasmstack::TypeFuncOp::create(builder, typeFunc.getLoc(),
+                                    typeFunc.getSymNameAttr(),
+                                    TypeAttr::get(typeFunc.getType()));
+      typeFunc.erase();
+    }
+
+    for (wami::TypeContOp typeCont : typeContsToConvert) {
+      wasmstack::TypeContOp::create(builder, typeCont.getLoc(),
+                                    typeCont.getSymNameAttr(),
+                                    typeCont.getFuncTypeAttr());
+      typeCont.erase();
+    }
+
+    for (wami::TagOp tag : tagsToConvert) {
+      wasmstack::TagOp::create(builder, tag.getLoc(), tag.getSymNameAttr(),
+                               TypeAttr::get(tag.getType()),
+                               tag.getExportNameAttr());
+      tag.erase();
     }
 
     for (wasmssa::GlobalOp globalOp : globalsToConvert) {

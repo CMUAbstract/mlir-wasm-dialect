@@ -19,6 +19,7 @@
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/SymbolTable.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -90,6 +91,7 @@ private:
   void reset(MLIRContext *context);
   void pushValue(Type type);
   LogicalResult popValue(Type expected);
+  LogicalResult popAnyValue(Type &actual);
   LogicalResult popValues(ArrayRef<Type> expected);
   LogicalResult checkStackHeight(size_t expected, StringRef context);
 
@@ -108,6 +110,19 @@ private:
   LogicalResult handleBrTableOp(BrTableOp op);
   LogicalResult handleReturnOp(ReturnOp op);
   LogicalResult handleUnreachableOp(UnreachableOp op);
+  LogicalResult handleContNewOp(ContNewOp op);
+  LogicalResult handleContBindOp(ContBindOp op);
+  LogicalResult handleResumeOp(ResumeOp op);
+  LogicalResult handleResumeThrowOp(ResumeThrowOp op);
+  LogicalResult handleSuspendOp(SuspendOp op);
+  LogicalResult handleSwitchOp(SwitchOp op);
+
+  FailureOr<FunctionType> resolveTypeFunc(Operation *op, FlatSymbolRefAttr ref,
+                                          StringRef context);
+  FailureOr<FunctionType> resolveContSig(Operation *op, FlatSymbolRefAttr ref,
+                                         StringRef context);
+  FailureOr<FunctionType> resolveTagSig(Operation *op, FlatSymbolRefAttr ref,
+                                        StringRef context);
 
   // Walk the body of a control frame
   LogicalResult walkBody(Region &region);
@@ -158,6 +173,24 @@ LogicalResult StackVerifier::popValue(Type expected) {
            << expected << " but got " << actual;
   }
 
+  return success();
+}
+
+LogicalResult StackVerifier::popAnyValue(Type &actual) {
+  if (unreachable) {
+    if (!valueStack.empty() &&
+        valueStack.size() > controlStack.back().stackHeightAtEntry) {
+      actual = valueStack.pop_back_val();
+    } else {
+      actual = Type();
+    }
+    return success();
+  }
+
+  if (valueStack.size() <= controlStack.back().stackHeightAtEntry)
+    return emitError("stack underflow: expected a value but stack is empty");
+
+  actual = valueStack.pop_back_val();
   return success();
 }
 
@@ -270,6 +303,39 @@ std::string StackVerifier::formatTypeList(ArrayRef<Type> types) {
 
 std::string StackVerifier::formatStack() { return formatTypeList(valueStack); }
 
+FailureOr<FunctionType> StackVerifier::resolveTypeFunc(Operation *op,
+                                                       FlatSymbolRefAttr ref,
+                                                       StringRef context) {
+  auto typeFunc = SymbolTable::lookupNearestSymbolFrom<TypeFuncOp>(op, ref);
+  if (!typeFunc) {
+    op->emitError(context) << ": unknown wasmstack.type.func symbol " << ref;
+    return failure();
+  }
+  return typeFunc.getType();
+}
+
+FailureOr<FunctionType> StackVerifier::resolveContSig(Operation *op,
+                                                      FlatSymbolRefAttr ref,
+                                                      StringRef context) {
+  auto contType = SymbolTable::lookupNearestSymbolFrom<TypeContOp>(op, ref);
+  if (!contType) {
+    op->emitError(context) << ": unknown wasmstack.type.cont symbol " << ref;
+    return failure();
+  }
+  return resolveTypeFunc(op, contType.getFuncTypeAttr(), context);
+}
+
+FailureOr<FunctionType> StackVerifier::resolveTagSig(Operation *op,
+                                                     FlatSymbolRefAttr ref,
+                                                     StringRef context) {
+  auto tag = SymbolTable::lookupNearestSymbolFrom<TagOp>(op, ref);
+  if (!tag) {
+    op->emitError(context) << ": unknown wasmstack.tag symbol " << ref;
+    return failure();
+  }
+  return tag.getType();
+}
+
 //===----------------------------------------------------------------------===//
 // Operation Verification
 //===----------------------------------------------------------------------===//
@@ -294,6 +360,18 @@ LogicalResult StackVerifier::verifyStackOp(Operation *op) {
     return handleReturnOp(returnOp);
   if (auto unreachableOp = dyn_cast<UnreachableOp>(op))
     return handleUnreachableOp(unreachableOp);
+  if (auto contNewOp = dyn_cast<ContNewOp>(op))
+    return handleContNewOp(contNewOp);
+  if (auto contBindOp = dyn_cast<ContBindOp>(op))
+    return handleContBindOp(contBindOp);
+  if (auto resumeOp = dyn_cast<ResumeOp>(op))
+    return handleResumeOp(resumeOp);
+  if (auto resumeThrowOp = dyn_cast<ResumeThrowOp>(op))
+    return handleResumeThrowOp(resumeThrowOp);
+  if (auto suspendOp = dyn_cast<SuspendOp>(op))
+    return handleSuspendOp(suspendOp);
+  if (auto switchOp = dyn_cast<SwitchOp>(op))
+    return handleSwitchOp(switchOp);
 
   // Handle operations with StackEffectOpInterface
   if (auto stackOp = dyn_cast<StackEffectOpInterface>(op)) {
@@ -613,6 +691,157 @@ LogicalResult StackVerifier::handleUnreachableOp(UnreachableOp op) {
   if (!controlStack.empty()) {
     controlStack.back().unreachable = true;
   }
+  return success();
+}
+
+LogicalResult StackVerifier::handleContNewOp(ContNewOp op) {
+  FailureOr<FunctionType> contSig =
+      resolveContSig(op, op.getContTypeAttr(), "cont.new");
+  if (failed(contSig))
+    return failure();
+
+  Type actual;
+  if (failed(popAnyValue(actual)))
+    return failure();
+
+  auto funcRefType = dyn_cast<FuncRefType>(actual);
+  if (!funcRefType) {
+    return op.emitError("cont.new expects funcref on stack, got ") << actual;
+  }
+
+  // If the referenced function symbol is known, ensure signature compatibility.
+  Operation *funcSym =
+      SymbolTable::lookupNearestSymbolFrom(op, funcRefType.getTypeName());
+  if (auto func = dyn_cast_or_null<FuncOp>(funcSym)) {
+    if (func.getFuncType() != *contSig) {
+      return op.emitError("funcref signature does not match continuation type");
+    }
+  } else if (auto import = dyn_cast_or_null<FuncImportOp>(funcSym)) {
+    if (import.getFuncType() != *contSig) {
+      return op.emitError(
+          "imported funcref signature does not match continuation type");
+    }
+  }
+
+  pushValue(ContRefType::get(op.getContext(), op.getContTypeAttr()));
+  return success();
+}
+
+LogicalResult StackVerifier::handleContBindOp(ContBindOp op) {
+  FailureOr<FunctionType> srcSig =
+      resolveContSig(op, op.getSrcContTypeAttr(), "cont.bind source");
+  FailureOr<FunctionType> dstSig =
+      resolveContSig(op, op.getDstContTypeAttr(), "cont.bind destination");
+  if (failed(srcSig) || failed(dstSig))
+    return failure();
+
+  if (srcSig->getNumInputs() < dstSig->getNumInputs()) {
+    return op.emitError(
+        "destination continuation input arity exceeds source arity");
+  }
+
+  if (srcSig->getResults() != dstSig->getResults()) {
+    return op.emitError(
+        "source and destination continuation result types must match");
+  }
+
+  unsigned boundCount = srcSig->getNumInputs() - dstSig->getNumInputs();
+  SmallVector<Type> expected;
+  expected.push_back(
+      ContRefType::get(op.getContext(), op.getSrcContTypeAttr()));
+  expected.append(srcSig->getInputs().begin(),
+                  srcSig->getInputs().begin() + boundCount);
+
+  if (failed(popValues(expected)))
+    return failure();
+
+  pushValue(ContRefType::get(op.getContext(), op.getDstContTypeAttr()));
+  return success();
+}
+
+LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
+  FailureOr<FunctionType> contSig =
+      resolveContSig(op, op.getContTypeAttr(), "resume");
+  if (failed(contSig))
+    return failure();
+
+  SmallVector<Type> expected;
+  expected.push_back(ContRefType::get(op.getContext(), op.getContTypeAttr()));
+  expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
+  if (failed(popValues(expected)))
+    return failure();
+
+  // Validate tag symbols in handlers.
+  for (Attribute attr : op.getHandlers()) {
+    auto pair = dyn_cast<ArrayAttr>(attr);
+    if (!pair || pair.size() != 2)
+      return op.emitError("invalid handler format");
+    auto tag = dyn_cast<FlatSymbolRefAttr>(pair[0]);
+    if (!tag)
+      return op.emitError("handler tag must be a symbol reference");
+    if (failed(resolveTagSig(op, tag, "resume handler")))
+      return failure();
+  }
+
+  for (Type result : contSig->getResults())
+    pushValue(result);
+  return success();
+}
+
+LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
+  FailureOr<FunctionType> contSig =
+      resolveContSig(op, op.getContTypeAttr(), "resume_throw");
+  if (failed(contSig))
+    return failure();
+
+  SmallVector<Type> expected;
+  expected.push_back(ContRefType::get(op.getContext(), op.getContTypeAttr()));
+  expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
+  if (failed(popValues(expected)))
+    return failure();
+
+  for (Attribute attr : op.getHandlers()) {
+    auto pair = dyn_cast<ArrayAttr>(attr);
+    if (!pair || pair.size() != 2)
+      return op.emitError("invalid handler format");
+    auto tag = dyn_cast<FlatSymbolRefAttr>(pair[0]);
+    if (!tag)
+      return op.emitError("handler tag must be a symbol reference");
+    if (failed(resolveTagSig(op, tag, "resume_throw handler")))
+      return failure();
+  }
+
+  return success();
+}
+
+LogicalResult StackVerifier::handleSuspendOp(SuspendOp op) {
+  FailureOr<FunctionType> tagSig =
+      resolveTagSig(op, op.getTagAttr(), "suspend");
+  if (failed(tagSig))
+    return failure();
+
+  if (failed(popValues(tagSig->getInputs())))
+    return failure();
+
+  for (Type result : tagSig->getResults())
+    pushValue(result);
+  return success();
+}
+
+LogicalResult StackVerifier::handleSwitchOp(SwitchOp op) {
+  FailureOr<FunctionType> contSig =
+      resolveContSig(op, op.getContTypeAttr(), "switch");
+  FailureOr<FunctionType> tagSig = resolveTagSig(op, op.getTagAttr(), "switch");
+  if (failed(contSig) || failed(tagSig))
+    return failure();
+
+  SmallVector<Type> expected;
+  expected.push_back(ContRefType::get(op.getContext(), op.getContTypeAttr()));
+  expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
+  expected.append(tagSig->getInputs().begin(), tagSig->getInputs().end());
+  if (failed(popValues(expected)))
+    return failure();
+
   return success();
 }
 

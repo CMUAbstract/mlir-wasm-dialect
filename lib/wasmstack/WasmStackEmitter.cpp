@@ -15,6 +15,8 @@
 #include "WAMI/WAMIOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "wasmstack/WasmConstUtils.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 
 namespace mlir::wasmstack {
@@ -38,6 +40,14 @@ static bool isNoOpCastPair(Type srcType, Type dstType) {
   }
 
   return false;
+}
+
+static Type toWasmStackType(Type type) {
+  if (auto cont = dyn_cast<wami::ContType>(type))
+    return ContRefType::get(type.getContext(), cont.getTypeName());
+  if (auto func = dyn_cast<wami::FuncRefType>(type))
+    return FuncRefType::get(type.getContext(), func.getFuncName());
+  return type;
 }
 
 //===----------------------------------------------------------------------===//
@@ -222,7 +232,6 @@ void WasmStackEmitter::fail(Operation *op, StringRef message) {
 }
 
 void WasmStackEmitter::materializeResult(Location loc, Value result) {
-  Type resultType = result.getType();
   int idx = allocator.getLocalIndex(result);
 
   // No local allocated: keep result on value stack.
@@ -233,13 +242,15 @@ void WasmStackEmitter::materializeResult(Location loc, Value result) {
 
   // Tee policy: keep stack value for first consumer while also storing it.
   if (needsTee.contains(result)) {
-    LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
+    LocalTeeOp::create(builder, loc, static_cast<uint32_t>(idx),
+                       allocator.getLocalType(static_cast<unsigned>(idx)));
     emittedToStack.insert(result);
     return;
   }
 
   // Local-only policy: materialize into local and keep stack clean.
-  LocalSetOp::create(builder, loc, static_cast<uint32_t>(idx), resultType);
+  LocalSetOp::create(builder, loc, static_cast<uint32_t>(idx),
+                     allocator.getLocalType(static_cast<unsigned>(idx)));
   emittedToStack.erase(result);
 }
 
@@ -423,6 +434,22 @@ void WasmStackEmitter::emitOperation(Operation *op) {
   } else if (auto truncUOp = dyn_cast<wami::TruncUOp>(op)) {
     emitTruncOp(truncUOp, /*isSigned=*/false);
   }
+  // WAMI stack-switching operations
+  else if (auto refFuncOp = dyn_cast<wami::RefFuncOp>(op)) {
+    emitRefFunc(refFuncOp);
+  } else if (auto refNullOp = dyn_cast<wami::RefNullOp>(op)) {
+    emitRefNull(refNullOp);
+  } else if (auto contNewOp = dyn_cast<wami::ContNewOp>(op)) {
+    emitContNew(contNewOp);
+  } else if (auto contBindOp = dyn_cast<wami::ContBindOp>(op)) {
+    emitContBind(contBindOp);
+  } else if (auto suspendOp = dyn_cast<wami::SuspendOp>(op)) {
+    emitSuspend(suspendOp);
+  } else if (auto resumeOp = dyn_cast<wami::ResumeOp>(op)) {
+    emitResume(resumeOp);
+  } else if (auto resumeThrowOp = dyn_cast<wami::ResumeThrowOp>(op)) {
+    emitResumeThrow(resumeThrowOp);
+  }
   // WAMI select operation
   else if (auto selectOp = dyn_cast<wami::SelectOp>(op)) {
     // WebAssembly select stack order: [true_val, false_val, condition]
@@ -574,7 +601,7 @@ void WasmStackEmitter::emitOperandIfNeeded(Value value) {
   int idx = allocator.getLocalIndex(value);
   if (idx >= 0) {
     LocalGetOp::create(builder, value.getLoc(), static_cast<uint32_t>(idx),
-                       value.getType());
+                       allocator.getLocalType(static_cast<unsigned>(idx)));
     return;
   }
 
@@ -1289,6 +1316,182 @@ void WasmStackEmitter::emitStore(wami::StoreOp storeOp) {
     F64StoreOp::create(builder, loc, builder.getI32IntegerAttr(0),
                        builder.getI32IntegerAttr(8), TypeAttr::get(valueType));
   }
+}
+
+void WasmStackEmitter::emitRefFunc(wami::RefFuncOp refFuncOp) {
+  Location loc = refFuncOp.getLoc();
+  RefFuncOp::create(builder, loc, refFuncOp.getFuncAttr());
+  materializeResult(loc, refFuncOp.getResult());
+}
+
+void WasmStackEmitter::emitRefNull(wami::RefNullOp refNullOp) {
+  Location loc = refNullOp.getLoc();
+  RefNullOp::create(
+      builder, loc,
+      TypeAttr::get(toWasmStackType(refNullOp.getResult().getType())));
+  materializeResult(loc, refNullOp.getResult());
+}
+
+void WasmStackEmitter::emitContNew(wami::ContNewOp contNewOp) {
+  Location loc = contNewOp.getLoc();
+  emitOperandIfNeeded(contNewOp.getFunc());
+  if (failed)
+    return;
+
+  auto contType = contNewOp->getAttrOfType<FlatSymbolRefAttr>("cont_type");
+  if (!contType) {
+    fail(contNewOp, "missing cont_type attribute");
+    return;
+  }
+
+  ContNewOp::create(builder, loc, contType);
+  materializeResult(loc, contNewOp.getResult());
+}
+
+void WasmStackEmitter::emitContBind(wami::ContBindOp contBindOp) {
+  Location loc = contBindOp.getLoc();
+  ValueRange operands = contBindOp->getOperands();
+  if (operands.empty()) {
+    fail(contBindOp, "cont.bind requires a continuation operand");
+    return;
+  }
+
+  emitOperandIfNeeded(operands.front());
+  if (failed)
+    return;
+
+  ValueRange boundArgs = operands.drop_front();
+  for (Value v : boundArgs) {
+    emitOperandIfNeeded(v);
+    if (failed)
+      return;
+  }
+
+  // Current wasmstack.cont.bind op does not encode bound arguments. Consume
+  // bound values explicitly to keep stack state consistent.
+  for (Value v : llvm::reverse(boundArgs))
+    DropOp::create(builder, loc, toWasmStackType(v.getType()));
+
+  auto srcType = contBindOp->getAttrOfType<FlatSymbolRefAttr>("src_cont_type");
+  auto dstType = contBindOp->getAttrOfType<FlatSymbolRefAttr>("dst_cont_type");
+  if (!srcType || !dstType) {
+    fail(contBindOp, "missing src_cont_type/dst_cont_type attributes");
+    return;
+  }
+
+  ContBindOp::create(builder, loc, srcType, dstType);
+  materializeResult(loc, contBindOp.getResult());
+}
+
+void WasmStackEmitter::emitSuspend(wami::SuspendOp suspendOp) {
+  Location loc = suspendOp.getLoc();
+  for (Value v : suspendOp->getOperands()) {
+    emitOperandIfNeeded(v);
+    if (failed)
+      return;
+  }
+
+  auto tag = suspendOp->getAttrOfType<FlatSymbolRefAttr>("tag");
+  if (!tag) {
+    fail(suspendOp, "missing tag attribute");
+    return;
+  }
+
+  SuspendOp::create(builder, loc, tag);
+  for (Value result : llvm::reverse(suspendOp->getResults()))
+    materializeResult(loc, result);
+}
+
+void WasmStackEmitter::emitResume(wami::ResumeOp resumeOp) {
+  Location loc = resumeOp.getLoc();
+  ValueRange operands = resumeOp->getOperands();
+  for (Value v : operands) {
+    emitOperandIfNeeded(v);
+    if (failed)
+      return;
+  }
+
+  auto contType = resumeOp->getAttrOfType<FlatSymbolRefAttr>("cont_type");
+  auto handlerTags = resumeOp->getAttrOfType<ArrayAttr>("handler_tags");
+  if (!contType || !handlerTags) {
+    fail(resumeOp, "missing cont_type/handler_tags attributes");
+    return;
+  }
+
+  Region &handlersRegion = resumeOp->getRegion(0);
+  if (handlersRegion.getBlocks().size() != handlerTags.size()) {
+    fail(resumeOp,
+         "handler region block count must match handler_tags for lowering");
+    return;
+  }
+
+  SmallVector<Attribute> handlers;
+  handlers.reserve(handlerTags.size());
+  unsigned idx = 0;
+  for (Attribute tagAttr : handlerTags) {
+    auto tag = dyn_cast<FlatSymbolRefAttr>(tagAttr);
+    if (!tag) {
+      fail(resumeOp, "handler_tags must contain symbol refs");
+      return;
+    }
+
+    SmallString<32> label("__wami_resume_handler_");
+    label += llvm::utostr(idx++);
+
+    SmallVector<Attribute> pair = {
+        tag, FlatSymbolRefAttr::get(builder.getContext(), label)};
+    handlers.push_back(ArrayAttr::get(builder.getContext(), pair));
+  }
+
+  ResumeOp::create(builder, loc, contType,
+                   ArrayAttr::get(builder.getContext(), handlers));
+  for (Value result : llvm::reverse(resumeOp->getResults()))
+    materializeResult(loc, result);
+}
+
+void WasmStackEmitter::emitResumeThrow(wami::ResumeThrowOp resumeThrowOp) {
+  Location loc = resumeThrowOp.getLoc();
+  ValueRange operands = resumeThrowOp->getOperands();
+  for (Value v : operands) {
+    emitOperandIfNeeded(v);
+    if (failed)
+      return;
+  }
+
+  auto contType = resumeThrowOp->getAttrOfType<FlatSymbolRefAttr>("cont_type");
+  auto handlerTags = resumeThrowOp->getAttrOfType<ArrayAttr>("handler_tags");
+  if (!contType || !handlerTags) {
+    fail(resumeThrowOp, "missing cont_type/handler_tags attributes");
+    return;
+  }
+
+  Region &handlersRegion = resumeThrowOp->getRegion(0);
+  if (handlersRegion.getBlocks().size() != handlerTags.size()) {
+    fail(resumeThrowOp,
+         "handler region block count must match handler_tags for lowering");
+    return;
+  }
+
+  SmallVector<Attribute> handlers;
+  handlers.reserve(handlerTags.size());
+  unsigned idx = 0;
+  for (Attribute tagAttr : handlerTags) {
+    auto tag = dyn_cast<FlatSymbolRefAttr>(tagAttr);
+    if (!tag) {
+      fail(resumeThrowOp, "handler_tags must contain symbol refs");
+      return;
+    }
+
+    SmallString<32> label("__wami_resume_throw_handler_");
+    label += llvm::utostr(idx++);
+
+    SmallVector<Attribute> pair = {
+        tag, FlatSymbolRefAttr::get(builder.getContext(), label)};
+    handlers.push_back(ArrayAttr::get(builder.getContext(), pair));
+  }
+
+  ResumeThrowOp::create(builder, loc, contType,
+                        ArrayAttr::get(builder.getContext(), handlers));
 }
 
 void WasmStackEmitter::emitGlobalGet(wasmssa::GlobalGetOp globalGetOp) {
