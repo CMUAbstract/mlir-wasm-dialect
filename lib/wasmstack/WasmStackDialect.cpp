@@ -8,11 +8,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "wasmstack/WasmStackDialect.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "wasmstack/WasmStackAttrs.h"
 #include "wasmstack/WasmStackOps.h"
 #include "wasmstack/WasmStackTypes.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
 using namespace mlir::wasmstack;
+
+#define GET_ATTRDEF_CLASSES
+#include "wasmstack/WasmStackAttrs.cpp.inc"
 
 #include "wasmstack/WasmStackDialect.cpp.inc"
 
@@ -22,6 +28,10 @@ using namespace mlir::wasmstack;
 
 void WasmStackDialect::initialize() {
   registerTypes();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "wasmstack/WasmStackAttrs.cpp.inc"
+      >();
   addOperations<
 #define GET_OP_LIST
 #include "wasmstack/WasmStackOps.cpp.inc"

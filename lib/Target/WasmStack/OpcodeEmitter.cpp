@@ -1070,28 +1070,23 @@ bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
   auto emitHandlers = [&](Operation *resumeLikeOp, ArrayAttr handlers) -> bool {
     writer.writeULEB128(handlers.size());
     for (Attribute attr : handlers) {
-      auto pair = dyn_cast<ArrayAttr>(attr);
-      if (!pair || pair.size() != 2) {
-        resumeLikeOp->emitError("invalid handler entry");
-        return false;
-      }
-
-      auto tag = dyn_cast<FlatSymbolRefAttr>(pair[0]);
-      auto label = dyn_cast<FlatSymbolRefAttr>(pair[1]);
-      if (!tag || !label) {
-        resumeLikeOp->emitError("handler must be (tag -> label) pair");
-        return false;
-      }
-
-      if (label.getValue() == "switch") {
+      if (auto onSwitch = dyn_cast<OnSwitchHandlerAttr>(attr)) {
         writer.writeULEB128(1); // switch handler kind
-        writer.writeULEB128(indexSpace.getTagIndex(tag.getValue()));
+        writer.writeULEB128(
+            indexSpace.getTagIndex(onSwitch.getTag().getValue()));
         continue;
       }
 
+      auto onLabel = dyn_cast<OnLabelHandlerAttr>(attr);
+      if (!onLabel) {
+        resumeLikeOp->emitError("handlers must contain #wasmstack.on_label or "
+                                "#wasmstack.on_switch attributes");
+        return false;
+      }
+
       writer.writeULEB128(0); // ordinary suspension handler
-      writer.writeULEB128(indexSpace.getTagIndex(tag.getValue()));
-      writer.writeULEB128(resolveLabelDepth(label.getValue()));
+      writer.writeULEB128(indexSpace.getTagIndex(onLabel.getTag().getValue()));
+      writer.writeULEB128(resolveLabelDepth(onLabel.getLabel().getValue()));
     }
     return true;
   };
