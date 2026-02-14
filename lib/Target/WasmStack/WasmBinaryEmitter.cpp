@@ -126,6 +126,33 @@ static void emitFunctionSection(BinaryWriter &output, IndexSpace &indexSpace,
   output.writeSection(wc::SectionId::Function, section);
 }
 
+/// Returns true when relocatable emission needs a synthetic table section.
+static bool needsSyntheticTable(Operation *moduleOp, IndexSpace &indexSpace,
+                                bool relocatable) {
+  if (!relocatable)
+    return false;
+
+  if (!indexSpace.getRefFuncDeclarationIndices().empty())
+    return true;
+
+  bool hasCallIndirect = false;
+  moduleOp->walk([&](CallIndirectOp) { hasCallIndirect = true; });
+  return hasCallIndirect;
+}
+
+/// Emit a synthetic table section with table 0 for relocatable ref.func users.
+static void emitTableSection(BinaryWriter &output, bool emitSyntheticTable) {
+  if (!emitSyntheticTable)
+    return;
+
+  BinaryWriter section;
+  section.writeULEB128(1); // table count
+  section.writeByte(static_cast<uint8_t>(wc::ValType::FuncRef));
+  section.writeByte(static_cast<uint8_t>(wc::LimitKind::Min));
+  section.writeULEB128(0); // min table size
+  output.writeSection(wc::SectionId::Table, section);
+}
+
 /// Emit the memory section (section 5).
 static void emitMemorySection(BinaryWriter &output, Operation *moduleOp) {
   SmallVector<MemoryOp> memories;
@@ -412,7 +439,8 @@ static void emitDataSection(BinaryWriter &output, IndexSpace &indexSpace,
 
 /// Emit the "linking" custom section.
 static void emitLinkingSection(BinaryWriter &output, IndexSpace &indexSpace,
-                               Operation *moduleOp) {
+                               Operation *moduleOp,
+                               bool emitSyntheticTableSymbol) {
   BinaryWriter section;
 
   // Linking metadata version
@@ -422,14 +450,17 @@ static void emitLinkingSection(BinaryWriter &output, IndexSpace &indexSpace,
   {
     BinaryWriter subsection;
     const auto &symbols = indexSpace.getSymbols();
-    subsection.writeULEB128(symbols.size());
+    uint32_t symbolCount = symbols.size() + (emitSyntheticTableSymbol ? 1 : 0);
+    subsection.writeULEB128(symbolCount);
 
     for (const auto &sym : symbols) {
       subsection.writeByte(static_cast<uint8_t>(sym.kind));
       subsection.writeULEB128(sym.flags);
 
       if (sym.kind == wasm::SymtabKind::Function ||
-          sym.kind == wasm::SymtabKind::Global) {
+          sym.kind == wasm::SymtabKind::Global ||
+          sym.kind == wasm::SymtabKind::Tag ||
+          sym.kind == wasm::SymtabKind::Table) {
         subsection.writeULEB128(sym.elementIndex);
         // Write name if the symbol has WASM_SYMBOL_EXPLICIT_NAME flag
         // or if it's a defined symbol (always write names for our symbols)
@@ -441,6 +472,13 @@ static void emitLinkingSection(BinaryWriter &output, IndexSpace &indexSpace,
         subsection.writeULEB128(sym.offset);
         subsection.writeULEB128(sym.size);
       }
+    }
+
+    if (emitSyntheticTableSymbol) {
+      subsection.writeByte(static_cast<uint8_t>(wasm::SymtabKind::Table));
+      subsection.writeULEB128(0); // defined, default visibility/binding flags
+      subsection.writeULEB128(0); // table index 0
+      subsection.writeString("__wasmstack.table0");
     }
 
     section.writeByte(
@@ -542,135 +580,104 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
 
   // 2. Build output
   BinaryWriter writer;
+  bool emitSyntheticTable =
+      needsSyntheticTable(wasmModule, indexSpace, relocatable);
+  uint32_t sectionIndex = 0;
+  std::optional<uint32_t> codeSectionIndex;
+  std::optional<uint32_t> dataSectionIndex;
+  auto noteSectionEmission = [&](size_t beforeSize,
+                                 std::optional<uint32_t> *outIndex = nullptr) {
+    if (writer.size() == beforeSize)
+      return;
+    if (outIndex)
+      *outIndex = sectionIndex;
+    ++sectionIndex;
+  };
 
   // Magic number and version
   writer.writeBytes(wc::Magic, sizeof(wc::Magic));
   writer.writeBytes(wc::Version, sizeof(wc::Version));
 
   // Emit sections in order.
+  size_t beforeSize = writer.size();
   emitTypeSection(writer, indexSpace);
+  noteSectionEmission(beforeSize);
+
+  beforeSize = writer.size();
   emitImportSection(writer, indexSpace, wasmModule);
+  noteSectionEmission(beforeSize);
+
+  beforeSize = writer.size();
   emitFunctionSection(writer, indexSpace, wasmModule);
+  noteSectionEmission(beforeSize);
+
+  beforeSize = writer.size();
+  emitTableSection(writer, emitSyntheticTable);
+  noteSectionEmission(beforeSize);
+
+  beforeSize = writer.size();
   emitMemorySection(writer, wasmModule);
+  noteSectionEmission(beforeSize);
+
+  beforeSize = writer.size();
   emitTagSection(writer, indexSpace, wasmModule);
+  noteSectionEmission(beforeSize);
+
+  beforeSize = writer.size();
   emitGlobalSection(writer, indexSpace, wasmModule);
+  noteSectionEmission(beforeSize);
 
   // Export section: skip in relocatable mode (exports become symbol flags)
-  if (!relocatable)
+  if (!relocatable) {
+    beforeSize = writer.size();
     emitExportSection(writer, indexSpace, wasmModule);
-
-  emitElementSection(writer, indexSpace);
-  emitDataCountSection(writer, wasmModule);
-
-  // The code section index: count sections emitted before it.
-  // type(1) + import(2, if any) + function(3) + memory(5) + tag(13, if any) +
-  // global(6) + export(7, if !reloc) + element(9, if any) + datacount(12).
-  // We need the actual section index
-  // in the binary.
-  // Section indices are sequential starting from 0 for each section in the
-  // binary, not by section ID.
-  // Let's count properly.
-  uint32_t codeSectionIdx = 0;
-  uint32_t dataSectionIdx = 0;
-  {
-    // Count sections before code section
-    uint32_t idx = 0;
-    idx++; // type
-    // import section may be absent
-    bool hasFuncImports = false;
-    for (Operation &mop : wasmModule->getRegion(0).front())
-      if (isa<FuncImportOp>(mop)) {
-        hasFuncImports = true;
-        break;
-      }
-    if (hasFuncImports)
-      idx++;
-    idx++; // function
-    // memory section may be absent
-    bool hasMemory = false;
-    for (Operation &mop : wasmModule->getRegion(0).front())
-      if (isa<MemoryOp>(mop)) {
-        hasMemory = true;
-        break;
-      }
-    if (hasMemory)
-      idx++;
-    // tag section may be absent
-    bool hasTag = false;
-    for (Operation &mop : wasmModule->getRegion(0).front())
-      if (isa<TagOp>(mop)) {
-        hasTag = true;
-        break;
-      }
-    if (hasTag)
-      idx++;
-    // global section may be absent
-    bool hasGlobal = false;
-    for (Operation &mop : wasmModule->getRegion(0).front())
-      if (isa<GlobalOp>(mop)) {
-        hasGlobal = true;
-        break;
-      }
-    if (hasGlobal)
-      idx++;
-    // export section (only in non-relocatable mode)
-    if (!relocatable) {
-      bool hasExport = false;
-      for (Operation &mop : wasmModule->getRegion(0).front()) {
-        if (auto f = dyn_cast<FuncOp>(mop))
-          if (f.getExportName()) {
-            hasExport = true;
-            break;
-          }
-        if (auto m = dyn_cast<MemoryOp>(mop))
-          if (m.getExportName()) {
-            hasExport = true;
-            break;
-          }
-        if (auto g = dyn_cast<GlobalOp>(mop))
-          if (g.getExportName()) {
-            hasExport = true;
-            break;
-          }
-        if (auto t = dyn_cast<TagOp>(mop))
-          if (t.getExportName()) {
-            hasExport = true;
-            break;
-          }
-      }
-      if (hasExport)
-        idx++;
-    }
-    // element section may be absent
-    if (!indexSpace.getRefFuncDeclarationIndices().empty())
-      idx++;
-    // data count section may be absent
-    bool hasData = false;
-    for (Operation &mop : wasmModule->getRegion(0).front())
-      if (isa<DataOp>(mop)) {
-        hasData = true;
-        break;
-      }
-    if (hasData)
-      idx++; // data count
-    codeSectionIdx = idx;
-    idx++; // code
-    dataSectionIdx = idx;
+    noteSectionEmission(beforeSize);
   }
 
+  beforeSize = writer.size();
+  emitElementSection(writer, indexSpace);
+  noteSectionEmission(beforeSize);
+
+  beforeSize = writer.size();
+  emitDataCountSection(writer, wasmModule);
+  noteSectionEmission(beforeSize);
+
+  beforeSize = writer.size();
   if (failed(emitCodeSection(writer, indexSpace, wasmModule, trackerPtr)))
     return failure();
+  noteSectionEmission(beforeSize, &codeSectionIndex);
 
+  beforeSize = writer.size();
   emitDataSection(writer, indexSpace, wasmModule, trackerPtr);
+  noteSectionEmission(beforeSize, &dataSectionIndex);
 
   // Emit linking and relocation sections in relocatable mode
   if (relocatable) {
-    emitLinkingSection(writer, indexSpace, wasmModule);
-    emitRelocSection(writer, "reloc.CODE", codeSectionIdx,
-                     tracker.getCodeRelocations());
-    emitRelocSection(writer, "reloc.DATA", dataSectionIdx,
-                     tracker.getDataRelocations());
+    beforeSize = writer.size();
+    emitLinkingSection(writer, indexSpace, wasmModule, emitSyntheticTable);
+    noteSectionEmission(beforeSize);
+
+    if (!tracker.getCodeRelocations().empty()) {
+      assert(codeSectionIndex &&
+             "code relocations require emitted code section");
+      beforeSize = writer.size();
+      emitRelocSection(writer, "reloc.CODE", *codeSectionIndex,
+                       tracker.getCodeRelocations());
+      noteSectionEmission(beforeSize);
+    }
+
+    if (!tracker.getDataRelocations().empty()) {
+      assert(dataSectionIndex &&
+             "data relocations require emitted data section");
+      beforeSize = writer.size();
+      emitRelocSection(writer, "reloc.DATA", *dataSectionIndex,
+                       tracker.getDataRelocations());
+      noteSectionEmission(beforeSize);
+    }
+
+    beforeSize = writer.size();
     emitTargetFeaturesSection(writer);
+    noteSectionEmission(beforeSize);
   }
 
   // 3. Flush to output

@@ -4,6 +4,8 @@
 // CI-safe indirect coverage for relocatable ref.func declaration encoding,
 // without depending on an external linker.
 // HEX: 0061736d01000000
+// Table section payload for one synthetic funcref table.
+// HEX: 040401700000
 // Elem section payload for one declarative ref.func declaration.
 // HEX: 09050103000100
 // linking custom section name
