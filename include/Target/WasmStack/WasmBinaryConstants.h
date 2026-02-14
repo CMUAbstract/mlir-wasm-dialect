@@ -327,6 +327,8 @@ enum class SymtabKind : uint8_t {
   Data = 1,
   Global = 2,
   Section = 3,
+  Tag = 4,
+  Table = 5,
 };
 
 // Symbol flags
