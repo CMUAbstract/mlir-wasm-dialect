@@ -11,7 +11,7 @@ module {
   wami.type.func @ft = (i32) -> i32
   wami.type.cont @ct = cont @ft
 
-  wami.tag @yield : (i32) -> i32
+  wami.tag @yield : () -> i32
   wami.tag @abort : () -> ()
 
   wasmssa.func @worker(%x: !wasmssa<local ref to i32>) -> i32 {
