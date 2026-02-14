@@ -113,6 +113,25 @@ resolveTagSignature(Operation *op, FlatSymbolRefAttr ref, StringRef context) {
   return fnType;
 }
 
+static FailureOr<FunctionType>
+resolveFuncRefSignature(Operation *op, FuncRefType funcRef, StringRef context) {
+  FlatSymbolRefAttr funcRefSym = funcRef.getFuncName();
+  Operation *funcSym = SymbolTable::lookupNearestSymbolFrom(op, funcRefSym);
+  if (!funcSym) {
+    op->emitError(context) << ": unknown function symbol " << funcRefSym;
+    return failure();
+  }
+
+  if (auto funcOp = dyn_cast<wasmssa::FuncOp>(funcSym))
+    return funcOp.getFunctionType();
+  if (auto importOp = dyn_cast<wasmssa::FuncImportOp>(funcSym))
+    return importOp.getType();
+
+  op->emitError(context) << ": symbol " << funcRefSym
+                         << " is not a wasmssa.func or wasmssa.import_func";
+  return failure();
+}
+
 static LogicalResult verifyContValueType(Operation *op, Type contValueType,
                                          FlatSymbolRefAttr expectedSym,
                                          StringRef context) {
@@ -209,8 +228,22 @@ LogicalResult ContNewOp::verify() {
   if (!contTypeRef)
     return emitOpError("missing 'cont_type' attribute");
 
-  if (failed(resolveContSignature(*this, contTypeRef, "cont.new")))
+  FailureOr<FunctionType> contSig =
+      resolveContSignature(*this, contTypeRef, "cont.new");
+  if (failed(contSig))
     return failure();
+
+  auto funcRefTy = dyn_cast<FuncRefType>(getFunc().getType());
+  if (!funcRefTy)
+    return emitOpError("operand must be !wami.funcref<...>");
+
+  FailureOr<FunctionType> funcSig =
+      resolveFuncRefSignature(*this, funcRefTy, "cont.new");
+  if (failed(funcSig))
+    return failure();
+
+  if (*funcSig != *contSig)
+    return emitOpError("funcref signature does not match continuation type");
 
   auto resultContTy = dyn_cast<ContType>(getResult().getType());
   if (!resultContTy)
