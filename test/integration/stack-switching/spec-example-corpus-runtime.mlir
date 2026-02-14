@@ -10,7 +10,9 @@
 //   21xx: generator-style flow
 //   22xx: generator-extended-style flow
 //
-// TODO: remove XFAIL once wasm binary emission supports stack-switching ops.
+// TODO: remove XFAIL once typed continuation-ref encoding is aligned with
+// Wizard/runtime expectations (currently reports expected `(ref null cont #N)`
+// but sees generic `contref`/value mismatches).
 
 module {
   wasmssa.import_func "puti" from "wizeng" as @print_i32 {type = (i32) -> ()}

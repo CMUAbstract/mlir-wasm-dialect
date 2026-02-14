@@ -99,6 +99,8 @@ bool OpcodeEmitter::emitOperation(Operation *op) {
     return true;
   if (emitMemoryOp(op))
     return true;
+  if (emitStackSwitchingOp(op))
+    return true;
   if (emitCallOp(op))
     return true;
   if (emitMiscOp(op))
@@ -986,6 +988,131 @@ bool OpcodeEmitter::emitCallOp(Operation *op) {
     writer.writeByte(0x00); // table index 0
     return true;
   }
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// Stack switching and reference operations
+//===----------------------------------------------------------------------===//
+
+bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
+  if (auto refFuncOp = dyn_cast<RefFuncOp>(op)) {
+    auto funcIdx =
+        indexSpace.tryGetFuncIndex(refFuncOp.getFuncAttr().getValue());
+    if (!funcIdx) {
+      refFuncOp.emitOpError("unresolved function symbol '")
+          << refFuncOp.getFuncAttr().getValue()
+          << "' (no wasmstack.func or wasmstack.import_func)";
+      return false;
+    }
+
+    writer.writeByte(wc::Opcode::RefFunc);
+    if (tracker) {
+      uint32_t symIdx =
+          indexSpace.getSymbolIndex(refFuncOp.getFuncAttr().getValue());
+      tracker->addCodeRelocation(
+          static_cast<uint8_t>(wc::RelocType::R_WASM_FUNCTION_INDEX_LEB),
+          sectionOffset + writer.offset(), symIdx);
+      writer.writeFixedULEB128(*funcIdx);
+    } else {
+      writer.writeULEB128(*funcIdx);
+    }
+    return true;
+  }
+
+  if (auto refNullOp = dyn_cast<RefNullOp>(op)) {
+    writer.writeByte(wc::Opcode::RefNull);
+    if (!writer.writeValType(refNullOp.getType())) {
+      refNullOp.emitOpError("unsupported ref.null type for binary encoding: ")
+          << refNullOp.getType();
+      return false;
+    }
+    return true;
+  }
+
+  if (auto contNewOp = dyn_cast<ContNewOp>(op)) {
+    writer.writeByte(wc::Opcode::ContNew);
+    writer.writeULEB128(
+        indexSpace.getContTypeIndex(contNewOp.getContTypeAttr().getValue()));
+    return true;
+  }
+
+  if (auto contBindOp = dyn_cast<ContBindOp>(op)) {
+    writer.writeByte(wc::Opcode::ContBind);
+    writer.writeULEB128(indexSpace.getContTypeIndex(
+        contBindOp.getSrcContTypeAttr().getValue()));
+    writer.writeULEB128(indexSpace.getContTypeIndex(
+        contBindOp.getDstContTypeAttr().getValue()));
+    return true;
+  }
+
+  if (auto suspendOp = dyn_cast<SuspendOp>(op)) {
+    writer.writeByte(wc::Opcode::Suspend);
+    writer.writeULEB128(
+        indexSpace.getTagIndex(suspendOp.getTagAttr().getValue()));
+    return true;
+  }
+
+  auto emitHandlers = [&](Operation *resumeLikeOp, ArrayAttr handlers) -> bool {
+    writer.writeULEB128(handlers.size());
+    for (Attribute attr : handlers) {
+      auto pair = dyn_cast<ArrayAttr>(attr);
+      if (!pair || pair.size() != 2) {
+        resumeLikeOp->emitError("invalid handler entry");
+        return false;
+      }
+
+      auto tag = dyn_cast<FlatSymbolRefAttr>(pair[0]);
+      auto label = dyn_cast<FlatSymbolRefAttr>(pair[1]);
+      if (!tag || !label) {
+        resumeLikeOp->emitError("handler must be (tag -> label) pair");
+        return false;
+      }
+
+      if (label.getValue() == "switch") {
+        writer.writeULEB128(1); // switch handler kind
+        writer.writeULEB128(indexSpace.getTagIndex(tag.getValue()));
+        continue;
+      }
+
+      writer.writeULEB128(0); // ordinary suspension handler
+      writer.writeULEB128(indexSpace.getTagIndex(tag.getValue()));
+      writer.writeULEB128(resolveLabelDepth(label.getValue()));
+    }
+    return true;
+  };
+
+  if (auto resumeOp = dyn_cast<ResumeOp>(op)) {
+    writer.writeByte(wc::Opcode::Resume);
+    writer.writeULEB128(
+        indexSpace.getContTypeIndex(resumeOp.getContTypeAttr().getValue()));
+    return emitHandlers(op, resumeOp.getHandlers());
+  }
+
+  if (auto resumeThrowOp = dyn_cast<ResumeThrowOp>(op)) {
+    // Current wasmstack.resume_throw IR shape has handler table but no explicit
+    // throw-tag immediate; emit the handler-only form.
+    writer.writeByte(wc::Opcode::ResumeThrowRef);
+    writer.writeULEB128(indexSpace.getContTypeIndex(
+        resumeThrowOp.getContTypeAttr().getValue()));
+    return emitHandlers(op, resumeThrowOp.getHandlers());
+  }
+
+  if (isa<BarrierOp>(op)) {
+    // Barrier is currently modeled as an identity stack fence in WasmStack IR.
+    writer.writeByte(wc::Opcode::Nop);
+    return true;
+  }
+
+  if (auto switchOp = dyn_cast<SwitchOp>(op)) {
+    writer.writeByte(wc::Opcode::Switch);
+    writer.writeULEB128(
+        indexSpace.getContTypeIndex(switchOp.getContTypeAttr().getValue()));
+    writer.writeULEB128(
+        indexSpace.getTagIndex(switchOp.getTagAttr().getValue()));
+    return true;
+  }
+
   return false;
 }
 

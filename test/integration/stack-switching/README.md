@@ -79,5 +79,7 @@ wasm-opt test/integration/stack-switching/spec-example-corpus-runtime.mlir \
 | wasm-emit --mlir-to-wasm -o /tmp/spec-example-corpus-runtime.wasm
 ```
 
-This currently fails at wasm emission because stack-switching binary emission is
-not fully implemented yet (`wasmstack.suspend`, `wasmstack.ref.func`, etc.).
+This now emits wasm and clears `ref.func` declaration checks, but runtime
+execution still fails in Wizard due to continuation-reference typing mismatch
+(Wizard expects typed `(ref null cont #N)`-style values and reports type
+mismatch against generic `contref`/stack values).

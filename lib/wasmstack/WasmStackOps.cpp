@@ -229,6 +229,33 @@ LogicalResult BrIfOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ContBindOp
+//===----------------------------------------------------------------------===//
+
+unsigned ContBindOp::getStackInputs() {
+  auto srcCont = SymbolTable::lookupNearestSymbolFrom<TypeContOp>(
+      *this, getSrcContTypeAttr());
+  auto dstCont = SymbolTable::lookupNearestSymbolFrom<TypeContOp>(
+      *this, getDstContTypeAttr());
+  if (!srcCont || !dstCont)
+    return 1; // keep verifier-compatible fallback
+
+  auto srcFunc = SymbolTable::lookupNearestSymbolFrom<TypeFuncOp>(
+      *this, srcCont.getFuncTypeAttr());
+  auto dstFunc = SymbolTable::lookupNearestSymbolFrom<TypeFuncOp>(
+      *this, dstCont.getFuncTypeAttr());
+  if (!srcFunc || !dstFunc)
+    return 1;
+
+  FunctionType srcSig = srcFunc.getType();
+  FunctionType dstSig = dstFunc.getType();
+  if (srcSig.getNumInputs() < dstSig.getNumInputs())
+    return 1;
+
+  return 1 + (srcSig.getNumInputs() - dstSig.getNumInputs());
+}
+
+//===----------------------------------------------------------------------===//
 // Resume-Like Operations
 //===----------------------------------------------------------------------===//
 

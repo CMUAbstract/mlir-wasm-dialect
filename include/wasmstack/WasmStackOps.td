@@ -1368,8 +1368,8 @@ def WasmStack_ContBindOp : WasmStack_Op<"cont.bind"> {
   let assemblyFormat = "$src_cont_type `->` $dst_cont_type attr-dict";
 
   let extraClassDeclaration = [{
-    // Stack effects depend on the type difference
-    unsigned getStackInputs() { return 1; }  // TODO: + bound args
+    // Stack effects depend on continuation parameter arity difference.
+    unsigned getStackInputs();
     unsigned getStackOutputs() { return 1; }
   }];
 }
