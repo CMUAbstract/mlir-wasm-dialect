@@ -13,7 +13,9 @@ module {
   wasmssa.func @worker(%x: !wasmssa<local ref to i32>) -> i32 {
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
     wasmssa.call @print_i32(%arg) : (i32) -> ()
-    %from_handler = "wami.suspend"(%arg) <{tag = @yield}> : (i32) -> i32
+
+    %main_arg_2 = wasmssa.const 3 : i32
+    %from_handler = "wami.suspend"(%main_arg_2) <{tag = @yield}> : (i32) -> i32
     wasmssa.call @print_i32(%from_handler) : (i32) -> ()
     wasmssa.return %from_handler : i32
   }
@@ -21,12 +23,14 @@ module {
   wasmssa.func exported @main() -> i32 {
     %f = wami.ref.func @worker : !wami.funcref<@worker>
     %c = wami.cont.new %f : !wami.funcref<@worker> as @worker_ct -> !wami.cont<@worker_ct>
-    %arg = wasmssa.const 7 : i32
-    wasmssa.call @print_i32(%arg) : (i32) -> ()
+    %main_arg = wasmssa.const 1 : i32
+    wasmssa.call @print_i32(%main_arg) : (i32) -> ()
+
+    %worker_arg = wasmssa.const 2 : i32
 
     wasmssa.block : {
     ^bb0:
-      %r = "wami.resume"(%c, %arg) <{cont_type = @worker_ct, handlers = [#wami.on_label<tag = @yield, level = 0>]}> : (!wami.cont<@worker_ct>, i32) -> i32
+      %r = "wami.resume"(%c, %worker_arg) <{cont_type = @worker_ct, handlers = [#wami.on_label<tag = @yield, level = 0>]}> : (!wami.cont<@worker_ct>, i32) -> i32
       wasmssa.return %r : i32
     }> ^on_yield
 
