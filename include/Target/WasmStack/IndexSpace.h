@@ -64,6 +64,10 @@ public:
   /// Get all type signatures in order.
   const llvm::SmallVector<FuncSig> &getTypes() const { return types; }
 
+  /// Number of function signatures that are emitted before continuation type
+  /// declarations in the type section.
+  uint32_t getPreContTypeCount() const { return preContTypeCount; }
+
   /// Get all function names in index order.
   const llvm::SmallVector<std::string> &getFuncNames() const {
     return funcNames;
@@ -131,8 +135,13 @@ public:
   const llvm::SmallVector<SymbolInfo> &getSymbols() const { return symbols; }
 
 private:
+  uint32_t toGlobalTypeIndex(uint32_t funcSigOrdinal) const;
+
   /// De-duplicated type signatures.
   llvm::SmallVector<FuncSig> types;
+
+  /// Number of entries in `types` emitted before continuation declarations.
+  uint32_t preContTypeCount = 0;
 
   /// Function name -> index mapping.
   llvm::StringMap<uint32_t> funcIndexMap;

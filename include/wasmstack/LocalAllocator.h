@@ -43,6 +43,7 @@ public:
 
   /// Convert source dialect reference types to wasmstack reference types.
   static Type normalizeType(Type type);
+  static Type normalizeValueType(Value value);
 
   /// Allocate locals for a function
   void allocate(wasmssa::FuncOp funcOp, ArrayRef<Value> needsLocalOrdered,

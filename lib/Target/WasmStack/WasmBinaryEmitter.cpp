@@ -36,25 +36,32 @@ static void emitTypeSection(BinaryWriter &output, IndexSpace &indexSpace) {
   BinaryWriter section;
   const auto &funcTypes = indexSpace.getTypes();
   const auto &contTypes = indexSpace.getContTypes();
+  uint32_t preContCount = indexSpace.getPreContTypeCount();
   section.writeULEB128(funcTypes.size() + contTypes.size());
 
-  for (const auto &sig : funcTypes) {
+  auto emitFuncSig = [&](const IndexSpace::FuncSig &sig) {
     section.writeByte(wc::FuncTypeTag); // 0x60
     // Params
     section.writeULEB128(sig.params.size());
     for (Type t : sig.params)
-      // Keep signature-level continuation refs in canonical generic form to
-      // avoid forward heaptype index constraints in the linear type section.
-      section.writeValType(t);
+      section.writeValType(t, &indexSpace);
     // Results
     section.writeULEB128(sig.results.size());
     for (Type t : sig.results)
-      section.writeValType(t);
+      section.writeValType(t, &indexSpace);
+  };
+
+  for (uint32_t i = 0; i < preContCount; ++i) {
+    emitFuncSig(funcTypes[i]);
   }
 
   for (const auto &cont : contTypes) {
     section.writeByte(0x5D); // continuation type constructor
     section.writeSLEB128(static_cast<int32_t>(cont.funcTypeIndex));
+  }
+
+  for (uint32_t i = preContCount; i < funcTypes.size(); ++i) {
+    emitFuncSig(funcTypes[i]);
   }
 
   output.writeSection(wc::SectionId::Type, section);

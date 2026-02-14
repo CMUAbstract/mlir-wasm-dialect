@@ -125,11 +125,15 @@ public:
             contRefType.getTypeName().getValue())));
       }
     } else if (auto contRefType = dyn_cast<ContRefNonNullType>(type)) {
-      if (!indexSpace)
-        return false;
-      writeByte(wasm::RefType::Ref);
-      writeSLEB128(static_cast<int64_t>(
-          indexSpace->getContTypeIndex(contRefType.getTypeName().getValue())));
+      if (!indexSpace) {
+        // Signature-level fallback keeps continuation refs in canonical generic
+        // form when no heaptype index space is available.
+        writeByte(static_cast<uint8_t>(wasm::ValType::ContRef));
+      } else {
+        writeByte(wasm::RefType::Ref);
+        writeSLEB128(static_cast<int64_t>(indexSpace->getContTypeIndex(
+            contRefType.getTypeName().getValue())));
+      }
     } else {
       return false;
     }

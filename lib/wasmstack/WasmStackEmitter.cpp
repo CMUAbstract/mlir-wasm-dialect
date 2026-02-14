@@ -40,12 +40,22 @@ static bool isNoOpCastPair(Type srcType, Type dstType) {
   return false;
 }
 
-static Type toWasmStackType(Type type) {
-  if (auto cont = dyn_cast<wami::ContType>(type))
-    return ContRefType::get(type.getContext(), cont.getTypeName());
+static Type toWasmStackType(Type type, bool forceNullableCont = false) {
+  if (auto cont = dyn_cast<wami::ContType>(type)) {
+    if (forceNullableCont)
+      return ContRefType::get(type.getContext(), cont.getTypeName());
+    return ContRefNonNullType::get(type.getContext(), cont.getTypeName());
+  }
   if (auto func = dyn_cast<wami::FuncRefType>(type))
     return FuncRefType::get(type.getContext(), func.getFuncName());
   return type;
+}
+
+static Type toWasmStackType(Value value) {
+  if (isa<wami::ContType>(value.getType()) &&
+      isa_and_nonnull<wami::RefNullOp>(value.getDefiningOp()))
+    return toWasmStackType(value.getType(), /*forceNullableCont=*/true);
+  return toWasmStackType(value.getType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -218,7 +228,7 @@ void WasmStackEmitter::dropUnusedResults(Operation *op) {
   for (Value result : llvm::reverse(op->getResults())) {
     if (!emittedToStack.contains(result))
       continue;
-    DropOp::create(builder, loc, toWasmStackType(result.getType()));
+    DropOp::create(builder, loc, toWasmStackType(result));
     emittedToStack.erase(result);
   }
 }
@@ -666,14 +676,14 @@ void WasmStackEmitter::emitBlock(wasmssa::BlockOp blockOp) {
   // 2. Extract param types from the block's inputs
   SmallVector<Attribute> paramTypes;
   for (Value input : blockOp.getInputs()) {
-    paramTypes.push_back(TypeAttr::get(toWasmStackType(input.getType())));
+    paramTypes.push_back(TypeAttr::get(toWasmStackType(input)));
   }
 
   // 3. Extract result types from the target successor block's arguments
   SmallVector<Attribute> resultTypes;
   Block *target = blockOp.getTarget();
   for (BlockArgument arg : target->getArguments()) {
-    resultTypes.push_back(TypeAttr::get(toWasmStackType(arg.getType())));
+    resultTypes.push_back(TypeAttr::get(toWasmStackType(arg)));
   }
 
   // Create WasmStack block with param and result types
@@ -740,14 +750,14 @@ void WasmStackEmitter::emitLoop(wasmssa::LoopOp loopOp) {
   // 2. Extract param types from the loop's inputs
   SmallVector<Attribute> paramTypes;
   for (Value input : loopOp.getInputs()) {
-    paramTypes.push_back(TypeAttr::get(toWasmStackType(input.getType())));
+    paramTypes.push_back(TypeAttr::get(toWasmStackType(input)));
   }
 
   // 3. Extract result types from the target successor block's arguments
   SmallVector<Attribute> resultTypes;
   Block *target = loopOp.getTarget();
   for (BlockArgument arg : target->getArguments()) {
-    resultTypes.push_back(TypeAttr::get(toWasmStackType(arg.getType())));
+    resultTypes.push_back(TypeAttr::get(toWasmStackType(arg)));
   }
 
   // Create WasmStack loop with param and result types
@@ -819,14 +829,14 @@ void WasmStackEmitter::emitIf(wasmssa::IfOp ifOp) {
   // 2. Extract param types from the if's inputs (not including condition)
   SmallVector<Attribute> paramTypes;
   for (Value input : ifOp.getInputs()) {
-    paramTypes.push_back(TypeAttr::get(toWasmStackType(input.getType())));
+    paramTypes.push_back(TypeAttr::get(toWasmStackType(input)));
   }
 
   // 3. Extract result types from the target successor block's arguments
   SmallVector<Attribute> resultTypes;
   Block *target = ifOp.getTarget();
   for (BlockArgument arg : target->getArguments()) {
-    resultTypes.push_back(TypeAttr::get(toWasmStackType(arg.getType())));
+    resultTypes.push_back(TypeAttr::get(toWasmStackType(arg)));
   }
 
   std::string label = generateLabel("if");
@@ -1329,7 +1339,8 @@ void WasmStackEmitter::emitRefNull(wami::RefNullOp refNullOp) {
   Location loc = refNullOp.getLoc();
   RefNullOp::create(
       builder, loc,
-      TypeAttr::get(toWasmStackType(refNullOp.getResult().getType())));
+      TypeAttr::get(toWasmStackType(refNullOp.getResult().getType(),
+                                    /*forceNullableCont=*/true)));
   materializeResult(loc, refNullOp.getResult());
 }
 
@@ -1555,7 +1566,7 @@ void WasmStackEmitter::emitBarrier(wami::BarrierOp barrierOp) {
     emitOperandIfNeeded(v);
     if (failed)
       return;
-    inputTypes.push_back(toWasmStackType(v.getType()));
+    inputTypes.push_back(toWasmStackType(v));
   }
 
   SmallVector<Type> resultTypes;
