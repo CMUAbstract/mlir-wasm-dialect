@@ -1,5 +1,4 @@
 // REQUIRES: wizard_exec
-// XFAIL: *
 // RUN: wasm-opt %s --convert-to-wasmstack --verify-wasmstack | wasm-emit --mlir-to-wasm -o %t.wasm
 // RUN: %run_wizard_bin --input %t.wasm --expect-i32 42 --quiet
 //
@@ -10,15 +9,13 @@
 //   21xx: generator-style flow
 //   22xx: generator-extended-style flow
 //
-// TODO: remove XFAIL once runtime continuation-state handling is fixed.
-// Current Wizard runtime failure for this corpus:
-//   expected continuation, got <null>
-
 module {
   wasmssa.import_func "puti" from "wizeng" as @print_i32 {type = (i32) -> ()}
 
   wami.type.func @gen_ft = () -> i32
   wami.type.cont @gen_ct = cont @gen_ft
+  wami.type.func @gen_resume_ft = (i32) -> i32
+  wami.type.cont @gen_resume_ct = cont @gen_resume_ft
   wami.tag @gen : (i32) -> i32
 
   wami.type.func @arg_ft = (i32) -> i32
@@ -58,7 +55,7 @@ module {
       wasmssa.return %gen_result : i32
     }> ^on_gen
 
-  ^on_gen(%payload: i32, %k: !wami.cont<@gen_ct>):
+  ^on_gen(%payload: i32, %k: !wami.cont<@gen_resume_ct>):
     wasmssa.call @print_i32(%payload) : (i32) -> ()
     wasmssa.return %payload : i32
   }

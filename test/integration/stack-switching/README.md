@@ -39,7 +39,6 @@ llvm-lit build/test/integration/stack-switching
 Notes:
 
 - Suite is opt-in and non-gating.
-- Some tests are intentionally `XFAIL` while stack-switching wasm emission is still incomplete.
 
 ## Printing Debug Values
 
@@ -55,7 +54,7 @@ wasmssa.import_func "puti" from "wizeng" as @print_i32 {type = (i32) -> ()}
 Reference test:
 
 - `test/integration/stack-switching/wizard-print-i32-runtime.mlir`
-- `test/integration/stack-switching/spec-example-corpus-runtime.mlir` (`XFAIL` for now)
+- `test/integration/stack-switching/spec-example-corpus-runtime.mlir`
 
 ## Viewing Trace Output
 
@@ -79,6 +78,10 @@ wasm-opt test/integration/stack-switching/spec-example-corpus-runtime.mlir \
 | wasm-emit --mlir-to-wasm -o /tmp/spec-example-corpus-runtime.wasm
 ```
 
-This now emits wasm and clears `ref.func` declaration checks, but runtime
-execution still fails in Wizard due to runtime continuation-state handling
-(current failure is `expected continuation, got <null>` in corpus execution).
+Then run it with:
+
+```bash
+WIZARD_ENGINE_DIR=/path/to/wizard-engine \
+python3 test/integration/stack-switching/run_wizard_bin.py \
+  --input /tmp/spec-example-corpus-runtime.wasm --expect-i32 42
+```
