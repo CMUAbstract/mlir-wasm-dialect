@@ -5,6 +5,7 @@
 // CHECK-DAG: wasmstack.type.func @gen_ft = (i32) -> i32
 // CHECK-DAG: wasmstack.type.cont @gen_ct = cont @gen_ft
 // CHECK-DAG: wasmstack.tag @yield : (i32) -> i32
+// CHECK-DAG: wasmstack.tag @switch_yield : () -> i32
 // CHECK-DAG: wasmstack.type.func @src_ft = (i32, i32) -> i32
 // CHECK-DAG: wasmstack.type.func @dst_ft = (i32) -> i32
 // CHECK-DAG: wasmstack.type.cont @src_ct = cont @src_ft
@@ -19,7 +20,7 @@
 // CHECK-LABEL: wasmstack.func @driver_switch
 // CHECK: wasmstack.local.get [[ARG_SWITCH:[0-9]+]] : i32
 // CHECK: wasmstack.local.get [[CONT_SWITCH:[0-9]+]] : !wasmstack.contref_nonnull<@gen_ct>
-// CHECK-NEXT: wasmstack.resume @gen_ct (@yield -> @switch)
+// CHECK-NEXT: wasmstack.resume @gen_ct (@switch_yield -> @switch)
 
 // CHECK-LABEL: wasmstack.func @driver_bind
 // CHECK: wasmstack.cont.new @src_ct
@@ -27,12 +28,13 @@
 // CHECK: wasmstack.cont.bind @src_ct -> @dst_ct
 // CHECK: wasmstack.local.get [[ARG_BIND:[0-9]+]] : i32
 // CHECK: wasmstack.local.get [[CONT_BIND:[0-9]+]] : !wasmstack.contref_nonnull<@dst_ct>
-// CHECK-NEXT: wasmstack.resume @dst_ct (@yield -> @switch)
+// CHECK-NEXT: wasmstack.resume @dst_ct (@switch_yield -> @switch)
 
 module {
   wami.type.func @gen_ft = (i32) -> i32
   wami.type.cont @gen_ct = cont @gen_ft
   wami.tag @yield : (i32) -> i32
+  wami.tag @switch_yield : () -> i32
   wami.type.func @src_ft = (i32, i32) -> i32
   wami.type.func @dst_ft = (i32) -> i32
   wami.type.cont @src_ct = cont @src_ft
@@ -62,7 +64,7 @@ module {
     %f = wami.ref.func @worker : !wami.funcref<@worker>
     %c = wami.cont.new %f : !wami.funcref<@worker> as @gen_ct -> !wami.cont<@gen_ct>
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
-    %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [#wami.on_switch<tag = @yield>]}> : (!wami.cont<@gen_ct>, i32) -> i32
+    %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [#wami.on_switch<tag = @switch_yield>]}> : (!wami.cont<@gen_ct>, i32) -> i32
     wasmssa.return %r : i32
   }
 
@@ -79,7 +81,7 @@ module {
     %bound = wasmssa.const 7 : i32
     %cb = "wami.cont.bind"(%c, %bound) <{src_cont_type = @src_ct, dst_cont_type = @dst_ct}> : (!wami.cont<@src_ct>, i32) -> !wami.cont<@dst_ct>
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
-    %r = "wami.resume"(%cb, %arg) <{cont_type = @dst_ct, handlers = [#wami.on_switch<tag = @yield>]}> : (!wami.cont<@dst_ct>, i32) -> i32
+    %r = "wami.resume"(%cb, %arg) <{cont_type = @dst_ct, handlers = [#wami.on_switch<tag = @switch_yield>]}> : (!wami.cont<@dst_ct>, i32) -> i32
     wasmssa.return %r : i32
   }
 }

@@ -169,8 +169,11 @@ static LogicalResult verifyResumeHandlers(Operation *op, ArrayAttr handlers,
       FlatSymbolRefAttr tagRef = onSwitch.getTag();
       if (!seenTags.insert(tagRef.getValue()).second)
         return op->emitError("duplicate handler tag ") << tagRef;
-      if (failed(resolveTagSignature(op, tagRef, context)))
+      FailureOr<FunctionType> tagSig = resolveTagSignature(op, tagRef, context);
+      if (failed(tagSig))
         return failure();
+      if (!tagSig->getInputs().empty())
+        return op->emitError("on_switch handler tag must have empty inputs");
       continue;
     }
 
