@@ -1394,7 +1394,7 @@ def WasmStack_ResumeOp : WasmStack_Op<"resume"> {
 
   let extraClassDeclaration = [{
     // Stack effects depend on continuation type
-    unsigned getStackInputs() { return 1; }  // cont_ref + args
+    unsigned getStackInputs() { return 1; }  // args + cont_ref (cont on top)
     unsigned getStackOutputs() { return 0; }  // results from cont type
   }];
 }
@@ -1416,7 +1416,7 @@ def WasmStack_ResumeThrowOp : WasmStack_Op<"resume_throw"> {
 
   let extraClassDeclaration = [{
     // Stack effects depend on continuation type
-    unsigned getStackInputs() { return 1; }  // cont_ref + args
+    unsigned getStackInputs() { return 1; }  // args + cont_ref (cont on top)
     unsigned getStackOutputs() { return 0; }
   }];
 }
@@ -1476,7 +1476,7 @@ def WasmStack_SwitchOp : WasmStack_Op<"switch"> {
   let assemblyFormat = "$cont_type `(` `tag` `:` $tag `)` attr-dict";
 
   let extraClassDeclaration = [{
-    unsigned getStackInputs() { return 1; }  // cont_ref
+    unsigned getStackInputs() { return 1; }  // args + tag payload + cont_ref
     unsigned getStackOutputs() { return 0; }
   }];
 }

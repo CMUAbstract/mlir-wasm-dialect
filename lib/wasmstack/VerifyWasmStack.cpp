@@ -768,8 +768,8 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
 
   Type contRefType = ContRefType::get(op.getContext(), op.getContTypeAttr());
   SmallVector<Type> expected;
-  expected.push_back(contRefType);
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
+  expected.push_back(contRefType);
   if (failed(popValues(expected)))
     return failure();
 
@@ -831,8 +831,8 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
 
   Type contRefType = ContRefType::get(op.getContext(), op.getContTypeAttr());
   SmallVector<Type> expected;
-  expected.push_back(contRefType);
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
+  expected.push_back(contRefType);
   if (failed(popValues(expected)))
     return failure();
 
@@ -905,9 +905,9 @@ LogicalResult StackVerifier::handleSwitchOp(SwitchOp op) {
     return failure();
 
   SmallVector<Type> expected;
-  expected.push_back(ContRefType::get(op.getContext(), op.getContTypeAttr()));
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.append(tagSig->getInputs().begin(), tagSig->getInputs().end());
+  expected.push_back(ContRefType::get(op.getContext(), op.getContTypeAttr()));
   if (failed(popValues(expected)))
     return failure();
 

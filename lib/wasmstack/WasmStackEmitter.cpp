@@ -1401,11 +1401,20 @@ void WasmStackEmitter::emitSuspend(wami::SuspendOp suspendOp) {
 void WasmStackEmitter::emitResume(wami::ResumeOp resumeOp) {
   Location loc = resumeOp.getLoc();
   ValueRange operands = resumeOp->getOperands();
-  for (Value v : operands) {
+  if (operands.empty()) {
+    fail(resumeOp, "expected continuation operand");
+    return;
+  }
+
+  // Canonical stack order for invocation is args..., then continuation.
+  for (Value v : operands.drop_front()) {
     emitOperandIfNeeded(v);
     if (failed)
       return;
   }
+  emitOperandIfNeeded(operands.front());
+  if (failed)
+    return;
 
   auto contType = resumeOp->getAttrOfType<FlatSymbolRefAttr>("cont_type");
   auto handlerAttrs = resumeOp->getAttrOfType<ArrayAttr>("handlers");
@@ -1458,11 +1467,20 @@ void WasmStackEmitter::emitResume(wami::ResumeOp resumeOp) {
 void WasmStackEmitter::emitResumeThrow(wami::ResumeThrowOp resumeThrowOp) {
   Location loc = resumeThrowOp.getLoc();
   ValueRange operands = resumeThrowOp->getOperands();
-  for (Value v : operands) {
+  if (operands.empty()) {
+    fail(resumeThrowOp, "expected continuation operand");
+    return;
+  }
+
+  // Canonical stack order for invocation is args..., then continuation.
+  for (Value v : operands.drop_front()) {
     emitOperandIfNeeded(v);
     if (failed)
       return;
   }
+  emitOperandIfNeeded(operands.front());
+  if (failed)
+    return;
 
   auto contType = resumeThrowOp->getAttrOfType<FlatSymbolRefAttr>("cont_type");
   auto handlerAttrs = resumeThrowOp->getAttrOfType<ArrayAttr>("handlers");

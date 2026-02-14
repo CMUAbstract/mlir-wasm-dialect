@@ -110,12 +110,12 @@ wasmstack.module @spec_fun_pipes {
   wasmstack.func @pipe_once : () -> () {
     wasmstack.ref.func @producer
     wasmstack.cont.new @producer_ct
-    wasmstack.ref.func @consumer
-    wasmstack.cont.new @consumer_ct
 
     wasmstack.i32.const 1311
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.i32.const 7
+    wasmstack.ref.func @consumer
+    wasmstack.cont.new @consumer_ct
     wasmstack.resume @consumer_ct (@receive -> @switch)
     wasmstack.call @print_i32 : (i32) -> ()
 
@@ -143,9 +143,9 @@ wasmstack.module @spec_scheduler2_switch {
   // From: examples/scheduler2.wast
   // CHECK: wasmstack.resume @task_ct (@yield -> @switch)
   wasmstack.func @entry_resume_switch : () -> () {
+    wasmstack.i32.const 1
     wasmstack.ref.func @task
     wasmstack.cont.new @task_ct
-    wasmstack.i32.const 1
     wasmstack.i32.const 1401
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.resume @task_ct (@yield -> @switch)
@@ -156,9 +156,9 @@ wasmstack.module @spec_scheduler2_switch {
 
   // CHECK: wasmstack.switch @task_ct(tag : @yield)
   wasmstack.func @yield_to_next : () -> () {
+    wasmstack.i32.const 2
     wasmstack.ref.func @task
     wasmstack.cont.new @task_ct
-    wasmstack.i32.const 2
     wasmstack.i32.const 1411
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.switch @task_ct (tag: @yield)
@@ -184,9 +184,9 @@ wasmstack.module @spec_scheduler2_throw {
   // From: examples/scheduler2-throw.wast
   // CHECK: wasmstack.resume_throw @task_ct (@yield -> @switch)
   wasmstack.func @cancel_one : () -> () {
+    wasmstack.i32.const 0
     wasmstack.ref.func @task
     wasmstack.cont.new @task_ct
-    wasmstack.i32.const 0
     wasmstack.i32.const 1501
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.resume_throw @task_ct (@yield -> @switch)
