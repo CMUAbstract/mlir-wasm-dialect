@@ -134,6 +134,23 @@ LogicalResult RefNullOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// TypeContOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TypeContOp::verify() {
+  auto funcTypeRef = (*this)->getAttrOfType<FlatSymbolRefAttr>("func_type");
+  if (!funcTypeRef)
+    return emitOpError("missing 'func_type' attribute");
+
+  auto typeFunc =
+      SymbolTable::lookupNearestSymbolFrom<TypeFuncOp>(*this, funcTypeRef);
+  if (!typeFunc)
+    return emitOpError("unknown wasmstack.type.func symbol ") << funcTypeRef;
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BlockOp
 //===----------------------------------------------------------------------===//
 

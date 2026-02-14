@@ -12,6 +12,7 @@
 
 #include "Target/WasmStack/WasmBinaryConstants.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -41,7 +42,8 @@ public:
   };
 
   /// Analyze a WasmStack module and populate index spaces.
-  void analyze(Operation *moduleOp);
+  /// Returns failure when declaration references are invalid.
+  LogicalResult analyze(Operation *moduleOp);
 
   /// Get or create a type index for a function signature.
   uint32_t getOrCreateTypeIndex(const FuncSig &sig);
