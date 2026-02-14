@@ -531,7 +531,8 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
 
   // 1. Analyze index spaces
   IndexSpace indexSpace;
-  indexSpace.analyze(wasmModule);
+  if (failed(indexSpace.analyze(wasmModule)))
+    return failure();
 
   // Build symbol table for relocatable mode
   RelocationTracker tracker;

@@ -1277,6 +1277,7 @@ def WasmStack_TypeContOp : WasmStack_Op<"type.cont", [Symbol]> {
   );
 
   let assemblyFormat = "$sym_name `=` `cont` $func_type attr-dict";
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     unsigned getStackInputs() { return 0; }
