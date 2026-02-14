@@ -54,7 +54,7 @@ private:
   uint32_t resolveLabelDepth(llvm::StringRef label) const;
 
   /// Emit block type encoding for a block/loop/if.
-  void emitBlockType(ArrayAttr paramTypes, ArrayAttr resultTypes);
+  bool emitBlockType(ArrayAttr paramTypes, ArrayAttr resultTypes);
 
   // Emit helpers for specific op categories
   bool emitConstOp(Operation *op);

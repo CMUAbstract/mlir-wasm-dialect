@@ -66,6 +66,16 @@ def WasmStack_ContRefType : WasmStack_Type<"ContRef", "contref"> {
     let assemblyFormat = "`<` $type_name `>`";
 }
 
+def WasmStack_ContRefNonNullType : WasmStack_Type<"ContRefNonNull", "contref_nonnull"> {
+    let summary = "WebAssembly non-null continuation reference type";
+    let description = [{
+        Represents a non-null reference to a continuation.
+        This is the non-null counterpart to !wasmstack.contref<...>.
+    }];
+    let parameters = (ins "::mlir::FlatSymbolRefAttr":$type_name);
+    let assemblyFormat = "`<` $type_name `>`";
+}
+
 def WasmStack_ExternRefType : WasmStack_Type<"ExternRef", "externref"> {
     let summary = "WebAssembly external reference type";
     let description = [{
@@ -79,6 +89,7 @@ def WasmStack_ExternRefType : WasmStack_Type<"ExternRef", "externref"> {
 
 def WasmStack_RefType : AnyTypeOf<[WasmStack_FuncRefType,
                                    WasmStack_ContRefType,
+                                   WasmStack_ContRefNonNullType,
                                    WasmStack_ExternRefType],
                                   "wasm reference type">;
 

@@ -47,6 +47,12 @@ enum class ValType : uint8_t {
   ContRef = 0x68,
 };
 
+// Composite reference type constructors.
+namespace RefType {
+constexpr uint8_t RefNull = 0x63;
+constexpr uint8_t Ref = 0x64;
+} // namespace RefType
+
 // Block types
 constexpr uint8_t BlockTypeVoid = 0x40;
 
