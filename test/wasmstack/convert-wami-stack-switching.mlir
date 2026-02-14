@@ -20,7 +20,7 @@
 // CHECK-LABEL: wasmstack.func @driver_switch
 // CHECK: wasmstack.local.get [[ARG_SWITCH:[0-9]+]] : i32
 // CHECK: wasmstack.local.get [[CONT_SWITCH:[0-9]+]] : !wasmstack.contref_nonnull<@gen_ct>
-// CHECK-NEXT: wasmstack.resume @gen_ct (@switch_yield -> @switch)
+// CHECK-NEXT: wasmstack.resume @gen_ct (@switch_yield -> switch)
 
 // CHECK-LABEL: wasmstack.func @driver_bind
 // CHECK: wasmstack.cont.new @src_ct
@@ -28,7 +28,7 @@
 // CHECK: wasmstack.cont.bind @src_ct -> @dst_ct
 // CHECK: wasmstack.local.get [[ARG_BIND:[0-9]+]] : i32
 // CHECK: wasmstack.local.get [[CONT_BIND:[0-9]+]] : !wasmstack.contref_nonnull<@dst_ct>
-// CHECK-NEXT: wasmstack.resume @dst_ct (@switch_yield -> @switch)
+// CHECK-NEXT: wasmstack.resume @dst_ct (@switch_yield -> switch)
 
 module {
   wami.type.func @gen_ft = (i32) -> i32

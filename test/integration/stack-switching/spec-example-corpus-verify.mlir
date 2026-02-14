@@ -15,6 +15,7 @@ wasmstack.module @spec_generator {
   wasmstack.type.func @gen_ft = () -> ()
   wasmstack.type.cont @gen_ct = cont @gen_ft
   wasmstack.tag @gen : (i32) -> ()
+  wasmstack.tag @gen_switch : () -> ()
   wasmstack.import_func "puti" from "wizeng" as @print_i32 : (i32) -> ()
 
   // From: examples/generator.wast
@@ -28,13 +29,13 @@ wasmstack.module @spec_generator {
     wasmstack.return
   }
 
-  // CHECK: wasmstack.resume @gen_ct (@gen -> @switch)
+  // CHECK: wasmstack.resume @gen_ct (@gen_switch -> switch)
   wasmstack.func @consumer_once : () -> () {
     wasmstack.ref.func @generator
     wasmstack.cont.new @gen_ct
     wasmstack.i32.const 1111
     wasmstack.call @print_i32 : (i32) -> ()
-    wasmstack.resume @gen_ct (@gen -> @switch)
+    wasmstack.resume @gen_ct (@gen_switch -> switch)
     wasmstack.i32.const 1112
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.return
@@ -81,6 +82,7 @@ wasmstack.module @spec_fun_pipes {
   wasmstack.type.cont @consumer_ct = cont @cfun
 
   wasmstack.tag @send : (i32) -> ()
+  wasmstack.tag @send_switch : () -> ()
   wasmstack.tag @receive : () -> i32
   wasmstack.import_func "puti" from "wizeng" as @print_i32 : (i32) -> ()
 
@@ -105,8 +107,8 @@ wasmstack.module @spec_fun_pipes {
   }
 
   // From: examples/fun-pipes.wast
-  // CHECK: wasmstack.resume @consumer_ct (@receive -> @switch)
-  // CHECK: wasmstack.resume @producer_ct (@send -> @switch)
+  // CHECK: wasmstack.resume @consumer_ct (@receive -> switch)
+  // CHECK: wasmstack.resume @producer_ct (@send_switch -> switch)
   wasmstack.func @pipe_once : () -> () {
     wasmstack.ref.func @producer
     wasmstack.cont.new @producer_ct
@@ -116,12 +118,12 @@ wasmstack.module @spec_fun_pipes {
     wasmstack.i32.const 7
     wasmstack.ref.func @consumer
     wasmstack.cont.new @consumer_ct
-    wasmstack.resume @consumer_ct (@receive -> @switch)
+    wasmstack.resume @consumer_ct (@receive -> switch)
     wasmstack.call @print_i32 : (i32) -> ()
 
     wasmstack.i32.const 1312
     wasmstack.call @print_i32 : (i32) -> ()
-    wasmstack.resume @producer_ct (@send -> @switch)
+    wasmstack.resume @producer_ct (@send_switch -> switch)
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.return
   }
@@ -141,14 +143,14 @@ wasmstack.module @spec_scheduler2_switch {
   }
 
   // From: examples/scheduler2.wast
-  // CHECK: wasmstack.resume @task_ct (@yield -> @switch)
+  // CHECK: wasmstack.resume @task_ct (@yield -> switch)
   wasmstack.func @entry_resume_switch : () -> () {
     wasmstack.i32.const 1
     wasmstack.ref.func @task
     wasmstack.cont.new @task_ct
     wasmstack.i32.const 1401
     wasmstack.call @print_i32 : (i32) -> ()
-    wasmstack.resume @task_ct (@yield -> @switch)
+    wasmstack.resume @task_ct (@yield -> switch)
     wasmstack.i32.const 1402
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.return
@@ -182,14 +184,14 @@ wasmstack.module @spec_scheduler2_throw {
   }
 
   // From: examples/scheduler2-throw.wast
-  // CHECK: wasmstack.resume_throw @task_ct (@yield -> @switch)
+  // CHECK: wasmstack.resume_throw @task_ct (@yield -> switch)
   wasmstack.func @cancel_one : () -> () {
     wasmstack.i32.const 0
     wasmstack.ref.func @task
     wasmstack.cont.new @task_ct
     wasmstack.i32.const 1501
     wasmstack.call @print_i32 : (i32) -> ()
-    wasmstack.resume_throw @task_ct (@yield -> @switch)
+    wasmstack.resume_throw @task_ct (@yield -> switch)
     wasmstack.i32.const 1502
     wasmstack.call @print_i32 : (i32) -> ()
     wasmstack.return

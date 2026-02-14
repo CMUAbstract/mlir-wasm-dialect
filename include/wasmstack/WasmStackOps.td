@@ -1382,8 +1382,9 @@ def WasmStack_ResumeOp : WasmStack_Op<"resume"> {
     Resumes a continuation with the given arguments. Handlers specify how
     to handle suspensions from the continuation.
 
-    Handlers is an array of (tag, label) pairs. When the continuation
-    suspends with a tag, control transfers to the corresponding label.
+    Handlers is an array of `#wasmstack.on_label` / `#wasmstack.on_switch`
+    attributes. For assembly syntax these print as `@tag -> @label` and
+    `@tag -> switch`.
   }];
 
   let arguments = (ins

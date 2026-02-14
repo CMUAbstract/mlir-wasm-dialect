@@ -1449,18 +1449,15 @@ void WasmStackEmitter::emitResume(wami::ResumeOp resumeOp) {
       if (failed)
         return;
 
-      SmallVector<Attribute> pair = {
-          onLabel.getTag(),
-          FlatSymbolRefAttr::get(builder.getContext(), label)};
-      handlers.push_back(ArrayAttr::get(builder.getContext(), pair));
+      handlers.push_back(OnLabelHandlerAttr::get(
+          builder.getContext(), onLabel.getTag(),
+          FlatSymbolRefAttr::get(builder.getContext(), label)));
       continue;
     }
 
     if (auto onSwitch = dyn_cast<wami::OnSwitchHandlerAttr>(attr)) {
-      SmallVector<Attribute> pair = {
-          onSwitch.getTag(),
-          FlatSymbolRefAttr::get(builder.getContext(), "switch")};
-      handlers.push_back(ArrayAttr::get(builder.getContext(), pair));
+      handlers.push_back(
+          OnSwitchHandlerAttr::get(builder.getContext(), onSwitch.getTag()));
       continue;
     }
 
@@ -1515,18 +1512,15 @@ void WasmStackEmitter::emitResumeThrow(wami::ResumeThrowOp resumeThrowOp) {
       if (failed)
         return;
 
-      SmallVector<Attribute> pair = {
-          onLabel.getTag(),
-          FlatSymbolRefAttr::get(builder.getContext(), label)};
-      handlers.push_back(ArrayAttr::get(builder.getContext(), pair));
+      handlers.push_back(OnLabelHandlerAttr::get(
+          builder.getContext(), onLabel.getTag(),
+          FlatSymbolRefAttr::get(builder.getContext(), label)));
       continue;
     }
 
     if (auto onSwitch = dyn_cast<wami::OnSwitchHandlerAttr>(attr)) {
-      SmallVector<Attribute> pair = {
-          onSwitch.getTag(),
-          FlatSymbolRefAttr::get(builder.getContext(), "switch")};
-      handlers.push_back(ArrayAttr::get(builder.getContext(), pair));
+      handlers.push_back(
+          OnSwitchHandlerAttr::get(builder.getContext(), onSwitch.getTag()));
       continue;
     }
 

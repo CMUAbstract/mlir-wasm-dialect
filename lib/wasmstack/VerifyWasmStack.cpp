@@ -807,20 +807,25 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
 
   // Validate handler clauses.
   for (Attribute attr : op.getHandlers()) {
-    auto pair = dyn_cast<ArrayAttr>(attr);
-    if (!pair || pair.size() != 2)
-      return op.emitError("invalid handler format");
-    auto tag = dyn_cast<FlatSymbolRefAttr>(pair[0]);
-    auto label = dyn_cast<FlatSymbolRefAttr>(pair[1]);
-    if (!tag || !label)
-      return op.emitError("handler must be (tag -> label) pair");
+    FlatSymbolRefAttr tag;
+    FlatSymbolRefAttr label;
+    bool isSwitchHandler = false;
+    if (auto onLabel = dyn_cast<OnLabelHandlerAttr>(attr)) {
+      tag = onLabel.getTag();
+      label = onLabel.getLabel();
+    } else if (auto onSwitch = dyn_cast<OnSwitchHandlerAttr>(attr)) {
+      tag = onSwitch.getTag();
+      isSwitchHandler = true;
+    } else {
+      return op.emitError("handlers must contain #wasmstack.on_label or "
+                          "#wasmstack.on_switch attributes");
+    }
 
     FailureOr<FunctionType> tagSig = resolveTagSig(op, tag, "resume handler");
     if (failed(tagSig))
       return failure();
 
-    // "switch" is the wasmstack sentinel for on-switch handlers.
-    if (label.getValue() == "switch") {
+    if (isSwitchHandler) {
       if (failed(verifySwitchTagHasEmptyInputs(
               op, *tagSig, "switch handler tag must have empty inputs")))
         return failure();
@@ -892,20 +897,26 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
     return failure();
 
   for (Attribute attr : op.getHandlers()) {
-    auto pair = dyn_cast<ArrayAttr>(attr);
-    if (!pair || pair.size() != 2)
-      return op.emitError("invalid handler format");
-    auto tag = dyn_cast<FlatSymbolRefAttr>(pair[0]);
-    auto label = dyn_cast<FlatSymbolRefAttr>(pair[1]);
-    if (!tag || !label)
-      return op.emitError("handler must be (tag -> label) pair");
+    FlatSymbolRefAttr tag;
+    FlatSymbolRefAttr label;
+    bool isSwitchHandler = false;
+    if (auto onLabel = dyn_cast<OnLabelHandlerAttr>(attr)) {
+      tag = onLabel.getTag();
+      label = onLabel.getLabel();
+    } else if (auto onSwitch = dyn_cast<OnSwitchHandlerAttr>(attr)) {
+      tag = onSwitch.getTag();
+      isSwitchHandler = true;
+    } else {
+      return op.emitError("handlers must contain #wasmstack.on_label or "
+                          "#wasmstack.on_switch attributes");
+    }
 
     FailureOr<FunctionType> tagSig =
         resolveTagSig(op, tag, "resume_throw handler");
     if (failed(tagSig))
       return failure();
 
-    if (label.getValue() == "switch") {
+    if (isSwitchHandler) {
       if (failed(verifySwitchTagHasEmptyInputs(
               op, *tagSig, "switch handler tag must have empty inputs")))
         return failure();

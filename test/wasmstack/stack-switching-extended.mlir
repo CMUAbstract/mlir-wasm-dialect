@@ -4,7 +4,7 @@
 wasmstack.module {
   wasmstack.type.func @f = (i32) -> i32
   wasmstack.type.cont @c = cont @f
-  wasmstack.tag @yield : (i32) -> i32
+  wasmstack.tag @yield : () -> i32
 
   wasmstack.func @worker : (i32) -> i32 {
     wasmstack.local.get 0 : i32
@@ -12,22 +12,22 @@ wasmstack.module {
   }
 
   // CHECK-LABEL: wasmstack.func @resume_ok
-  // CHECK: wasmstack.resume @c (@yield -> @switch)
+  // CHECK: wasmstack.resume @c (@yield -> switch)
   wasmstack.func @resume_ok : () -> i32 {
     wasmstack.i32.const 7
     wasmstack.ref.func @worker
     wasmstack.cont.new @c
-    wasmstack.resume @c (@yield -> @switch)
+    wasmstack.resume @c (@yield -> switch)
     wasmstack.return
   }
 
   // CHECK-LABEL: wasmstack.func @resume_throw_ok
-  // CHECK: wasmstack.resume_throw @c (@yield -> @switch)
+  // CHECK: wasmstack.resume_throw @c (@yield -> switch)
   wasmstack.func @resume_throw_ok : () -> () {
     wasmstack.i32.const 9
     wasmstack.ref.func @worker
     wasmstack.cont.new @c
-    wasmstack.resume_throw @c (@yield -> @switch)
+    wasmstack.resume_throw @c (@yield -> switch)
     wasmstack.return
   }
 
