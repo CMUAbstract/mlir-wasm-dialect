@@ -18,7 +18,7 @@ wasmstack.module {
   wasmstack.func @driver : () -> i32 {
     wasmstack.ref.func @worker
     wasmstack.cont.new @ct
-    %r = wasmstack.resume_throw @ct (@yield -> @switch)
+    %r = wasmstack.resume_throw @ct (@yield -> switch)
     wasmstack.return
   }
 }

@@ -297,18 +297,25 @@ static ParseResult parseResumeLike(OpAsmParser &parser,
     return failure();
   result.addAttribute("cont_type", contType);
 
-  // Parse optional handlers: (tag -> label, ...)
+  // Parse optional handlers: (tag -> label_or_switch, ...)
   SmallVector<Attribute> handlers;
   if (succeeded(parser.parseOptionalLParen())) {
     do {
       FlatSymbolRefAttr tag;
-      FlatSymbolRefAttr label;
-      if (parser.parseAttribute(tag) || parser.parseArrow() ||
-          parser.parseAttribute(label))
+      if (parser.parseAttribute(tag) || parser.parseArrow())
         return failure();
 
-      SmallVector<Attribute> pair = {tag, label};
-      handlers.push_back(ArrayAttr::get(parser.getContext(), pair));
+      if (succeeded(parser.parseOptionalKeyword("switch"))) {
+        handlers.push_back(OnSwitchHandlerAttr::get(parser.getContext(), tag));
+        continue;
+      }
+
+      FlatSymbolRefAttr label;
+      if (parser.parseAttribute(label))
+        return failure();
+
+      handlers.push_back(
+          OnLabelHandlerAttr::get(parser.getContext(), tag, label));
     } while (succeeded(parser.parseOptionalComma()));
 
     if (parser.parseRParen())
@@ -332,10 +339,19 @@ static void printResumeLike(OpAsmPrinter &p, Operation *op,
   if (!handlers.empty()) {
     p << " (";
     llvm::interleaveComma(handlers, p, [&](Attribute handler) {
-      auto pair = cast<ArrayAttr>(handler);
-      p.printSymbolName(cast<FlatSymbolRefAttr>(pair[0]).getValue());
-      p << " -> ";
-      p.printSymbolName(cast<FlatSymbolRefAttr>(pair[1]).getValue());
+      if (auto onLabel = dyn_cast<OnLabelHandlerAttr>(handler)) {
+        p.printSymbolName(onLabel.getTag().getValue());
+        p << " -> ";
+        p.printSymbolName(onLabel.getLabel().getValue());
+        return;
+      }
+      if (auto onSwitch = dyn_cast<OnSwitchHandlerAttr>(handler)) {
+        p.printSymbolName(onSwitch.getTag().getValue());
+        p << " -> switch";
+        return;
+      }
+
+      p.printAttribute(handler);
     });
     p << ")";
   }
@@ -344,13 +360,12 @@ static void printResumeLike(OpAsmPrinter &p, Operation *op,
 }
 
 static LogicalResult verifyResumeHandlers(Operation *op, ArrayAttr handlers) {
-  // Verify handler format
   for (auto handler : handlers) {
-    auto pair = dyn_cast<ArrayAttr>(handler);
-    if (!pair || pair.size() != 2)
-      return op->emitOpError("invalid handler format");
-    if (!isa<FlatSymbolRefAttr>(pair[0]) || !isa<FlatSymbolRefAttr>(pair[1]))
-      return op->emitOpError("handler must be (tag -> label) pair");
+    if (isa<OnLabelHandlerAttr, OnSwitchHandlerAttr>(handler))
+      continue;
+    return op->emitOpError(
+        "handlers must contain #wasmstack.on_label or #wasmstack.on_switch "
+        "attributes");
   }
   return success();
 }

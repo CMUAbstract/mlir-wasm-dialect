@@ -1,3 +1,10 @@
+# Generate attribute declarations
+set(LLVM_TARGET_DEFINITIONS WasmStackAttrs.td)
+mlir_tablegen(WasmStackAttrs.h.inc -gen-attrdef-decls -attrdefs-dialect=wasmstack)
+mlir_tablegen(WasmStackAttrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=wasmstack)
+add_public_tablegen_target(MLIRWasmStackAttrsIncGen)
+add_dependencies(mlir-headers MLIRWasmStackAttrsIncGen)
+
 # Generate dialect declarations
 set(LLVM_TARGET_DEFINITIONS WasmStackOps.td)
 mlir_tablegen(WasmStackOps.h.inc -gen-op-decls)
@@ -32,3 +39,4 @@ add_dependencies(mlir-headers MLIRWasmStackPassesIncGen)
 # Documentation
 add_mlir_doc(WasmStackDialect WasmStackDialect wasmstack/ -gen-dialect-doc)
 add_mlir_doc(WasmStackOps WasmStackOps wasmstack/ -gen-op-doc)
+add_mlir_doc(WasmStackAttrs WasmStackAttrs wasmstack/ -gen-attrdef-doc)

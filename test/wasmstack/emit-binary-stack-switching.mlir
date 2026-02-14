@@ -50,7 +50,7 @@ wasmstack.module @emit_stack_switching {
     wasmstack.ref.func @worker
     wasmstack.cont.new @ct
     wasmstack.cont.bind @ct -> @ct
-    wasmstack.resume @ct (@yield -> @switch)
+    wasmstack.resume @ct (@yield -> switch)
 
     wasmstack.suspend @yield
 
@@ -60,7 +60,7 @@ wasmstack.module @emit_stack_switching {
 
     wasmstack.ref.func @worker
     wasmstack.cont.new @ct
-    wasmstack.resume_throw @ct (@yield -> @switch)
+    wasmstack.resume_throw @ct (@yield -> switch)
     wasmstack.return
   }
 }

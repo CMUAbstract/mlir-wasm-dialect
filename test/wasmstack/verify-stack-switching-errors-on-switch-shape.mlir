@@ -17,7 +17,7 @@ wasmstack.module {
     wasmstack.ref.func @worker
     wasmstack.cont.new @ct
     // expected-error @+1 {{switch handler tag must have empty inputs}}
-    wasmstack.resume @ct (@bad_switch -> @switch)
+    wasmstack.resume @ct (@bad_switch -> switch)
     wasmstack.return
   }
 }
@@ -41,7 +41,7 @@ wasmstack.module {
     wasmstack.ref.func @worker
     wasmstack.cont.new @ct
     // expected-error @+1 {{switch handler tag must have empty inputs}}
-    wasmstack.resume_throw @ct (@bad_switch -> @switch)
+    wasmstack.resume_throw @ct (@bad_switch -> switch)
     wasmstack.return
   }
 }

@@ -13,6 +13,7 @@ add_mlir_dialect_library(MLIRWasmStack
         ${PROJECT_SOURCE_DIR}/include/wasmstack
 
         DEPENDS
+        MLIRWasmStackAttrsIncGen
         MLIRWasmStackOpsIncGen
         MLIRWasmStackTypesIncGen
         MLIRWasmStackInterfacesIncGen

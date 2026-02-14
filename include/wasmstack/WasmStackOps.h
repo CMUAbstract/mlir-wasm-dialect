@@ -18,6 +18,7 @@
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 
+#include "wasmstack/WasmStackAttrs.h"
 #include "wasmstack/WasmStackDialect.h"
 #include "wasmstack/WasmStackTypes.h"
 
