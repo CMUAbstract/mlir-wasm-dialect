@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "wasmstack/LocalAllocator.h"
+#include "WAMI/WAMIOps.h"
 #include "WAMI/WAMITypes.h"
 #include "wasmstack/WasmStackTypes.h"
 
@@ -26,12 +27,21 @@ Type LocalAllocator::unwrapLocalRefType(Type type) {
 
 Type LocalAllocator::normalizeType(Type type) {
   if (auto cont = dyn_cast<wami::ContType>(type)) {
-    return ContRefType::get(type.getContext(), cont.getTypeName());
+    return ContRefNonNullType::get(type.getContext(), cont.getTypeName());
   }
   if (auto func = dyn_cast<wami::FuncRefType>(type)) {
     return FuncRefType::get(type.getContext(), func.getFuncName());
   }
   return type;
+}
+
+Type LocalAllocator::normalizeValueType(Value value) {
+  Type type = value.getType();
+  if (auto cont = dyn_cast<wami::ContType>(type)) {
+    if (isa_and_nonnull<wami::RefNullOp>(value.getDefiningOp()))
+      return ContRefType::get(type.getContext(), cont.getTypeName());
+  }
+  return normalizeType(type);
 }
 
 void LocalAllocator::allocate(wasmssa::FuncOp funcOp,
@@ -58,7 +68,7 @@ void LocalAllocator::allocate(wasmssa::FuncOp funcOp,
   for (Value value : needsLocalOrdered) {
     if (!localIndices.count(value)) {
       localIndices[value] = nextLocalIdx++;
-      localTypes.push_back(normalizeType(value.getType()));
+      localTypes.push_back(normalizeValueType(value));
     }
   }
 
@@ -66,7 +76,7 @@ void LocalAllocator::allocate(wasmssa::FuncOp funcOp,
   for (Value value : needsTeeOrdered) {
     if (!localIndices.count(value)) {
       localIndices[value] = nextLocalIdx++;
-      localTypes.push_back(normalizeType(value.getType()));
+      localTypes.push_back(normalizeValueType(value));
     }
   }
 }

@@ -773,7 +773,7 @@ LogicalResult StackVerifier::handleContBindOp(ContBindOp op) {
 
   unsigned boundCount = srcSig->getNumInputs() - dstSig->getNumInputs();
   SmallVector<Type> expected;
-  expected.push_back(getNullableContRefType(op.getSrcContTypeAttr()));
+  expected.push_back(getNonNullContRefType(op.getSrcContTypeAttr()));
   expected.append(srcSig->getInputs().begin(),
                   srcSig->getInputs().begin() + boundCount);
 
@@ -790,7 +790,7 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
   if (failed(contSig))
     return failure();
 
-  Type contRefType = getNullableContRefType(op.getContTypeAttr());
+  Type contRefType = getNonNullContRefType(op.getContTypeAttr());
   SmallVector<Type> expected;
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.push_back(contRefType);
@@ -819,26 +819,45 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
     if (!target)
       return op.emitError("unknown handler label ") << label;
 
-    SmallVector<Type> expectedBranchTypes(tagSig->getInputs().begin(),
-                                          tagSig->getInputs().end());
-    expectedBranchTypes.push_back(contRefType);
     ArrayRef<Type> targetTypes = target->getBranchTypes();
-
-    if (targetTypes.size() != expectedBranchTypes.size()) {
+    size_t expectedPayloadCount = tagSig->getInputs().size();
+    if (targetTypes.size() != expectedPayloadCount + 1) {
       return op.emitError("handler label ")
              << label << " expects " << targetTypes.size()
-             << " values but handler passes " << expectedBranchTypes.size();
+             << " values but handler passes " << (expectedPayloadCount + 1);
     }
 
-    for (auto [idx, pairTypes] :
-         llvm::enumerate(llvm::zip(targetTypes, expectedBranchTypes))) {
-      Type targetType = std::get<0>(pairTypes);
-      Type expectedType = std::get<1>(pairTypes);
+    for (size_t idx = 0; idx < expectedPayloadCount; ++idx) {
+      Type targetType = targetTypes[idx];
+      Type expectedType = tagSig->getInput(idx);
       if (!isSubtype(expectedType, targetType)) {
         return op.emitError("handler label type mismatch at index ")
                << idx << " for " << label << ": expected " << targetType
                << " but handler provides " << expectedType;
       }
+    }
+
+    Type targetContType = targetTypes.back();
+    FlatSymbolRefAttr targetContRef;
+    if (auto nonNull = dyn_cast<ContRefNonNullType>(targetContType)) {
+      targetContRef = nonNull.getTypeName();
+    } else if (auto nullable = dyn_cast<ContRefType>(targetContType)) {
+      targetContRef = nullable.getTypeName();
+    } else {
+      return op.emitError("handler label ")
+             << label << " must end with continuation reference type";
+    }
+
+    FailureOr<FunctionType> targetContSig =
+        resolveContSig(op, targetContRef, "resume handler continuation");
+    if (failed(targetContSig))
+      return failure();
+
+    if (targetContSig->getInputs() != tagSig->getResults() ||
+        targetContSig->getResults() != contSig->getResults()) {
+      return op.emitError("handler continuation type mismatch for ")
+             << label << ": expected (" << tagSig->getResults() << ") -> ("
+             << contSig->getResults() << ") but got " << *targetContSig;
     }
   }
 
@@ -853,7 +872,7 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
   if (failed(contSig))
     return failure();
 
-  Type contRefType = getNullableContRefType(op.getContTypeAttr());
+  Type contRefType = getNonNullContRefType(op.getContTypeAttr());
   SmallVector<Type> expected;
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.push_back(contRefType);
@@ -881,26 +900,45 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
     if (!target)
       return op.emitError("unknown handler label ") << label;
 
-    SmallVector<Type> expectedBranchTypes(tagSig->getInputs().begin(),
-                                          tagSig->getInputs().end());
-    expectedBranchTypes.push_back(contRefType);
     ArrayRef<Type> targetTypes = target->getBranchTypes();
-
-    if (targetTypes.size() != expectedBranchTypes.size()) {
+    size_t expectedPayloadCount = tagSig->getInputs().size();
+    if (targetTypes.size() != expectedPayloadCount + 1) {
       return op.emitError("handler label ")
              << label << " expects " << targetTypes.size()
-             << " values but handler passes " << expectedBranchTypes.size();
+             << " values but handler passes " << (expectedPayloadCount + 1);
     }
 
-    for (auto [idx, pairTypes] :
-         llvm::enumerate(llvm::zip(targetTypes, expectedBranchTypes))) {
-      Type targetType = std::get<0>(pairTypes);
-      Type expectedType = std::get<1>(pairTypes);
+    for (size_t idx = 0; idx < expectedPayloadCount; ++idx) {
+      Type targetType = targetTypes[idx];
+      Type expectedType = tagSig->getInput(idx);
       if (!isSubtype(expectedType, targetType)) {
         return op.emitError("handler label type mismatch at index ")
                << idx << " for " << label << ": expected " << targetType
                << " but handler provides " << expectedType;
       }
+    }
+
+    Type targetContType = targetTypes.back();
+    FlatSymbolRefAttr targetContRef;
+    if (auto nonNull = dyn_cast<ContRefNonNullType>(targetContType)) {
+      targetContRef = nonNull.getTypeName();
+    } else if (auto nullable = dyn_cast<ContRefType>(targetContType)) {
+      targetContRef = nullable.getTypeName();
+    } else {
+      return op.emitError("handler label ")
+             << label << " must end with continuation reference type";
+    }
+
+    FailureOr<FunctionType> targetContSig =
+        resolveContSig(op, targetContRef, "resume_throw handler continuation");
+    if (failed(targetContSig))
+      return failure();
+
+    if (targetContSig->getInputs() != tagSig->getResults() ||
+        targetContSig->getResults() != contSig->getResults()) {
+      return op.emitError("handler continuation type mismatch for ")
+             << label << ": expected (" << tagSig->getResults() << ") -> ("
+             << contSig->getResults() << ") but got " << *targetContSig;
     }
   }
 
@@ -931,7 +969,7 @@ LogicalResult StackVerifier::handleSwitchOp(SwitchOp op) {
   SmallVector<Type> expected;
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.append(tagSig->getInputs().begin(), tagSig->getInputs().end());
-  expected.push_back(getNullableContRefType(op.getContTypeAttr()));
+  expected.push_back(getNonNullContRefType(op.getContTypeAttr()));
   if (failed(popValues(expected)))
     return failure();
 
