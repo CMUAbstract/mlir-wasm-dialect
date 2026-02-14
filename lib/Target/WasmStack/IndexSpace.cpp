@@ -14,7 +14,7 @@
 
 namespace mlir::wasmstack {
 
-void IndexSpace::analyze(Operation *moduleOp) {
+LogicalResult IndexSpace::analyze(Operation *moduleOp) {
   // Clear previous state
   types.clear();
   funcIndexMap.clear();
@@ -100,10 +100,15 @@ void IndexSpace::analyze(Operation *moduleOp) {
   // Continuation type declarations are appended after base function signatures.
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto contOp = dyn_cast<TypeContOp>(op)) {
-      auto funcTypeIt =
-          typeFuncIndexMap.find(contOp.getFuncTypeAttr().getValue());
-      assert(funcTypeIt != typeFuncIndexMap.end() &&
-             "continuation references unknown wasmstack.type.func");
+      auto funcTypeRef = contOp->getAttrOfType<FlatSymbolRefAttr>("func_type");
+      if (!funcTypeRef)
+        return contOp.emitOpError("missing 'func_type' attribute");
+      auto funcTypeIt = typeFuncIndexMap.find(funcTypeRef.getValue());
+      if (funcTypeIt == typeFuncIndexMap.end()) {
+        contOp.emitOpError("unknown wasmstack.type.func symbol ")
+            << funcTypeRef;
+        return failure();
+      }
 
       uint32_t contTypeIndex = preContTypeCount + contTypes.size();
       contTypeIndexMap[contOp.getSymName()] = contTypeIndex;
@@ -168,6 +173,7 @@ void IndexSpace::analyze(Operation *moduleOp) {
     }
   }
   llvm::sort(refFuncDeclarationIndices);
+  return success();
 }
 
 uint32_t IndexSpace::getOrCreateTypeIndex(const FuncSig &sig) {
