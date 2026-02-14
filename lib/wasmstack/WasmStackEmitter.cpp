@@ -40,9 +40,9 @@ static bool isNoOpCastPair(Type srcType, Type dstType) {
   return false;
 }
 
-static Type toWasmStackType(Type type, bool forceNullableCont = false) {
+static Type toWasmStackType(Type type) {
   if (auto cont = dyn_cast<wami::ContType>(type)) {
-    if (forceNullableCont)
+    if (cont.getNullable())
       return ContRefType::get(type.getContext(), cont.getTypeName());
     return ContRefNonNullType::get(type.getContext(), cont.getTypeName());
   }
@@ -52,9 +52,6 @@ static Type toWasmStackType(Type type, bool forceNullableCont = false) {
 }
 
 static Type toWasmStackType(Value value) {
-  if (isa<wami::ContType>(value.getType()) &&
-      isa_and_nonnull<wami::RefNullOp>(value.getDefiningOp()))
-    return toWasmStackType(value.getType(), /*forceNullableCont=*/true);
   return toWasmStackType(value.getType());
 }
 
@@ -1339,8 +1336,7 @@ void WasmStackEmitter::emitRefNull(wami::RefNullOp refNullOp) {
   Location loc = refNullOp.getLoc();
   RefNullOp::create(
       builder, loc,
-      TypeAttr::get(toWasmStackType(refNullOp.getResult().getType(),
-                                    /*forceNullableCont=*/true)));
+      TypeAttr::get(toWasmStackType(refNullOp.getResult().getType())));
   materializeResult(loc, refNullOp.getResult());
 }
 
