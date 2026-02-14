@@ -9,6 +9,8 @@
 
 #include "Target/WasmStack/IndexSpace.h"
 #include "wasmstack/WasmStackOps.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 
 namespace mlir::wasmstack {
 
@@ -21,19 +23,37 @@ void IndexSpace::analyze(Operation *moduleOp) {
   globalNames.clear();
   memoryIndexMap.clear();
   memoryNames.clear();
+  typeFuncIndexMap.clear();
+  contTypeIndexMap.clear();
+  contTypes.clear();
+  tagIndexMap.clear();
+  tagNames.clear();
+  refFuncDeclarationIndices.clear();
 
-  auto registerFunction = [&](llvm::StringRef symName, FunctionType funcType) {
+  auto addFunctionType = [&](FunctionType funcType) {
     FuncSig sig;
     for (Type t : funcType.getInputs())
       sig.params.push_back(t);
     for (Type t : funcType.getResults())
       sig.results.push_back(t);
-    getOrCreateTypeIndex(sig);
+    return getOrCreateTypeIndex(sig);
+  };
+
+  auto registerFunction = [&](llvm::StringRef symName, FunctionType funcType) {
+    addFunctionType(funcType);
 
     uint32_t idx = funcNames.size();
     funcIndexMap[symName] = idx;
     funcNames.push_back(symName.str());
   };
+
+  // Named function types.
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto typeFuncOp = dyn_cast<TypeFuncOp>(op)) {
+      uint32_t typeIndex = addFunctionType(typeFuncOp.getType());
+      typeFuncIndexMap[typeFuncOp.getSymName()] = typeIndex;
+    }
+  }
 
   // Imported functions are indexed before defined functions in wasm binaries.
   for (Operation &op : moduleOp->getRegion(0).front()) {
@@ -53,37 +73,59 @@ void IndexSpace::analyze(Operation *moduleOp) {
           auto resultTypes = blockOp.getResultTypes();
           // Multi-value blocks need a type index
           if (!paramTypes.empty() || resultTypes.size() > 1) {
-            FuncSig blockSig;
+            SmallVector<Type> params;
+            SmallVector<Type> results;
+            params.reserve(paramTypes.size());
+            results.reserve(resultTypes.size());
             for (Attribute a : paramTypes)
-              blockSig.params.push_back(cast<TypeAttr>(a).getValue());
+              params.push_back(cast<TypeAttr>(a).getValue());
             for (Attribute a : resultTypes)
-              blockSig.results.push_back(cast<TypeAttr>(a).getValue());
-            getOrCreateTypeIndex(blockSig);
+              results.push_back(cast<TypeAttr>(a).getValue());
+            addFunctionType(
+                FunctionType::get(funcOp.getContext(), params, results));
           }
         } else if (auto loopOp = dyn_cast<LoopOp>(innerOp)) {
           auto paramTypes = loopOp.getParamTypes();
           auto resultTypes = loopOp.getResultTypes();
           if (!paramTypes.empty() || resultTypes.size() > 1) {
-            FuncSig blockSig;
+            SmallVector<Type> params;
+            SmallVector<Type> results;
+            params.reserve(paramTypes.size());
+            results.reserve(resultTypes.size());
             for (Attribute a : paramTypes)
-              blockSig.params.push_back(cast<TypeAttr>(a).getValue());
+              params.push_back(cast<TypeAttr>(a).getValue());
             for (Attribute a : resultTypes)
-              blockSig.results.push_back(cast<TypeAttr>(a).getValue());
-            getOrCreateTypeIndex(blockSig);
+              results.push_back(cast<TypeAttr>(a).getValue());
+            addFunctionType(
+                FunctionType::get(funcOp.getContext(), params, results));
           }
         } else if (auto ifOp = dyn_cast<IfOp>(innerOp)) {
           auto paramTypes = ifOp.getParamTypes();
           auto resultTypes = ifOp.getResultTypes();
           if (!paramTypes.empty() || resultTypes.size() > 1) {
-            FuncSig blockSig;
+            SmallVector<Type> params;
+            SmallVector<Type> results;
+            params.reserve(paramTypes.size());
+            results.reserve(resultTypes.size());
             for (Attribute a : paramTypes)
-              blockSig.params.push_back(cast<TypeAttr>(a).getValue());
+              params.push_back(cast<TypeAttr>(a).getValue());
             for (Attribute a : resultTypes)
-              blockSig.results.push_back(cast<TypeAttr>(a).getValue());
-            getOrCreateTypeIndex(blockSig);
+              results.push_back(cast<TypeAttr>(a).getValue());
+            addFunctionType(
+                FunctionType::get(funcOp.getContext(), params, results));
           }
         }
       });
+    }
+  }
+
+  // Tags and their signature types.
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto tagOp = dyn_cast<TagOp>(op)) {
+      addFunctionType(tagOp.getType());
+      uint32_t idx = tagNames.size();
+      tagIndexMap[tagOp.getSymName()] = idx;
+      tagNames.push_back(tagOp.getSymName().str());
     }
   }
 
@@ -99,6 +141,42 @@ void IndexSpace::analyze(Operation *moduleOp) {
       memoryNames.push_back(memoryOp.getSymName().str());
     }
   }
+
+  // Continuation type declarations are appended after all function signatures.
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto contOp = dyn_cast<TypeContOp>(op)) {
+      auto funcTypeIt =
+          typeFuncIndexMap.find(contOp.getFuncTypeAttr().getValue());
+      assert(funcTypeIt != typeFuncIndexMap.end() &&
+             "continuation references unknown wasmstack.type.func");
+
+      uint32_t contTypeIndex = types.size() + contTypes.size();
+      contTypeIndexMap[contOp.getSymName()] = contTypeIndex;
+      contTypes.push_back(ContTypeInfo{contOp.getSymName().str(),
+                                       funcTypeIt->second, contTypeIndex});
+    }
+  }
+
+  // Collect all functions referenced by wasmstack.ref.func in emitted code.
+  llvm::DenseSet<uint32_t> seenRefFuncIndices;
+  auto collectRefFuncIndices = [&](Operation *root) {
+    root->walk([&](RefFuncOp refFuncOp) {
+      auto idx = tryGetFuncIndex(refFuncOp.getFuncAttr().getValue());
+      if (!idx)
+        return;
+      if (seenRefFuncIndices.insert(*idx).second)
+        refFuncDeclarationIndices.push_back(*idx);
+    });
+  };
+
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto funcOp = dyn_cast<FuncOp>(op)) {
+      collectRefFuncIndices(funcOp.getOperation());
+    } else if (auto globalOp = dyn_cast<GlobalOp>(op)) {
+      collectRefFuncIndices(globalOp.getOperation());
+    }
+  }
+  llvm::sort(refFuncDeclarationIndices);
 }
 
 uint32_t IndexSpace::getOrCreateTypeIndex(const FuncSig &sig) {
@@ -144,6 +222,26 @@ uint32_t IndexSpace::getGlobalIndex(llvm::StringRef name) const {
 uint32_t IndexSpace::getMemoryIndex(llvm::StringRef name) const {
   auto it = memoryIndexMap.find(name);
   assert(it != memoryIndexMap.end() && "memory not found in index space");
+  return it->second;
+}
+
+uint32_t IndexSpace::getContTypeIndex(llvm::StringRef name) const {
+  auto it = contTypeIndexMap.find(name);
+  assert(it != contTypeIndexMap.end() &&
+         "continuation type not found in index space");
+  return it->second;
+}
+
+uint32_t IndexSpace::getTypeFuncIndex(llvm::StringRef name) const {
+  auto it = typeFuncIndexMap.find(name);
+  assert(it != typeFuncIndexMap.end() &&
+         "function type not found in index space");
+  return it->second;
+}
+
+uint32_t IndexSpace::getTagIndex(llvm::StringRef name) const {
+  auto it = tagIndexMap.find(name);
+  assert(it != tagIndexMap.end() && "tag not found in index space");
   return it->second;
 }
 

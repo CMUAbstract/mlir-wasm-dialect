@@ -22,13 +22,23 @@ namespace wc = mlir::wasmstack::wasm;
 // Section emitters
 //===----------------------------------------------------------------------===//
 
+static IndexSpace::FuncSig toFuncSig(FunctionType funcType) {
+  IndexSpace::FuncSig sig;
+  for (Type t : funcType.getInputs())
+    sig.params.push_back(t);
+  for (Type t : funcType.getResults())
+    sig.results.push_back(t);
+  return sig;
+}
+
 /// Emit the type section (section 1).
 static void emitTypeSection(BinaryWriter &output, IndexSpace &indexSpace) {
   BinaryWriter section;
-  const auto &types = indexSpace.getTypes();
-  section.writeULEB128(types.size());
+  const auto &funcTypes = indexSpace.getTypes();
+  const auto &contTypes = indexSpace.getContTypes();
+  section.writeULEB128(funcTypes.size() + contTypes.size());
 
-  for (const auto &sig : types) {
+  for (const auto &sig : funcTypes) {
     section.writeByte(wc::FuncTypeTag); // 0x60
     // Params
     section.writeULEB128(sig.params.size());
@@ -38,6 +48,11 @@ static void emitTypeSection(BinaryWriter &output, IndexSpace &indexSpace) {
     section.writeULEB128(sig.results.size());
     for (Type t : sig.results)
       section.writeValType(t);
+  }
+
+  for (const auto &cont : contTypes) {
+    section.writeByte(0x5D); // continuation type constructor
+    section.writeSLEB128(static_cast<int32_t>(cont.funcTypeIndex));
   }
 
   output.writeSection(wc::SectionId::Type, section);
@@ -128,6 +143,46 @@ static void emitMemorySection(BinaryWriter &output, Operation *moduleOp) {
   output.writeSection(wc::SectionId::Memory, section);
 }
 
+/// Emit the tag section.
+static void emitTagSection(BinaryWriter &output, IndexSpace &indexSpace,
+                           Operation *moduleOp) {
+  SmallVector<TagOp> tags;
+  for (Operation &op : moduleOp->getRegion(0).front()) {
+    if (auto tagOp = dyn_cast<TagOp>(op))
+      tags.push_back(tagOp);
+  }
+
+  if (tags.empty())
+    return;
+
+  BinaryWriter section;
+  section.writeULEB128(tags.size());
+  for (auto tagOp : tags) {
+    section.writeByte(0x00); // attribute
+    uint32_t typeIndex = indexSpace.getTypeIndex(toFuncSig(tagOp.getType()));
+    section.writeULEB128(typeIndex);
+  }
+
+  output.writeSection(wc::SectionId::Tag, section);
+}
+
+/// Emit the element section with declarative ref.func declarations.
+static void emitElementSection(BinaryWriter &output, IndexSpace &indexSpace) {
+  const auto &declaredFuncs = indexSpace.getRefFuncDeclarationIndices();
+  if (declaredFuncs.empty())
+    return;
+
+  BinaryWriter section;
+  section.writeULEB128(1); // one declarative segment
+  section.writeULEB128(3); // flags=3: declarative, elemkind + funcidx vector
+  section.writeByte(0x00); // elemkind=funcref
+  section.writeULEB128(declaredFuncs.size());
+  for (uint32_t idx : declaredFuncs)
+    section.writeULEB128(idx);
+
+  output.writeSection(wc::SectionId::Element, section);
+}
+
 /// Emit the global section (section 6).
 static void emitGlobalSection(BinaryWriter &output, IndexSpace &indexSpace,
                               Operation *moduleOp) {
@@ -182,6 +237,11 @@ static void emitExportSection(BinaryWriter &output, IndexSpace &indexSpace,
       if (auto exportName = globalOp.getExportName()) {
         uint32_t idx = indexSpace.getGlobalIndex(globalOp.getSymName());
         exports.push_back({*exportName, wc::ExportKind::Global, idx});
+      }
+    } else if (auto tagOp = dyn_cast<TagOp>(op)) {
+      if (auto exportName = tagOp.getExportName()) {
+        uint32_t idx = indexSpace.getTagIndex(tagOp.getSymName());
+        exports.push_back({*exportName, wc::ExportKind::Tag, idx});
       }
     }
   }
@@ -482,17 +542,20 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
   emitImportSection(writer, indexSpace, wasmModule);
   emitFunctionSection(writer, indexSpace, wasmModule);
   emitMemorySection(writer, wasmModule);
+  emitTagSection(writer, indexSpace, wasmModule);
   emitGlobalSection(writer, indexSpace, wasmModule);
 
   // Export section: skip in relocatable mode (exports become symbol flags)
   if (!relocatable)
     emitExportSection(writer, indexSpace, wasmModule);
 
+  emitElementSection(writer, indexSpace);
   emitDataCountSection(writer, wasmModule);
 
   // The code section index: count sections emitted before it.
-  // type(1) + import(2, if any) + function(3) + memory(5) + global(6) +
-  // export(7, if !reloc) + datacount(12). We need the actual section index
+  // type(1) + import(2, if any) + function(3) + memory(5) + tag(13, if any) +
+  // global(6) + export(7, if !reloc) + element(9, if any) + datacount(12).
+  // We need the actual section index
   // in the binary.
   // Section indices are sequential starting from 0 for each section in the
   // binary, not by section ID.
@@ -522,6 +585,15 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
       }
     if (hasMemory)
       idx++;
+    // tag section may be absent
+    bool hasTag = false;
+    for (Operation &mop : wasmModule->getRegion(0).front())
+      if (isa<TagOp>(mop)) {
+        hasTag = true;
+        break;
+      }
+    if (hasTag)
+      idx++;
     // global section may be absent
     bool hasGlobal = false;
     for (Operation &mop : wasmModule->getRegion(0).front())
@@ -550,10 +622,18 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
             hasExport = true;
             break;
           }
+        if (auto t = dyn_cast<TagOp>(mop))
+          if (t.getExportName()) {
+            hasExport = true;
+            break;
+          }
       }
       if (hasExport)
         idx++;
     }
+    // element section may be absent
+    if (!indexSpace.getRefFuncDeclarationIndices().empty())
+      idx++;
     // data count section may be absent
     bool hasData = false;
     for (Operation &mop : wasmModule->getRegion(0).front())

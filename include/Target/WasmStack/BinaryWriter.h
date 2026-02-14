@@ -11,6 +11,7 @@
 
 #include "Target/WasmStack/WasmBinaryConstants.h"
 #include "mlir/IR/Types.h"
+#include "wasmstack/WasmStackTypes.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -110,6 +111,12 @@ public:
       writeByte(static_cast<uint8_t>(wasm::ValType::F32));
     } else if (type.isF64()) {
       writeByte(static_cast<uint8_t>(wasm::ValType::F64));
+    } else if (isa<FuncRefType>(type)) {
+      writeByte(static_cast<uint8_t>(wasm::ValType::FuncRef));
+    } else if (isa<ExternRefType>(type)) {
+      writeByte(static_cast<uint8_t>(wasm::ValType::ExternRef));
+    } else if (isa<ContRefType>(type)) {
+      writeByte(static_cast<uint8_t>(wasm::ValType::ContRef));
     } else {
       return false;
     }

@@ -79,6 +79,36 @@ public:
     return memoryNames;
   }
 
+  /// Continuation type declaration information.
+  struct ContTypeInfo {
+    std::string name;
+    uint32_t funcTypeIndex;
+    uint32_t typeIndex;
+  };
+
+  /// Get wasm type index for a declared `wasmstack.type.cont`.
+  uint32_t getContTypeIndex(llvm::StringRef name) const;
+
+  /// Get all continuation declarations in index order.
+  const llvm::SmallVector<ContTypeInfo> &getContTypes() const {
+    return contTypes;
+  }
+
+  /// Get type index for a declared `wasmstack.type.func`.
+  uint32_t getTypeFuncIndex(llvm::StringRef name) const;
+
+  /// Get tag index by symbol name.
+  uint32_t getTagIndex(llvm::StringRef name) const;
+
+  /// Get all tag names in index order.
+  const llvm::SmallVector<std::string> &getTagNames() const { return tagNames; }
+
+  /// Get sorted function indices that require declarative `ref.func`
+  /// declarations in the element section.
+  const llvm::SmallVector<uint32_t> &getRefFuncDeclarationIndices() const {
+    return refFuncDeclarationIndices;
+  }
+
   /// Symbol information for the linking section symbol table.
   struct SymbolInfo {
     wasm::SymtabKind kind;
@@ -115,6 +145,20 @@ private:
   /// Memory name -> index mapping.
   llvm::StringMap<uint32_t> memoryIndexMap;
   llvm::SmallVector<std::string> memoryNames;
+
+  /// Function-type symbol -> type index mapping.
+  llvm::StringMap<uint32_t> typeFuncIndexMap;
+
+  /// Continuation-type symbol -> type index mapping.
+  llvm::StringMap<uint32_t> contTypeIndexMap;
+  llvm::SmallVector<ContTypeInfo> contTypes;
+
+  /// Tag name -> index mapping.
+  llvm::StringMap<uint32_t> tagIndexMap;
+  llvm::SmallVector<std::string> tagNames;
+
+  /// Unique sorted function indices referenced by wasmstack.ref.func.
+  llvm::SmallVector<uint32_t> refFuncDeclarationIndices;
 
   /// Symbol table for linking section.
   llvm::SmallVector<SymbolInfo> symbols;
