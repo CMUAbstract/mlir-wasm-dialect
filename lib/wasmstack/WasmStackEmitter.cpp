@@ -1368,11 +1368,6 @@ void WasmStackEmitter::emitContBind(wami::ContBindOp contBindOp) {
       return;
   }
 
-  // Current wasmstack.cont.bind op does not encode bound arguments. Consume
-  // bound values explicitly to keep stack state consistent.
-  for (Value v : llvm::reverse(boundArgs))
-    DropOp::create(builder, loc, toWasmStackType(v.getType()));
-
   auto srcType = contBindOp->getAttrOfType<FlatSymbolRefAttr>("src_cont_type");
   auto dstType = contBindOp->getAttrOfType<FlatSymbolRefAttr>("dst_cont_type");
   if (!srcType || !dstType) {
