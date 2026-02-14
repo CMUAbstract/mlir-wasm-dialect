@@ -1328,6 +1328,7 @@ def WasmStack_RefNullOp : WasmStack_Op<"ref.null"> {
   let summary = "Get null reference";
   let arguments = (ins TypeAttr:$type);
   let assemblyFormat = "`:` $type attr-dict";
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     unsigned getStackInputs() { return 0; }

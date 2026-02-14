@@ -22,6 +22,20 @@ wasmstack.module {
 // -----
 
 wasmstack.module {
+  wasmstack.type.func @takes_i32 = (i32) -> i32
+  wasmstack.type.cont @cont_i32 = cont @takes_i32
+
+  wasmstack.func @bad_ref_null_nonnull : () -> () {
+    // expected-error @+1 {{ref.null expects nullable reference type}}
+    wasmstack.ref.null : !wasmstack.contref_nonnull<@cont_i32>
+    wasmstack.drop : !wasmstack.contref_nonnull<@cont_i32>
+    wasmstack.return
+  }
+}
+
+// -----
+
+wasmstack.module {
   wasmstack.type.func @takes_i64 = (i64) -> i32
   wasmstack.type.cont @cont_i64 = cont @takes_i64
   wasmstack.tag @yield_i32 : (i32) -> i32

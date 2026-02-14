@@ -9,6 +9,7 @@
 #ifndef TARGET_WASMSTACK_BINARYWRITER_H
 #define TARGET_WASMSTACK_BINARYWRITER_H
 
+#include "Target/WasmStack/IndexSpace.h"
 #include "Target/WasmStack/WasmBinaryConstants.h"
 #include "mlir/IR/Types.h"
 #include "wasmstack/WasmStackTypes.h"
@@ -102,7 +103,7 @@ public:
 
   /// Write a WebAssembly value type byte from an MLIR type.
   /// Returns true on success, false if the type is unsupported.
-  bool writeValType(mlir::Type type) {
+  bool writeValType(mlir::Type type, const IndexSpace *indexSpace = nullptr) {
     if (type.isInteger(32)) {
       writeByte(static_cast<uint8_t>(wasm::ValType::I32));
     } else if (type.isInteger(64)) {
@@ -115,12 +116,54 @@ public:
       writeByte(static_cast<uint8_t>(wasm::ValType::FuncRef));
     } else if (isa<ExternRefType>(type)) {
       writeByte(static_cast<uint8_t>(wasm::ValType::ExternRef));
-    } else if (isa<ContRefType>(type)) {
-      writeByte(static_cast<uint8_t>(wasm::ValType::ContRef));
+    } else if (auto contRefType = dyn_cast<ContRefType>(type)) {
+      if (!indexSpace) {
+        writeByte(static_cast<uint8_t>(wasm::ValType::ContRef));
+      } else {
+        writeByte(wasm::RefType::RefNull);
+        writeSLEB128(static_cast<int64_t>(indexSpace->getContTypeIndex(
+            contRefType.getTypeName().getValue())));
+      }
+    } else if (auto contRefType = dyn_cast<ContRefNonNullType>(type)) {
+      if (!indexSpace)
+        return false;
+      writeByte(wasm::RefType::Ref);
+      writeSLEB128(static_cast<int64_t>(
+          indexSpace->getContTypeIndex(contRefType.getTypeName().getValue())));
     } else {
       return false;
     }
     return true;
+  }
+
+  /// Write a heaptype immediate from an MLIR reference type.
+  /// Returns true on success, false if the type is unsupported.
+  bool writeHeapType(mlir::Type type, const IndexSpace *indexSpace = nullptr) {
+    if (isa<FuncRefType>(type)) {
+      writeByte(static_cast<uint8_t>(wasm::ValType::FuncRef));
+      return true;
+    }
+    if (isa<ExternRefType>(type)) {
+      writeByte(static_cast<uint8_t>(wasm::ValType::ExternRef));
+      return true;
+    }
+    if (auto contRefType = dyn_cast<ContRefType>(type)) {
+      if (!indexSpace) {
+        writeByte(static_cast<uint8_t>(wasm::ValType::ContRef));
+      } else {
+        writeSLEB128(static_cast<int64_t>(indexSpace->getContTypeIndex(
+            contRefType.getTypeName().getValue())));
+      }
+      return true;
+    }
+    if (auto contRefType = dyn_cast<ContRefNonNullType>(type)) {
+      if (!indexSpace)
+        return false;
+      writeSLEB128(static_cast<int64_t>(
+          indexSpace->getContTypeIndex(contRefType.getTypeName().getValue())));
+      return true;
+    }
+    return false;
   }
 
   /// Write a complete section: sectionId + uleb128(size) + contents.
