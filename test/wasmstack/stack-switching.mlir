@@ -41,14 +41,14 @@ wasmstack.module @stack_switching {
   // Consumer that creates and resumes a continuation
   // CHECK-LABEL: wasmstack.func @run_generator
   wasmstack.func @run_generator : () -> i32 {
+    // Push continuation argument first; resume consumes cont on top.
+    wasmstack.i32.const 10
+
     // Get reference to generator function
     wasmstack.ref.func @generator
 
     // Create a new continuation
     wasmstack.cont.new @gen_cont
-
-    // Push initial argument
-    wasmstack.i32.const 10
 
     // Resume with handler for yield tag
     wasmstack.block @handle_yield : ([]) -> [i32] {
