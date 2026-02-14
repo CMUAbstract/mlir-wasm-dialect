@@ -88,6 +88,16 @@ llvm_config.add_tool_substitutions(
 if all(tool.was_resolved for tool in wabt_tools):
     config.available_features.add("wabt")
 
+# Optional wasm-ld used by relocatable/linking tests.
+wasm_ld_tool = ToolSubst(
+    "wasm-ld", command=FindTool("wasm-ld"), unresolved="ignore"
+)
+llvm_config.add_tool_substitutions(
+    [wasm_ld_tool], tool_dirs + [config.environment.get("PATH", "")]
+)
+if wasm_ld_tool.was_resolved:
+    config.available_features.add("wasm_ld")
+
 # Optional wasmtime execution integration tests (opt-in).
 # Enabled only when cargo is available and RUN_WASMTIME_BENCH=1.
 run_wasmtime_bench = os.environ.get("RUN_WASMTIME_BENCH", "") == "1"
