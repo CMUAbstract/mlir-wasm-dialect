@@ -134,13 +134,17 @@ resolveFuncRefSignature(Operation *op, FuncRefType funcRef, StringRef context) {
 
 static LogicalResult verifyContValueType(Operation *op, Type contValueType,
                                          FlatSymbolRefAttr expectedSym,
-                                         StringRef context) {
+                                         StringRef context,
+                                         bool requireNonNull = false) {
   auto contTy = dyn_cast<ContType>(contValueType);
   if (!contTy) {
     return op->emitError(context)
            << ": expected operand of !wami.cont<...> type, got "
            << contValueType;
   }
+
+  if (requireNonNull && contTy.getNullable())
+    return op->emitError(context) << " requires non-null continuation";
 
   if (contTy.getTypeName() != expectedSym) {
     return op->emitError(context) << ": continuation value type " << contTy
@@ -220,6 +224,13 @@ LogicalResult RefNullOp::verify() {
     return emitOpError("ref.null result must be a WAMI reference type, got ")
            << resultType;
   }
+
+  if (auto contTy = dyn_cast<ContType>(resultType);
+      contTy && !contTy.getNullable()) {
+    return emitOpError(
+        "ref.null for continuation requires nullable continuation type");
+  }
+
   return success();
 }
 
@@ -248,6 +259,8 @@ LogicalResult ContNewOp::verify() {
   auto resultContTy = dyn_cast<ContType>(getResult().getType());
   if (!resultContTy)
     return emitOpError("result must be !wami.cont<...>");
+  if (resultContTy.getNullable())
+    return emitOpError("cont.new result must be non-null continuation");
 
   if (resultContTy.getTypeName() != contTypeRef) {
     return emitOpError("result continuation type symbol ")
@@ -276,12 +289,14 @@ LogicalResult ContBindOp::verify() {
     return emitOpError("expected continuation operand");
 
   if (failed(verifyContValueType(*this, operands.front().getType(), srcRef,
-                                 "cont.bind")))
+                                 "cont.bind", /*requireNonNull=*/true)))
     return failure();
 
   auto resultContTy = dyn_cast<ContType>(getResult().getType());
   if (!resultContTy)
     return emitOpError("result must be !wami.cont<...>");
+  if (resultContTy.getNullable())
+    return emitOpError("cont.bind result must be non-null continuation");
   if (resultContTy.getTypeName() != dstRef) {
     return emitOpError("result continuation symbol ")
            << resultContTy.getTypeName() << " does not match dst_cont_type "
@@ -358,7 +373,7 @@ LogicalResult ResumeOp::verify() {
     return emitOpError("expected continuation operand");
 
   if (failed(verifyContValueType(*this, operands.front().getType(), contTypeRef,
-                                 "resume")))
+                                 "resume", /*requireNonNull=*/true)))
     return failure();
 
   ValueRange args = operands.drop_front();
@@ -389,7 +404,7 @@ LogicalResult ResumeThrowOp::verify() {
     return emitOpError("expected continuation operand");
 
   if (failed(verifyContValueType(*this, operands.front().getType(), contTypeRef,
-                                 "resume_throw")))
+                                 "resume_throw", /*requireNonNull=*/true)))
     return failure();
 
   ValueRange args = operands.drop_front();
