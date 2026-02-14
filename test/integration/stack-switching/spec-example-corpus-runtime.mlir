@@ -10,9 +10,9 @@
 //   21xx: generator-style flow
 //   22xx: generator-extended-style flow
 //
-// TODO: remove XFAIL once typed continuation-ref encoding is aligned with
-// Wizard/runtime expectations (currently reports expected `(ref null cont #N)`
-// but sees generic `contref`/value mismatches).
+// TODO: remove XFAIL once runtime continuation-state handling is fixed.
+// Current Wizard runtime failure for this corpus:
+//   expected continuation, got <null>
 
 module {
   wasmssa.import_func "puti" from "wizeng" as @print_i32 {type = (i32) -> ()}

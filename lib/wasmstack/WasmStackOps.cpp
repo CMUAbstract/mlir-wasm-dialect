@@ -105,7 +105,7 @@ static bool isValidWasmType(Type type) {
   if (isa<Float32Type, Float64Type>(type))
     return true;
   // Reference types: funcref, contref, externref
-  if (isa<FuncRefType, ContRefType, ExternRefType>(type))
+  if (isa<FuncRefType, ContRefType, ContRefNonNullType, ExternRefType>(type))
     return true;
   return false;
 }
@@ -116,6 +116,19 @@ LogicalResult GlobalOp::verify() {
     return emitOpError("global type must be a valid WebAssembly type "
                        "(i32, i64, f32, f64, or reference type), but got ")
            << globalType;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RefNullOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult RefNullOp::verify() {
+  Type type = getType();
+  if (!isa<FuncRefType, ContRefType, ExternRefType>(type)) {
+    return emitOpError("ref.null expects nullable reference type, got ")
+           << type;
   }
   return success();
 }

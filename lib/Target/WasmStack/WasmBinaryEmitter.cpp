@@ -43,6 +43,8 @@ static void emitTypeSection(BinaryWriter &output, IndexSpace &indexSpace) {
     // Params
     section.writeULEB128(sig.params.size());
     for (Type t : sig.params)
+      // Keep signature-level continuation refs in canonical generic form to
+      // avoid forward heaptype index constraints in the linear type section.
       section.writeValType(t);
     // Results
     section.writeULEB128(sig.results.size());
@@ -199,7 +201,7 @@ static void emitGlobalSection(BinaryWriter &output, IndexSpace &indexSpace,
   section.writeULEB128(globals.size());
   for (auto globalOp : globals) {
     // Global type: valtype + mutability
-    section.writeValType(globalOp.getTypeAttr().getValue());
+    section.writeValType(globalOp.getTypeAttr().getValue(), &indexSpace);
     section.writeByte(globalOp.getIsMutable()
                           ? static_cast<uint8_t>(wc::Mutability::Var)
                           : static_cast<uint8_t>(wc::Mutability::Const));
@@ -309,7 +311,7 @@ static LogicalResult emitCodeSection(BinaryWriter &output,
     funcBody.writeULEB128(localGroups.size());
     for (auto &[count, type] : localGroups) {
       funcBody.writeULEB128(count);
-      funcBody.writeValType(type);
+      funcBody.writeValType(type, &indexSpace);
     }
 
     // The sectionOffset for relocations is the current position in the section
