@@ -1,11 +1,6 @@
 // REQUIRES: wizard_exec
-// XFAIL: *
 // RUN: wasm-opt %s --convert-to-wasmstack --verify-wasmstack | wasm-emit --mlir-to-wasm -o %t.wasm
 // RUN: %run_wizard_bin --input %t.wasm --expect-i32 7 --quiet
-
-// TODO: remove XFAIL once runtime continuation-state handling is fixed.
-// Current Wizard runtime failure for this workload:
-//   expected continuation, got <null>
 
 module {
   // Alias Wizard's wizeng.puti host import as print_i32 for readability.
