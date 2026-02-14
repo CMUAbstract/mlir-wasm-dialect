@@ -80,6 +80,5 @@ wasm-opt test/integration/stack-switching/spec-example-corpus-runtime.mlir \
 ```
 
 This now emits wasm and clears `ref.func` declaration checks, but runtime
-execution still fails in Wizard due to continuation-reference typing mismatch
-(Wizard expects typed `(ref null cont #N)`-style values and reports type
-mismatch against generic `contref`/stack values).
+execution still fails in Wizard due to runtime continuation-state handling
+(current failure is `expected continuation, got <null>` in corpus execution).

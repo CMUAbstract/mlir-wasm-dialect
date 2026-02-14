@@ -7,7 +7,10 @@
 // Tag section id (0x0d) is emitted.
 // HEX: 0d
 // Stack-switching opcodes appear in function body order.
-// HEX: d0
+// Typed non-null continuation refs in locals encode as ref + heaptype index.
+// HEX: 01016401
+// Typed nullable continuation ref.null encodes heaptype index.
+// HEX: d001
 // Barrier currently lowers to nop; this checks the emitted identity fence sequence.
 // HEX: 4101011a
 // HEX: d2
@@ -28,6 +31,11 @@ wasmstack.module @emit_stack_switching {
   wasmstack.tag @yield : () -> ()
 
   wasmstack.func @worker : () -> () {
+    wasmstack.return
+  }
+
+  wasmstack.func @nonnull_local : () -> () {
+    wasmstack.local 0 : !wasmstack.contref_nonnull<@ct>
     wasmstack.return
   }
 

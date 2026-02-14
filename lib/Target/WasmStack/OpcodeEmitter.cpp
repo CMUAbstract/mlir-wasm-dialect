@@ -32,17 +32,20 @@ uint32_t OpcodeEmitter::resolveLabelDepth(llvm::StringRef label) const {
 // Block type encoding
 //===----------------------------------------------------------------------===//
 
-void OpcodeEmitter::emitBlockType(ArrayAttr paramTypes, ArrayAttr resultTypes) {
+bool OpcodeEmitter::emitBlockType(ArrayAttr paramTypes, ArrayAttr resultTypes) {
   bool noParams = !paramTypes || paramTypes.empty();
   size_t numResults = resultTypes ? resultTypes.size() : 0;
 
   if (noParams && numResults == 0) {
     // void block type
     writer.writeByte(wc::BlockTypeVoid);
+    return true;
   } else if (noParams && numResults == 1) {
     // Single result type - encode as valtype byte
     Type resultType = cast<TypeAttr>(resultTypes[0]).getValue();
-    writer.writeValType(resultType);
+    if (!writer.writeValType(resultType, &indexSpace))
+      return false;
+    return true;
   } else {
     // Multi-value: encode as type index (signed LEB128)
     IndexSpace::FuncSig sig;
@@ -56,6 +59,7 @@ void OpcodeEmitter::emitBlockType(ArrayAttr paramTypes, ArrayAttr resultTypes) {
     }
     int32_t typeIdx = static_cast<int32_t>(indexSpace.getTypeIndex(sig));
     writer.writeSLEB128(typeIdx);
+    return true;
   }
 }
 
@@ -692,7 +696,10 @@ bool OpcodeEmitter::emitConversionOp(Operation *op) {
 bool OpcodeEmitter::emitControlFlowOp(Operation *op) {
   if (auto blockOp = dyn_cast<BlockOp>(op)) {
     writer.writeByte(wc::Opcode::Block);
-    emitBlockType(blockOp.getParamTypes(), blockOp.getResultTypes());
+    if (!emitBlockType(blockOp.getParamTypes(), blockOp.getResultTypes())) {
+      blockOp.emitOpError("failed to encode block result type");
+      return false;
+    }
 
     // Push label and emit body
     ScopedLabel label(*this, blockOp.getLabel(), /*isLoop=*/false);
@@ -706,7 +713,10 @@ bool OpcodeEmitter::emitControlFlowOp(Operation *op) {
 
   if (auto loopOp = dyn_cast<LoopOp>(op)) {
     writer.writeByte(wc::Opcode::Loop);
-    emitBlockType(loopOp.getParamTypes(), loopOp.getResultTypes());
+    if (!emitBlockType(loopOp.getParamTypes(), loopOp.getResultTypes())) {
+      loopOp.emitOpError("failed to encode loop result type");
+      return false;
+    }
 
     // Push label and emit body
     ScopedLabel label(*this, loopOp.getLabel(), /*isLoop=*/true);
@@ -720,7 +730,10 @@ bool OpcodeEmitter::emitControlFlowOp(Operation *op) {
 
   if (auto ifOp = dyn_cast<IfOp>(op)) {
     writer.writeByte(wc::Opcode::If);
-    emitBlockType(ifOp.getParamTypes(), ifOp.getResultTypes());
+    if (!emitBlockType(ifOp.getParamTypes(), ifOp.getResultTypes())) {
+      ifOp.emitOpError("failed to encode if result type");
+      return false;
+    }
 
     // Emit then body
     for (Operation &innerOp : ifOp.getThenBody().front()) {
@@ -1022,8 +1035,9 @@ bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
 
   if (auto refNullOp = dyn_cast<RefNullOp>(op)) {
     writer.writeByte(wc::Opcode::RefNull);
-    if (!writer.writeValType(refNullOp.getType())) {
-      refNullOp.emitOpError("unsupported ref.null type for binary encoding: ")
+    if (!writer.writeHeapType(refNullOp.getType(), &indexSpace)) {
+      refNullOp.emitOpError(
+          "unsupported ref.null heap type for binary encoding: ")
           << refNullOp.getType();
       return false;
     }

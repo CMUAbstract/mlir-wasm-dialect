@@ -95,6 +95,9 @@ private:
   LogicalResult popAnyValue(Type &actual);
   LogicalResult popValues(ArrayRef<Type> expected);
   LogicalResult checkStackHeight(size_t expected, StringRef context);
+  bool isSubtype(Type actual, Type expected) const;
+  Type getNullableContRefType(FlatSymbolRefAttr ref) const;
+  Type getNonNullContRefType(FlatSymbolRefAttr ref) const;
 
   // Control flow helpers
   void pushControlFrame(ControlFrame frame);
@@ -169,7 +172,7 @@ LogicalResult StackVerifier::popValue(Type expected) {
   Type actual = valueStack.pop_back_val();
 
   // Type check
-  if (actual != expected) {
+  if (!isSubtype(actual, expected)) {
     return emitError("type mismatch: expected ")
            << expected << " but got " << actual;
   }
@@ -220,6 +223,27 @@ LogicalResult StackVerifier::checkStackHeight(size_t expected,
   return success();
 }
 
+bool StackVerifier::isSubtype(Type actual, Type expected) const {
+  if (actual == expected)
+    return true;
+
+  auto actualNonNull = dyn_cast<ContRefNonNullType>(actual);
+  auto expectedNullable = dyn_cast<ContRefType>(expected);
+  if (actualNonNull && expectedNullable) {
+    return actualNonNull.getTypeName() == expectedNullable.getTypeName();
+  }
+
+  return false;
+}
+
+Type StackVerifier::getNullableContRefType(FlatSymbolRefAttr ref) const {
+  return ContRefType::get(ctx, ref);
+}
+
+Type StackVerifier::getNonNullContRefType(FlatSymbolRefAttr ref) const {
+  return ContRefNonNullType::get(ctx, ref);
+}
+
 void StackVerifier::pushControlFrame(ControlFrame frame) {
   if (!frame.label.empty()) {
     labelToFrameIndex[frame.label] = controlStack.size();
@@ -248,7 +272,7 @@ LogicalResult StackVerifier::popControlFrame() {
     // Verify result types (but don't actually pop yet)
     for (size_t i = 0; i < frame.resultTypes.size(); ++i) {
       size_t stackIdx = valueStack.size() - frame.resultTypes.size() + i;
-      if (valueStack[stackIdx] != frame.resultTypes[i]) {
+      if (!isSubtype(valueStack[stackIdx], frame.resultTypes[i])) {
         return frame.op->emitError("frame result type mismatch at index ")
                << i << ": expected " << frame.resultTypes[i] << " but got "
                << valueStack[stackIdx];
@@ -602,7 +626,7 @@ LogicalResult StackVerifier::handleBrIfOp(BrIfOp op) {
   // Type check the top values (but don't pop - they're needed for fallthrough)
   for (size_t i = 0; i < branchTypes.size(); ++i) {
     size_t stackIdx = valueStack.size() - branchTypes.size() + i;
-    if (valueStack[stackIdx] != branchTypes[i]) {
+    if (!isSubtype(valueStack[stackIdx], branchTypes[i])) {
       return emitError("conditional branch type mismatch at index ")
              << i << ": expected " << branchTypes[i] << " but got "
              << valueStack[stackIdx];
@@ -642,7 +666,8 @@ LogicalResult StackVerifier::handleBrTableOp(BrTableOp op) {
       return op.emitError("branch table targets have inconsistent arities");
     }
     for (size_t i = 0; i < expectedTypes.size(); ++i) {
-      if (targetTypes[i] != expectedTypes[i]) {
+      if (!isSubtype(targetTypes[i], expectedTypes[i]) ||
+          !isSubtype(expectedTypes[i], targetTypes[i])) {
         return op.emitError("branch table targets have inconsistent types");
       }
     }
@@ -724,7 +749,7 @@ LogicalResult StackVerifier::handleContNewOp(ContNewOp op) {
     }
   }
 
-  pushValue(ContRefType::get(op.getContext(), op.getContTypeAttr()));
+  pushValue(getNonNullContRefType(op.getContTypeAttr()));
   return success();
 }
 
@@ -748,15 +773,14 @@ LogicalResult StackVerifier::handleContBindOp(ContBindOp op) {
 
   unsigned boundCount = srcSig->getNumInputs() - dstSig->getNumInputs();
   SmallVector<Type> expected;
-  expected.push_back(
-      ContRefType::get(op.getContext(), op.getSrcContTypeAttr()));
+  expected.push_back(getNullableContRefType(op.getSrcContTypeAttr()));
   expected.append(srcSig->getInputs().begin(),
                   srcSig->getInputs().begin() + boundCount);
 
   if (failed(popValues(expected)))
     return failure();
 
-  pushValue(ContRefType::get(op.getContext(), op.getDstContTypeAttr()));
+  pushValue(getNonNullContRefType(op.getDstContTypeAttr()));
   return success();
 }
 
@@ -766,7 +790,7 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
   if (failed(contSig))
     return failure();
 
-  Type contRefType = ContRefType::get(op.getContext(), op.getContTypeAttr());
+  Type contRefType = getNullableContRefType(op.getContTypeAttr());
   SmallVector<Type> expected;
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.push_back(contRefType);
@@ -810,7 +834,7 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
          llvm::enumerate(llvm::zip(targetTypes, expectedBranchTypes))) {
       Type targetType = std::get<0>(pairTypes);
       Type expectedType = std::get<1>(pairTypes);
-      if (targetType != expectedType) {
+      if (!isSubtype(expectedType, targetType)) {
         return op.emitError("handler label type mismatch at index ")
                << idx << " for " << label << ": expected " << targetType
                << " but handler provides " << expectedType;
@@ -829,7 +853,7 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
   if (failed(contSig))
     return failure();
 
-  Type contRefType = ContRefType::get(op.getContext(), op.getContTypeAttr());
+  Type contRefType = getNullableContRefType(op.getContTypeAttr());
   SmallVector<Type> expected;
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.push_back(contRefType);
@@ -872,7 +896,7 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
          llvm::enumerate(llvm::zip(targetTypes, expectedBranchTypes))) {
       Type targetType = std::get<0>(pairTypes);
       Type expectedType = std::get<1>(pairTypes);
-      if (targetType != expectedType) {
+      if (!isSubtype(expectedType, targetType)) {
         return op.emitError("handler label type mismatch at index ")
                << idx << " for " << label << ": expected " << targetType
                << " but handler provides " << expectedType;
@@ -907,7 +931,7 @@ LogicalResult StackVerifier::handleSwitchOp(SwitchOp op) {
   SmallVector<Type> expected;
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.append(tagSig->getInputs().begin(), tagSig->getInputs().end());
-  expected.push_back(ContRefType::get(op.getContext(), op.getContTypeAttr()));
+  expected.push_back(getNullableContRefType(op.getContTypeAttr()));
   if (failed(popValues(expected)))
     return failure();
 

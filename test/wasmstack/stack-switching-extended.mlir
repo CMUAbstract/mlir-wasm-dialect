@@ -38,4 +38,14 @@ wasmstack.module {
     wasmstack.barrier : (i32) -> i32
     wasmstack.return
   }
+
+  // CHECK-LABEL: wasmstack.func @nonnull_contref_ok
+  // CHECK: wasmstack.local 0 : !wasmstack.contref_nonnull<@c>
+  wasmstack.func @nonnull_contref_ok : () -> () {
+    wasmstack.local 0 : !wasmstack.contref_nonnull<@c>
+    wasmstack.ref.func @worker
+    wasmstack.cont.new @c
+    wasmstack.local.set 0 : !wasmstack.contref_nonnull<@c>
+    wasmstack.return
+  }
 }
