@@ -66,6 +66,7 @@ private:
   bool emitControlFlowOp(Operation *op);
   bool emitMemoryOp(Operation *op);
   bool emitCallOp(Operation *op);
+  bool emitStackSwitchingOp(Operation *op);
   bool emitMiscOp(Operation *op);
 
   /// Get the type-dispatched opcode for a binary/unary/compare operation.

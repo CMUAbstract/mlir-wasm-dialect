@@ -44,6 +44,7 @@ enum class ValType : uint8_t {
   F64 = 0x7C,
   FuncRef = 0x70,
   ExternRef = 0x6F,
+  ContRef = 0x68,
 };
 
 // Block types
@@ -292,6 +293,15 @@ constexpr uint8_t F64ReinterpretI64 = 0xBF;
 // Reference types
 constexpr uint8_t RefNull = 0xD0;
 constexpr uint8_t RefFunc = 0xD2;
+
+// Stack switching / typed continuations
+constexpr uint8_t ContNew = 0xE0;
+constexpr uint8_t ContBind = 0xE1;
+constexpr uint8_t Suspend = 0xE2;
+constexpr uint8_t Resume = 0xE3;
+constexpr uint8_t ResumeThrow = 0xE4;
+constexpr uint8_t ResumeThrowRef = 0xE5;
+constexpr uint8_t Switch = 0xE6;
 
 } // namespace Opcode
 
