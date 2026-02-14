@@ -784,6 +784,14 @@ LogicalResult StackVerifier::handleContBindOp(ContBindOp op) {
   return success();
 }
 
+static LogicalResult verifySwitchTagHasEmptyInputs(Operation *op,
+                                                   FunctionType tagSig,
+                                                   StringRef diagnostic) {
+  if (!tagSig.getInputs().empty())
+    return op->emitError(diagnostic);
+  return success();
+}
+
 LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
   FailureOr<FunctionType> contSig =
       resolveContSig(op, op.getContTypeAttr(), "resume");
@@ -812,8 +820,12 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
       return failure();
 
     // "switch" is the wasmstack sentinel for on-switch handlers.
-    if (label.getValue() == "switch")
+    if (label.getValue() == "switch") {
+      if (failed(verifySwitchTagHasEmptyInputs(
+              op, *tagSig, "switch handler tag must have empty inputs")))
+        return failure();
       continue;
+    }
 
     ControlFrame *target = findLabelFrame(label.getValue());
     if (!target)
@@ -893,8 +905,12 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
     if (failed(tagSig))
       return failure();
 
-    if (label.getValue() == "switch")
+    if (label.getValue() == "switch") {
+      if (failed(verifySwitchTagHasEmptyInputs(
+              op, *tagSig, "switch handler tag must have empty inputs")))
+        return failure();
       continue;
+    }
 
     ControlFrame *target = findLabelFrame(label.getValue());
     if (!target)
@@ -964,6 +980,9 @@ LogicalResult StackVerifier::handleSwitchOp(SwitchOp op) {
       resolveContSig(op, op.getContTypeAttr(), "switch");
   FailureOr<FunctionType> tagSig = resolveTagSig(op, op.getTagAttr(), "switch");
   if (failed(contSig) || failed(tagSig))
+    return failure();
+  if (failed(verifySwitchTagHasEmptyInputs(
+          op, *tagSig, "switch tag must have empty inputs")))
     return failure();
 
   SmallVector<Type> expected;
