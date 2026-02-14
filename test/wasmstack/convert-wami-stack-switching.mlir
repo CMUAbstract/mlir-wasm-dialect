@@ -12,16 +12,22 @@
 
 // CHECK-LABEL: wasmstack.func @driver_label
 // CHECK: wasmstack.block @[[ON:[A-Za-z0-9_]+]]
-// CHECK: wasmstack.resume @gen_ct (@yield -> @[[ON]])
+// CHECK: wasmstack.local.get [[ARG_LABEL:[0-9]+]] : i32
+// CHECK-NEXT: wasmstack.local.get [[CONT_LABEL:[0-9]+]] : !wasmstack.contref<@gen_ct>
+// CHECK-NEXT: wasmstack.resume @gen_ct (@yield -> @[[ON]])
 
 // CHECK-LABEL: wasmstack.func @driver_switch
-// CHECK: wasmstack.resume @gen_ct (@yield -> @switch)
+// CHECK: wasmstack.local.get [[ARG_SWITCH:[0-9]+]] : i32
+// CHECK: wasmstack.local.get [[CONT_SWITCH:[0-9]+]] : !wasmstack.contref<@gen_ct>
+// CHECK-NEXT: wasmstack.resume @gen_ct (@yield -> @switch)
 
 // CHECK-LABEL: wasmstack.func @driver_bind
 // CHECK: wasmstack.cont.new @src_ct
 // CHECK: wasmstack.i32.const 7
 // CHECK: wasmstack.cont.bind @src_ct -> @dst_ct
-// CHECK: wasmstack.resume @dst_ct (@yield -> @switch)
+// CHECK: wasmstack.local.get [[ARG_BIND:[0-9]+]] : i32
+// CHECK: wasmstack.local.get [[CONT_BIND:[0-9]+]] : !wasmstack.contref<@dst_ct>
+// CHECK-NEXT: wasmstack.resume @dst_ct (@yield -> @switch)
 
 module {
   wami.type.func @gen_ft = (i32) -> i32

@@ -14,9 +14,9 @@ wasmstack.module {
   // CHECK-LABEL: wasmstack.func @resume_ok
   // CHECK: wasmstack.resume @c (@yield -> @switch)
   wasmstack.func @resume_ok : () -> i32 {
+    wasmstack.i32.const 7
     wasmstack.ref.func @worker
     wasmstack.cont.new @c
-    wasmstack.i32.const 7
     wasmstack.resume @c (@yield -> @switch)
     wasmstack.return
   }
@@ -24,9 +24,9 @@ wasmstack.module {
   // CHECK-LABEL: wasmstack.func @resume_throw_ok
   // CHECK: wasmstack.resume_throw @c (@yield -> @switch)
   wasmstack.func @resume_throw_ok : () -> () {
+    wasmstack.i32.const 9
     wasmstack.ref.func @worker
     wasmstack.cont.new @c
-    wasmstack.i32.const 9
     wasmstack.resume_throw @c (@yield -> @switch)
     wasmstack.return
   }
