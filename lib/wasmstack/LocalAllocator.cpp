@@ -27,6 +27,8 @@ Type LocalAllocator::unwrapLocalRefType(Type type) {
 
 Type LocalAllocator::normalizeType(Type type) {
   if (auto cont = dyn_cast<wami::ContType>(type)) {
+    if (cont.getNullable())
+      return ContRefType::get(type.getContext(), cont.getTypeName());
     return ContRefNonNullType::get(type.getContext(), cont.getTypeName());
   }
   if (auto func = dyn_cast<wami::FuncRefType>(type)) {
@@ -36,12 +38,7 @@ Type LocalAllocator::normalizeType(Type type) {
 }
 
 Type LocalAllocator::normalizeValueType(Value value) {
-  Type type = value.getType();
-  if (auto cont = dyn_cast<wami::ContType>(type)) {
-    if (isa_and_nonnull<wami::RefNullOp>(value.getDefiningOp()))
-      return ContRefType::get(type.getContext(), cont.getTypeName());
-  }
-  return normalizeType(type);
+  return normalizeType(value.getType());
 }
 
 void LocalAllocator::allocate(wasmssa::FuncOp funcOp,

@@ -38,10 +38,13 @@ def WAMI_ContType : WAMI_Type<"Cont", "cont"> {
     Represents a continuation type in the WAMI dialect.
     Continuations are used for the WebAssembly Stack Switching proposal.
     The type is parametrized by a symbol reference to a declared continuation
-    type.
+    type and an optional nullability flag.
   }];
-  let parameters = (ins "::mlir::FlatSymbolRefAttr":$type_name);
-  let assemblyFormat = "`<` $type_name `>`";
+  let parameters = (ins
+    "::mlir::FlatSymbolRefAttr":$type_name,
+    OptionalParameter<"bool">:$nullable
+  );
+  let assemblyFormat = "`<` $type_name (`,` $nullable^)? `>`";
 }
 
 def WAMI_RefType : AnyTypeOf<[WAMI_FuncRefType, WAMI_ContType], "wami reference type">;
