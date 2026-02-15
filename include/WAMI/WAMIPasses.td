@@ -155,6 +155,10 @@ def CoroToWAMI : Pass<"coro-to-wami", "ModuleOp"> {
   let description = [{
     Lowers wasmssa.call sites of coro.spawn/resume/yield to explicit WAMI
     continuation and suspension operations.
+
+    The lowering uses stable i64 runtime handles and module-level mutable
+    runtime slots (continuation + state) so resume can continue from a paused
+    continuation rather than rematerializing a fresh one.
   }];
   let dependentDialects = [
     "wasmssa::WasmSSADialect",

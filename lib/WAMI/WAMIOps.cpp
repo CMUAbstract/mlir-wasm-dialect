@@ -373,7 +373,7 @@ LogicalResult ResumeOp::verify() {
     return emitOpError("expected continuation operand");
 
   if (failed(verifyContValueType(*this, operands.front().getType(), contTypeRef,
-                                 "resume", /*requireNonNull=*/true)))
+                                 "resume", /*requireNonNull=*/false)))
     return failure();
 
   ValueRange args = operands.drop_front();
@@ -404,7 +404,7 @@ LogicalResult ResumeThrowOp::verify() {
     return emitOpError("expected continuation operand");
 
   if (failed(verifyContValueType(*this, operands.front().getType(), contTypeRef,
-                                 "resume_throw", /*requireNonNull=*/true)))
+                                 "resume_throw", /*requireNonNull=*/false)))
     return failure();
 
   ValueRange args = operands.drop_front();

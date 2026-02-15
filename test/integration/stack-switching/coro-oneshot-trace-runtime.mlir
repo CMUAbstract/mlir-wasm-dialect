@@ -29,7 +29,8 @@
 //     --reconcile-unrealized-casts --coro-to-wami --convert-to-wasmstack \
 //     --verify-wasmstack | wasm-emit --mlir-to-wasm -o /tmp/coro-oneshot-trace.wasm
 //   RUN_WIZARD_STACK_SWITCHING=1 WIZARD_ENGINE_DIR=/Users/byeongjee/wasm/wizard-engine \
-//   %run_wizard_bin --input /tmp/coro-oneshot-trace.wasm --expect-i32 42
+//   python3 test/integration/stack-switching/run_wizard_bin.py \
+//     --input /tmp/coro-oneshot-trace.wasm --expect-i32 42
 
 module {
   func.func private @print_i32(i32) attributes {
@@ -38,7 +39,8 @@ module {
   }
 
   func.func private @coro.spawn.oneshot() -> i64
-  func.func private @coro.resume.oneshot(%h: i64, %x: i32) -> i32
+  func.func private @coro.resume.oneshot(%h: i64, %x: i32)
+      -> (i64, i1, i32)
 
   func.func @coro.impl.oneshot(%x: i32) -> i32 {
     %m200 = arith.constant 200 : i32
@@ -58,11 +60,12 @@ module {
     %m100 = arith.constant 100 : i32
     func.call @print_i32(%m100) : (i32) -> ()
 
-    %h = func.call @coro.spawn.oneshot() : () -> i64
+    %h0 = func.call @coro.spawn.oneshot() : () -> i64
     %x = arith.constant 41 : i32
     func.call @print_i32(%x) : (i32) -> ()
 
-    %r = func.call @coro.resume.oneshot(%h, %x) : (i64, i32) -> i32
+    %h1, %done, %r = func.call @coro.resume.oneshot(%h0, %x)
+        : (i64, i32) -> (i64, i1, i32)
 
     %m101 = arith.constant 101 : i32
     func.call @print_i32(%m101) : (i32) -> ()

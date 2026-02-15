@@ -38,7 +38,7 @@ Type LocalAllocator::normalizeType(Type type) {
 }
 
 Type LocalAllocator::normalizeValueType(Value value) {
-  return normalizeType(value.getType());
+  return normalizeType(unwrapLocalRefType(value.getType()));
 }
 
 void LocalAllocator::allocate(wasmssa::FuncOp funcOp,
