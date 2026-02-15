@@ -15,7 +15,6 @@
 //
 // If any step produces invalid IR, the verification pass will catch it.
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK: wasmstack.module
 // CHECK-NOT: error:
 // CHECK-NOT: stack underflow

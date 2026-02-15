@@ -4,7 +4,6 @@
 // This test verifies that return statements properly have their operands
 // on the stack before the return instruction.
 
-// CHECK: ConvertToWasmStack pass running on module
 
 module {
   //===--------------------------------------------------------------------===//

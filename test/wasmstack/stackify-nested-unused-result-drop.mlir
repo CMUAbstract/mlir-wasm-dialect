@@ -3,7 +3,6 @@
 // Regression test: nested control-flow lowering must drop unused stack
 // results, otherwise stack height diverges at region exit.
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: wasmstack.func @nested_unused_result
 // CHECK: wasmstack.block
 // CHECK: wasmstack.div_s : i32

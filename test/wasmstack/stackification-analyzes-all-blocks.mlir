@@ -4,7 +4,6 @@
 // If analysis only visits the function entry block, `%sum` in `^next` is not
 // planned for local/tee, and emitter fails when materializing `%sum, %sum`.
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: wasmstack.func @analyze_all_blocks
 // CHECK: wasmstack.local.tee
 // CHECK: wasmstack.mul : i32

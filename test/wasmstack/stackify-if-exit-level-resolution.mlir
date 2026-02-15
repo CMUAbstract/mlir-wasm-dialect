@@ -3,7 +3,6 @@
 // Regression test: branch exit level resolution must treat wasmstack.if as a
 // valid control-frame label target.
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: wasmstack.func @if_exit_level_zero
 // CHECK: wasmstack.if : ([]) -> [] then {
 // CHECK: wasmstack.br_if @[[IF_EXIT:if_[0-9]+]]

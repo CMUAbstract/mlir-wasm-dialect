@@ -3,7 +3,6 @@
 // Test end-to-end conversion of SCF control flow operations through WasmSSA to WasmStack dialect.
 // This verifies that block/loop parameters and results are correctly handled during stackification.
 
-// CHECK: ConvertToWasmStack pass running on module
 
 module {
   //===--------------------------------------------------------------------===//

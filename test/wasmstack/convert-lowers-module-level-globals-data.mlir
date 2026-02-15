@@ -3,7 +3,6 @@
 // Regression test: convert-to-wasmstack should fully lower module-level
 // declarations, not leave wami/wasmssa top-level ops behind.
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: module {
 // CHECK-NEXT:   wasmstack.module {
 // CHECK: wasmstack.memory @__linear_memory min = 1 export "memory"

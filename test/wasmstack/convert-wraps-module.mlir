@@ -1,6 +1,5 @@
 // RUN: wasm-opt %s --convert-to-wasmstack 2>&1 | FileCheck %s
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: module {
 // CHECK:   wasmstack.module
 // CHECK:     wasmstack.func @add

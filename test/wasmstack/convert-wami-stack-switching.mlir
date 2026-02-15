@@ -1,6 +1,5 @@
 // RUN: wasm-opt %s --convert-to-wasmstack --verify-wasmstack 2>&1 | FileCheck %s
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: wasmstack.module
 // CHECK-DAG: wasmstack.type.func @gen_ft = (i32) -> i32
 // CHECK-DAG: wasmstack.type.cont @gen_ct = cont @gen_ft
