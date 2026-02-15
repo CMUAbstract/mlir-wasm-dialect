@@ -9,23 +9,37 @@
 // RUN: %run_wizard_bin --input %t.llvm.wasm --expect-i32 42 --quiet
 
 module {
-  func.func private @coro.spawn.task() -> i64
-  func.func private @coro.resume.task(%h: i64, %x: i32) -> i32
+  func.func private @coro.spawn.task_a() -> i64
+  func.func private @coro.resume.task_a(%h: i64, %x: i32)
+      -> (i64, i1, i32)
+  func.func private @coro.spawn.task_b() -> i64
+  func.func private @coro.resume.task_b(%h: i64, %x: i32)
+      -> (i64, i1, i32)
 
-  func.func @coro.impl.task(%x: i32) -> i32 {
+  func.func @coro.impl.task_a(%x: i32) -> i32 {
+    %c2 = arith.constant 2 : i32
+    %r = arith.muli %x, %c2 : i32
+    return %r : i32
+  }
+
+  func.func @coro.impl.task_b(%x: i32) -> i32 {
     %c2 = arith.constant 2 : i32
     %r = arith.muli %x, %c2 : i32
     return %r : i32
   }
 
   func.func @main() -> i32 attributes { exported } {
-    %h1 = func.call @coro.spawn.task() : () -> i64
-    %h2 = func.call @coro.spawn.task() : () -> i64
-
     %a = arith.constant 10 : i32
     %b = arith.constant 11 : i32
-    %r1 = func.call @coro.resume.task(%h1, %a) : (i64, i32) -> i32
-    %r2 = func.call @coro.resume.task(%h2, %b) : (i64, i32) -> i32
+
+    %h10 = func.call @coro.spawn.task_a() : () -> i64
+    %h20 = func.call @coro.spawn.task_b() : () -> i64
+
+    %h11, %d1, %r1 = func.call @coro.resume.task_a(%h10, %a)
+        : (i64, i32) -> (i64, i1, i32)
+    %h21, %d2, %r2 = func.call @coro.resume.task_b(%h20, %b)
+        : (i64, i32) -> (i64, i1, i32)
+
     %sum = arith.addi %r1, %r2 : i32
     return %sum : i32
   }

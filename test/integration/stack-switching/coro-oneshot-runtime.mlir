@@ -10,7 +10,8 @@
 
 module {
   func.func private @coro.spawn.oneshot() -> i64
-  func.func private @coro.resume.oneshot(%h: i64, %x: i32) -> i32
+  func.func private @coro.resume.oneshot(%h: i64, %x: i32)
+      -> (i64, i1, i32)
 
   func.func @coro.impl.oneshot(%x: i32) -> i32 {
     %c1 = arith.constant 1 : i32
@@ -19,9 +20,10 @@ module {
   }
 
   func.func @main() -> i32 attributes { exported } {
-    %h = func.call @coro.spawn.oneshot() : () -> i64
+    %h0 = func.call @coro.spawn.oneshot() : () -> i64
     %x = arith.constant 41 : i32
-    %r = func.call @coro.resume.oneshot(%h, %x) : (i64, i32) -> i32
+    %h1, %done, %r = func.call @coro.resume.oneshot(%h0, %x)
+        : (i64, i32) -> (i64, i1, i32)
     return %r : i32
   }
 }

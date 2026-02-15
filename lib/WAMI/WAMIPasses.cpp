@@ -298,18 +298,27 @@ struct KindUsage {
   Operation *resumeSite = nullptr;
   SmallVector<Type> spawnArgTypes;
   SmallVector<Type> resumeArgTypes;
-  SmallVector<Type> resumeResultTypes;
+  SmallVector<Type> resumePayloadTypes;
 };
 
-struct HandleBinding {
-  Value handleValue;
-  Value contValue;
-  FlatSymbolRefAttr contType;
+struct RuntimeSlot {
+  int64_t handleId = 0;
+  FlatSymbolRefAttr srcContType;
+  FlatSymbolRefAttr resumeContType;
+  FlatSymbolRefAttr stateGlobal;
+  FlatSymbolRefAttr contGlobal;
   SmallVector<Type> expectedResumeArgs;
-  SmallVector<Type> expectedResumeResults;
+  SmallVector<Type> expectedResumePayloads;
   std::string kind;
-  Operation *spawnOp = nullptr;
-  bool consumed = false;
+  std::string implSym;
+};
+
+struct KindRuntimeInfo {
+  FlatSymbolRefAttr tagSym;
+  FlatSymbolRefAttr helperSym;
+  FlatSymbolRefAttr resumeContType;
+  SmallVector<Type> resumeArgTypes;
+  SmallVector<Type> payloadTypes;
 };
 
 static std::optional<CoroIntrinsicRef> parseCoroIntrinsicName(StringRef name) {
@@ -371,6 +380,13 @@ static Type parseWamiTypeOrEmit(Operation *at, StringRef typeText) {
     return parsed;
   at->emitError("failed to parse generated WAMI type: ") << typeText;
   return Type();
+}
+
+static Type buildContValueTypeOrEmit(Operation *at, FlatSymbolRefAttr contType,
+                                     bool nullable) {
+  std::string text = ("!wami.cont<@" + contType.getValue().str() +
+                      (nullable ? ", true>" : ">"));
+  return parseWamiTypeOrEmit(at, text);
 }
 
 static FailureOr<FlatSymbolRefAttr>
@@ -474,6 +490,282 @@ static std::string buildImplSymbolForKind(StringRef kind) {
   return ("coro.impl." + kind).str();
 }
 
+static std::string buildResumeHelperSymbolForKind(StringRef kind) {
+  return "coro.rt.resume." + sanitizeSymbolPiece(kind);
+}
+
+static Value createI32Const(OpBuilder &b, Location loc, int32_t value) {
+  return wasmssa::ConstOp::create(b, loc, b.getI32IntegerAttr(value));
+}
+
+static Value createI64Const(OpBuilder &b, Location loc, int64_t value) {
+  return wasmssa::ConstOp::create(b, loc, b.getI64IntegerAttr(value));
+}
+
+static Value createWasmssaEq(OpBuilder &b, Location loc, Value lhs, Value rhs) {
+  OperationState state(loc, "wasmssa.eq");
+  state.addOperands({lhs, rhs});
+  state.addTypes(b.getI32Type());
+  Operation *op = b.create(state);
+  return op->getResult(0);
+}
+
+static Value createWasmssaEqz(OpBuilder &b, Location loc, Value value) {
+  OperationState state(loc, "wasmssa.eqz");
+  state.addOperands(value);
+  state.addTypes(b.getI32Type());
+  Operation *op = b.create(state);
+  return op->getResult(0);
+}
+
+static Value createWamiSelect(OpBuilder &b, Location loc, Value trueValue,
+                              Value falseValue, Value condition) {
+  OperationState state(loc, "wami.select");
+  state.addOperands({trueValue, falseValue, condition});
+  state.addTypes(trueValue.getType());
+  Operation *op = b.create(state);
+  return op->getResult(0);
+}
+
+static FailureOr<Value> createWasmssaRefNull(Operation *diagOp, OpBuilder &b,
+                                             Type type) {
+  OperationState state(diagOp->getLoc(), "wasmssa.ref_null");
+  state.addTypes(type);
+  Operation *op = b.create(state);
+  if (!op)
+    return failure();
+  return op->getResult(0);
+}
+
+static FailureOr<Value> createWamiRefNull(Operation *diagOp, OpBuilder &b,
+                                          Type type) {
+  OperationState state(diagOp->getLoc(), "wami.ref.null");
+  state.addTypes(type);
+  Operation *op = b.create(state);
+  if (!op)
+    return failure();
+  return op->getResult(0);
+}
+
+static FailureOr<Value> createWasmssaLocalGet(Operation *diagOp, OpBuilder &b,
+                                              Value localRef) {
+  auto localRefType = dyn_cast<wasmssa::LocalRefType>(localRef.getType());
+  if (!localRefType)
+    return diagOp->emitError("expected wasmssa local reference type");
+
+  OperationState state(diagOp->getLoc(), "wasmssa.local_get");
+  state.addOperands(localRef);
+  state.addTypes(localRefType.getElementType());
+  Operation *op = b.create(state);
+  if (!op)
+    return failure();
+  return op->getResult(0);
+}
+
+static FailureOr<Value> createWasmssaGlobalGet(Operation *diagOp, OpBuilder &b,
+                                               StringRef globalSym,
+                                               Type resultType) {
+  OperationState state(diagOp->getLoc(), "wasmssa.global_get");
+  state.addAttribute("global",
+                     FlatSymbolRefAttr::get(b.getContext(), globalSym));
+  state.addTypes(resultType);
+  Operation *op = b.create(state);
+  if (!op)
+    return failure();
+  return op->getResult(0);
+}
+
+static LogicalResult createWasmssaGlobalSet(Operation *diagOp, OpBuilder &b,
+                                            StringRef globalSym, Value value) {
+  OperationState state(diagOp->getLoc(), "wasmssa.global_set");
+  state.addAttribute("global",
+                     FlatSymbolRefAttr::get(b.getContext(), globalSym));
+  state.addOperands(value);
+  Operation *op = b.create(state);
+  if (!op)
+    return diagOp->emitError("failed to create wasmssa.global_set");
+  return success();
+}
+
+static FailureOr<SmallVector<Value>>
+createWasmssaCall(Operation *diagOp, OpBuilder &b, StringRef callee,
+                  TypeRange resultTypes, ValueRange operands) {
+  OperationState state(diagOp->getLoc(), "wasmssa.call");
+  state.addAttribute("callee", FlatSymbolRefAttr::get(b.getContext(), callee));
+  state.addOperands(operands);
+  state.addTypes(resultTypes);
+  Operation *op = b.create(state);
+  if (!op)
+    return failure();
+  return SmallVector<Value>(op->getResults().begin(), op->getResults().end());
+}
+
+static FailureOr<FlatSymbolRefAttr>
+ensureI32MutableGlobal(ModuleOp module, Operation *diagOp, StringRef symName,
+                       OpBuilder &moduleBuilder) {
+  if (Operation *existing = SymbolTable::lookupSymbolIn(module, symName)) {
+    if (existing->getName().getStringRef() != "wasmssa.global")
+      return diagOp->emitError("symbol @")
+             << symName << " already exists and is not wasmssa.global";
+    auto typeAttr = existing->getAttrOfType<TypeAttr>("type");
+    if (!typeAttr || !typeAttr.getValue().isInteger(32))
+      return diagOp->emitError("symbol @")
+             << symName << " has mismatched global type";
+    if (!existing->hasAttr("isMutable"))
+      return diagOp->emitError("symbol @") << symName << " must be mutable";
+    return FlatSymbolRefAttr::get(module.getContext(), symName);
+  }
+
+  auto global = wasmssa::GlobalOp::create(
+      moduleBuilder, diagOp->getLoc(), moduleBuilder.getStringAttr(symName),
+      TypeAttr::get(moduleBuilder.getI32Type()), moduleBuilder.getUnitAttr(),
+      /*exported=*/nullptr);
+
+  OpBuilder::InsertionGuard guard(moduleBuilder);
+  Block *initBlock = moduleBuilder.createBlock(&global.getInitializer());
+  OpBuilder initBuilder = OpBuilder::atBlockBegin(initBlock);
+  Value zero = createI32Const(initBuilder, diagOp->getLoc(), 0);
+  wasmssa::ReturnOp::create(initBuilder, diagOp->getLoc(), zero);
+  return FlatSymbolRefAttr::get(module.getContext(), symName);
+}
+
+static FailureOr<FlatSymbolRefAttr>
+ensureNullableContMutableGlobal(ModuleOp module, Operation *diagOp,
+                                StringRef symName, Type contNullableType,
+                                OpBuilder &moduleBuilder) {
+  if (Operation *existing = SymbolTable::lookupSymbolIn(module, symName)) {
+    if (existing->getName().getStringRef() != "wasmssa.global")
+      return diagOp->emitError("symbol @")
+             << symName << " already exists and is not wasmssa.global";
+    auto typeAttr = existing->getAttrOfType<TypeAttr>("type");
+    if (!typeAttr || typeAttr.getValue() != contNullableType)
+      return diagOp->emitError("symbol @")
+             << symName << " has mismatched continuation global type";
+    if (!existing->hasAttr("isMutable"))
+      return diagOp->emitError("symbol @") << symName << " must be mutable";
+    return FlatSymbolRefAttr::get(module.getContext(), symName);
+  }
+
+  auto global = wasmssa::GlobalOp::create(
+      moduleBuilder, diagOp->getLoc(), moduleBuilder.getStringAttr(symName),
+      TypeAttr::get(contNullableType), moduleBuilder.getUnitAttr(),
+      /*exported=*/nullptr);
+
+  OpBuilder::InsertionGuard guard(moduleBuilder);
+  Block *initBlock = moduleBuilder.createBlock(&global.getInitializer());
+  OpBuilder initBuilder = OpBuilder::atBlockBegin(initBlock);
+  FailureOr<Value> initNull =
+      createWasmssaRefNull(diagOp, initBuilder, contNullableType);
+  if (failed(initNull))
+    return failure();
+  wasmssa::ReturnOp::create(initBuilder, diagOp->getLoc(), *initNull);
+  return FlatSymbolRefAttr::get(module.getContext(), symName);
+}
+
+static FailureOr<FlatSymbolRefAttr>
+ensureCoroResumeHelper(ModuleOp module, Operation *diagOp, StringRef kind,
+                       FlatSymbolRefAttr resumeContTypeRef,
+                       ArrayRef<Type> resumeArgTypes,
+                       ArrayRef<Type> payloadTypes, FlatSymbolRefAttr tagSym,
+                       OpBuilder &moduleBuilder) {
+  Type contNullableType =
+      buildContValueTypeOrEmit(diagOp, resumeContTypeRef, /*nullable=*/true);
+  if (!contNullableType)
+    return failure();
+
+  SmallVector<Type> helperInputs;
+  helperInputs.push_back(contNullableType);
+  helperInputs.append(resumeArgTypes.begin(), resumeArgTypes.end());
+  SmallVector<Type> helperResults;
+  helperResults.push_back(moduleBuilder.getI32Type());
+  helperResults.push_back(contNullableType);
+  helperResults.append(payloadTypes.begin(), payloadTypes.end());
+  auto helperType =
+      FunctionType::get(module.getContext(), helperInputs, helperResults);
+
+  std::string helperSym = buildResumeHelperSymbolForKind(kind);
+  if (Operation *existing = SymbolTable::lookupSymbolIn(module, helperSym)) {
+    if (existing->getName().getStringRef() != "wasmssa.func")
+      return diagOp->emitError("symbol @")
+             << helperSym << " already exists and is not wasmssa.func";
+    auto existingFunc = cast<wasmssa::FuncOp>(existing);
+    if (existingFunc.getFunctionType() != helperType)
+      return diagOp->emitError("symbol @")
+             << helperSym << " has mismatched helper signature";
+    return FlatSymbolRefAttr::get(module.getContext(), helperSym);
+  }
+
+  auto helperFunc = wasmssa::FuncOp::create(moduleBuilder, diagOp->getLoc(),
+                                            helperSym, helperType);
+  Block *entry = helperFunc.addEntryBlock();
+  OpBuilder entryBuilder = OpBuilder::atBlockBegin(entry);
+
+  SmallVector<Value> helperArgs;
+  helperArgs.reserve(entry->getNumArguments());
+  for (BlockArgument argRef : entry->getArguments()) {
+    FailureOr<Value> argVal =
+        createWasmssaLocalGet(diagOp, entryBuilder, argRef);
+    if (failed(argVal))
+      return failure();
+    helperArgs.push_back(*argVal);
+  }
+  if (helperArgs.empty())
+    return diagOp->emitError("internal error: helper missing continuation arg");
+
+  Value contValue = helperArgs.front();
+  ArrayRef<Value> resumeArgs(helperArgs.begin() + 1, helperArgs.end());
+
+  Block *onSuspend = new Block();
+  for (Type payloadType : payloadTypes)
+    onSuspend->addArgument(payloadType, diagOp->getLoc());
+  onSuspend->addArgument(contNullableType, diagOp->getLoc());
+  helperFunc.getBody().push_back(onSuspend);
+
+  OperationState blockState(diagOp->getLoc(), "wasmssa.block");
+  blockState.addRegion();
+  blockState.addSuccessors(onSuspend);
+  Operation *blockOp = entryBuilder.create(blockState);
+  Region &bodyRegion = blockOp->getRegion(0);
+  Block *resumeBlock = new Block();
+  bodyRegion.push_back(resumeBlock);
+  OpBuilder resumeBuilder = OpBuilder::atBlockBegin(resumeBlock);
+
+  ArrayAttr handlers = ArrayAttr::get(
+      module.getContext(),
+      {wami::OnLabelHandlerAttr::get(module.getContext(), tagSym, 0)});
+  OperationState resumeState(diagOp->getLoc(), "wami.resume");
+  resumeState.addOperands(contValue);
+  resumeState.addOperands(resumeArgs);
+  resumeState.addAttribute("cont_type", resumeContTypeRef);
+  resumeState.addAttribute("handlers", handlers);
+  resumeState.addTypes(payloadTypes);
+  Operation *resumeOp = resumeBuilder.create(resumeState);
+
+  Value doneOne = createI32Const(resumeBuilder, diagOp->getLoc(), 1);
+  FailureOr<Value> nullCont =
+      createWamiRefNull(diagOp, resumeBuilder, contNullableType);
+  if (failed(nullCont))
+    return failure();
+
+  SmallVector<Value> completeReturn;
+  completeReturn.push_back(doneOne);
+  completeReturn.push_back(*nullCont);
+  completeReturn.append(resumeOp->getResults().begin(),
+                        resumeOp->getResults().end());
+  wasmssa::ReturnOp::create(resumeBuilder, diagOp->getLoc(), completeReturn);
+
+  OpBuilder suspendBuilder = OpBuilder::atBlockBegin(onSuspend);
+  Value doneZero = createI32Const(suspendBuilder, diagOp->getLoc(), 0);
+  SmallVector<Value> suspendReturn;
+  suspendReturn.push_back(doneZero);
+  suspendReturn.push_back(onSuspend->getArgument(payloadTypes.size()));
+  for (unsigned i = 0; i < payloadTypes.size(); ++i)
+    suspendReturn.push_back(onSuspend->getArgument(i));
+  wasmssa::ReturnOp::create(suspendBuilder, diagOp->getLoc(), suspendReturn);
+
+  return FlatSymbolRefAttr::get(module.getContext(), helperSym);
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -559,6 +851,24 @@ public:
 
         SmallVector<Type> resumeArgTypes(callOp.getOperandTypes().begin() + 1,
                                          callOp.getOperandTypes().end());
+        if (callOp.getNumResults() < 2) {
+          callOp.emitError(
+              "coro.resume.* must return (i64, i1, payload...) tuple");
+          failedVerify = true;
+          return;
+        }
+        if (!callOp.getResult(0).getType().isInteger(64)) {
+          callOp.emitError("coro.resume.* first result must be i64 handle");
+          failedVerify = true;
+          return;
+        }
+        if (!callOp.getResult(1).getType().isInteger(1)) {
+          callOp.emitError("coro.resume.* second result must be i1 done flag");
+          failedVerify = true;
+          return;
+        }
+        SmallVector<Type> resumePayloadTypes(
+            callOp.getResultTypes().begin() + 2, callOp.getResultTypes().end());
         if (!usage.resumeArgTypes.empty() &&
             !typeSequencesEqual(resumeArgTypes, usage.resumeArgTypes)) {
           callOp.emitError(
@@ -567,9 +877,8 @@ public:
           failedVerify = true;
           return;
         }
-        if (!usage.resumeResultTypes.empty() &&
-            !typeSequencesEqual(callOp.getResultTypes(),
-                                usage.resumeResultTypes)) {
+        if (!usage.resumePayloadTypes.empty() &&
+            !typeSequencesEqual(resumePayloadTypes, usage.resumePayloadTypes)) {
           callOp.emitError("inconsistent coro.resume.* result types for kind '")
               << intrinsic->suffix << "'";
           failedVerify = true;
@@ -578,8 +887,8 @@ public:
 
         usage.resumeArgTypes.assign(resumeArgTypes.begin(),
                                     resumeArgTypes.end());
-        usage.resumeResultTypes.assign(callOp.getResultTypes().begin(),
-                                       callOp.getResultTypes().end());
+        usage.resumePayloadTypes.assign(resumePayloadTypes.begin(),
+                                        resumePayloadTypes.end());
         usage.resumeSite = callOp;
         return;
       }
@@ -627,8 +936,9 @@ public:
       }
 
       FunctionType implType = it->second.getFunctionType();
-      if (!usage.resumeResultTypes.empty() &&
-          !typeSequencesEqual(implType.getResults(), usage.resumeResultTypes)) {
+      if (!usage.resumePayloadTypes.empty() &&
+          !typeSequencesEqual(implType.getResults(),
+                              usage.resumePayloadTypes)) {
         module.emitError("coroutine implementation @")
             << it->second.getSymName()
             << " result types do not match coro.resume." << kind;
@@ -650,6 +960,61 @@ public:
           signalPassFailure();
           return;
         }
+      }
+    }
+
+    for (auto &entry : implFuncs) {
+      StringRef kind = entry.getKey();
+      func::FuncOp implFunc = entry.getValue();
+
+      auto usageIt = usages.find(kind);
+      if (usageIt == usages.end())
+        continue;
+      KindUsage &usage = usageIt->second;
+
+      bool localFailure = false;
+      implFunc.walk([&](func::CallOp callOp) {
+        if (localFailure)
+          return;
+        FlatSymbolRefAttr callee = callOp.getCalleeAttr();
+        if (!callee)
+          return;
+        auto intrinsic = parseCoroIntrinsicName(callee.getValue());
+        if (!intrinsic || intrinsic->kind != CoroIntrinsicKind::Yield)
+          return;
+
+        if (intrinsic->suffix != kind) {
+          callOp.emitError("coro.yield.* inside @")
+              << implFunc.getSymName() << " must use suffix '" << kind << "'";
+          localFailure = true;
+          return;
+        }
+
+        if (!typeSequencesEqual(callOp.getOperandTypes(),
+                                usage.resumePayloadTypes)) {
+          callOp.emitError("coro.yield.")
+              << kind
+              << " operand types must match coro.resume payload types for kind "
+                 "'"
+              << kind << "'";
+          localFailure = true;
+          return;
+        }
+        if (!typeSequencesEqual(callOp.getResultTypes(),
+                                usage.resumeArgTypes)) {
+          callOp.emitError("coro.yield.")
+              << kind
+              << " result types must match coro.resume argument types for kind "
+                 "'"
+              << kind << "'";
+          localFailure = true;
+          return;
+        }
+      });
+
+      if (localFailure) {
+        signalPassFailure();
+        return;
       }
     }
   }
@@ -712,260 +1077,635 @@ public:
     moduleBuilder.setInsertionPointToStart(module.getBody());
 
     bool passFailed = false;
+    int64_t nextHandleId = 1;
+    llvm::StringMap<SmallVector<RuntimeSlot, 1>> slotsByKind;
+    llvm::DenseMap<Operation *, int64_t> spawnHandleByOp;
+    llvm::StringMap<KindRuntimeInfo> kindInfo;
+    SmallVector<wasmssa::FuncCallOp> calls;
+    SmallVector<Operation *> eraseLater;
 
-    for (wasmssa::FuncOp funcOp : module.getOps<wasmssa::FuncOp>()) {
-      llvm::MapVector<Value, HandleBinding> handleBindings;
-      SmallVector<wasmssa::FuncCallOp> calls;
-      SmallVector<Operation *> eraseLater;
+    module.walk([&](wasmssa::FuncCallOp callOp) { calls.push_back(callOp); });
 
-      funcOp.walk([&](wasmssa::FuncCallOp callOp) { calls.push_back(callOp); });
+    // First phase: discover spawn callsites module-wide and allocate runtime
+    // slots backed by mutable globals.
+    for (wasmssa::FuncCallOp callOp : calls) {
+      if (!callOp || !callOp->getBlock())
+        continue;
 
-      for (wasmssa::FuncCallOp callOp : calls) {
-        if (!callOp || !callOp->getBlock())
-          continue;
+      FlatSymbolRefAttr callee = callOp.getCalleeAttr();
+      if (!callee)
+        continue;
 
-        FlatSymbolRefAttr callee = callOp.getCalleeAttr();
-        if (!callee)
-          continue;
+      auto intrinsic = parseCoroIntrinsicName(callee.getValue());
+      if (!intrinsic || intrinsic->kind != CoroIntrinsicKind::Spawn)
+        continue;
 
-        auto intrinsic = parseCoroIntrinsicName(callee.getValue());
-        if (!intrinsic)
-          continue;
+      if (callOp.getNumResults() != 1 ||
+          !callOp.getResult(0).getType().isInteger(64)) {
+        callOp.emitError("coro.spawn.* must return a single i64 handle");
+        passFailed = true;
+        break;
+      }
 
-        OpBuilder b(callOp);
-        switch (intrinsic->kind) {
-        case CoroIntrinsicKind::Spawn: {
-          if (callOp.getNumResults() != 1 ||
-              !callOp.getResult(0).getType().isInteger(64)) {
-            callOp.emitError("coro.spawn.* must return a single i64 handle");
-            passFailed = true;
-            break;
-          }
+      auto implIt = implFuncs.find(intrinsic->suffix);
+      if (implIt == implFuncs.end()) {
+        callOp.emitError("missing implementation symbol @")
+            << buildImplSymbolForKind(intrinsic->suffix);
+        passFailed = true;
+        break;
+      }
 
-          auto implIt = implFuncs.find(intrinsic->suffix);
-          if (implIt == implFuncs.end()) {
-            callOp.emitError("missing implementation symbol @")
-                << buildImplSymbolForKind(intrinsic->suffix);
-            passFailed = true;
-            break;
-          }
+      wasmssa::FuncOp implFunc = implIt->second;
+      FunctionType implType = implFunc.getFunctionType();
+      unsigned boundCount = callOp.getNumOperands();
+      if (boundCount > implType.getNumInputs()) {
+        callOp.emitError(
+            "spawn argument count exceeds implementation input arity");
+        passFailed = true;
+        break;
+      }
 
-          wasmssa::FuncOp implFunc = implIt->second;
-          FunctionType implType = implFunc.getFunctionType();
-          unsigned boundCount = callOp.getNumOperands();
-          if (boundCount > implType.getNumInputs()) {
-            callOp.emitError(
-                "spawn argument count exceeds implementation input arity");
-            passFailed = true;
-            break;
-          }
+      FailureOr<FlatSymbolRefAttr> srcContRef = ensureContTypeForBoundPrefix(
+          module, callOp, intrinsic->suffix, implType, 0, moduleBuilder);
+      if (failed(srcContRef)) {
+        passFailed = true;
+        break;
+      }
 
-          FailureOr<FlatSymbolRefAttr> srcContRef =
-              ensureContTypeForBoundPrefix(module, callOp, intrinsic->suffix,
-                                           implType, 0, moduleBuilder);
-          if (failed(srcContRef)) {
-            passFailed = true;
-            break;
-          }
-
-          std::string implSym = buildImplSymbolForKind(intrinsic->suffix);
-          Type funcrefType = parseWamiTypeOrEmit(
-              callOp, ("!wami.funcref<@" + implSym + ">").c_str());
-          Type srcContType = parseWamiTypeOrEmit(
-              callOp,
-              ("!wami.cont<@" + srcContRef->getValue().str() + ">").c_str());
-          if (!funcrefType || !srcContType) {
-            passFailed = true;
-            break;
-          }
-
-          OperationState refFuncState(callOp.getLoc(), "wami.ref.func");
-          refFuncState.addAttribute("func",
-                                    FlatSymbolRefAttr::get(ctx, implSym));
-          refFuncState.addTypes(funcrefType);
-          Operation *refFuncOp = b.create(refFuncState);
-
-          OperationState contNewState(callOp.getLoc(), "wami.cont.new");
-          contNewState.addOperands(refFuncOp->getResult(0));
-          contNewState.addAttribute("cont_type", *srcContRef);
-          contNewState.addTypes(srcContType);
-          Operation *contValueOp = b.create(contNewState);
-
-          Value contValue = contValueOp->getResult(0);
-          FlatSymbolRefAttr boundContRef = *srcContRef;
-          SmallVector<Type> expectedResumeArgs;
-          expectedResumeArgs.append(implType.getInputs().begin() + boundCount,
-                                    implType.getInputs().end());
-
-          if (boundCount > 0) {
-            FailureOr<FlatSymbolRefAttr> dstContRef =
-                ensureContTypeForBoundPrefix(module, callOp, intrinsic->suffix,
-                                             implType, boundCount,
-                                             moduleBuilder);
-            if (failed(dstContRef)) {
-              passFailed = true;
-              break;
-            }
-
-            Type dstContType = parseWamiTypeOrEmit(
-                callOp,
-                ("!wami.cont<@" + dstContRef->getValue().str() + ">").c_str());
-            if (!dstContType) {
-              passFailed = true;
-              break;
-            }
-
-            SmallVector<Value> bindOperands;
-            bindOperands.push_back(contValue);
-            bindOperands.append(callOp.getOperands().begin(),
-                                callOp.getOperands().end());
-
-            OperationState bindState(callOp.getLoc(), "wami.cont.bind");
-            bindState.addOperands(bindOperands);
-            bindState.addAttribute("src_cont_type", *srcContRef);
-            bindState.addAttribute("dst_cont_type", *dstContRef);
-            bindState.addTypes(dstContType);
-            Operation *bindOp = b.create(bindState);
-            contValue = bindOp->getResult(0);
-            boundContRef = *dstContRef;
-          }
-
-          SmallVector<Type> expectedResumeResults(implType.getResults().begin(),
-                                                  implType.getResults().end());
-          handleBindings[callOp.getResult(0)] =
-              HandleBinding{callOp.getResult(0),
-                            contValue,
-                            boundContRef,
-                            expectedResumeArgs,
-                            expectedResumeResults,
-                            intrinsic->suffix,
-                            callOp,
-                            false};
-          continue;
+      FlatSymbolRefAttr resumeContRef = *srcContRef;
+      if (boundCount > 0) {
+        FailureOr<FlatSymbolRefAttr> dstContRef =
+            ensureContTypeForBoundPrefix(module, callOp, intrinsic->suffix,
+                                         implType, boundCount, moduleBuilder);
+        if (failed(dstContRef)) {
+          passFailed = true;
+          break;
         }
-        case CoroIntrinsicKind::Resume: {
-          if (callOp.getNumOperands() < 1) {
-            callOp.emitError("coro.resume.* requires a handle operand");
-            passFailed = true;
-            break;
-          }
+        resumeContRef = *dstContRef;
+      }
 
-          auto bindingIt = handleBindings.find(callOp.getOperand(0));
-          if (bindingIt == handleBindings.end()) {
-            callOp.emitError("resume handle must come directly from "
-                             "coro.spawn.* in the same "
-                             "function");
-            passFailed = true;
-            break;
-          }
+      RuntimeSlot slot;
+      slot.handleId = nextHandleId++;
+      slot.srcContType = *srcContRef;
+      slot.resumeContType = resumeContRef;
+      slot.kind = intrinsic->suffix;
+      slot.implSym = buildImplSymbolForKind(intrinsic->suffix);
+      slot.expectedResumeArgs.append(implType.getInputs().begin() + boundCount,
+                                     implType.getInputs().end());
+      slot.expectedResumePayloads.append(implType.getResults().begin(),
+                                         implType.getResults().end());
 
-          HandleBinding &binding = bindingIt->second;
-          if (binding.consumed) {
-            callOp.emitError(
-                "multiple coro.resume.* calls for one handle are not supported "
-                "by coro-to-wami yet");
-            passFailed = true;
-            break;
-          }
+      Type contNullableType =
+          buildContValueTypeOrEmit(callOp, resumeContRef, /*nullable=*/true);
+      if (!contNullableType) {
+        passFailed = true;
+        break;
+      }
 
-          SmallVector<Type> resumeArgTypes(callOp.getOperandTypes().begin() + 1,
-                                           callOp.getOperandTypes().end());
-          if (!typeSequencesEqual(resumeArgTypes, binding.expectedResumeArgs)) {
-            callOp.emitError(
-                "resume argument types do not match continuation expectation");
-            passFailed = true;
-            break;
-          }
-          if (!typeSequencesEqual(callOp.getResultTypes(),
-                                  binding.expectedResumeResults)) {
-            callOp.emitError(
-                "resume result types do not match continuation result types");
-            passFailed = true;
-            break;
-          }
+      std::string slotStem =
+          ("coro_slot_" + sanitizeSymbolPiece(intrinsic->suffix) + "_" +
+           Twine(slot.handleId))
+              .str();
+      FailureOr<FlatSymbolRefAttr> stateGlobal = ensureI32MutableGlobal(
+          module, callOp, slotStem + "_state", moduleBuilder);
+      if (failed(stateGlobal)) {
+        passFailed = true;
+        break;
+      }
+      FailureOr<FlatSymbolRefAttr> contGlobal = ensureNullableContMutableGlobal(
+          module, callOp, slotStem + "_cont", contNullableType, moduleBuilder);
+      if (failed(contGlobal)) {
+        passFailed = true;
+        break;
+      }
+      slot.stateGlobal = *stateGlobal;
+      slot.contGlobal = *contGlobal;
 
-          SmallVector<Value> resumeOperands;
-          resumeOperands.push_back(binding.contValue);
-          resumeOperands.append(callOp.getOperands().begin() + 1,
-                                callOp.getOperands().end());
+      spawnHandleByOp[callOp.getOperation()] = slot.handleId;
+      slotsByKind[intrinsic->suffix].push_back(slot);
+    }
 
-          OperationState resumeState(callOp.getLoc(), "wami.resume");
-          resumeState.addOperands(resumeOperands);
-          resumeState.addAttribute("cont_type", binding.contType);
-          resumeState.addAttribute("handlers", ArrayAttr::get(ctx, {}));
-          resumeState.addTypes(callOp.getResultTypes());
-          Operation *resumeOp = b.create(resumeState);
+    if (passFailed) {
+      signalPassFailure();
+      return;
+    }
 
-          callOp.replaceAllUsesWith(resumeOp->getResults());
-          eraseLater.push_back(callOp);
-          binding.consumed = true;
-          continue;
+    // Second phase: materialize per-kind runtime symbols (yield tag + helper).
+    for (auto &entry : slotsByKind) {
+      StringRef kind = entry.getKey();
+      SmallVector<RuntimeSlot, 1> &slots = entry.getValue();
+      if (slots.empty())
+        continue;
+
+      RuntimeSlot &canonical = slots.front();
+      for (RuntimeSlot &slot : slots) {
+        if (!typeSequencesEqual(slot.expectedResumeArgs,
+                                canonical.expectedResumeArgs) ||
+            !typeSequencesEqual(slot.expectedResumePayloads,
+                                canonical.expectedResumePayloads) ||
+            slot.resumeContType != canonical.resumeContType) {
+          module.emitError("inconsistent runtime slot signatures for kind '")
+              << kind << "'";
+          signalPassFailure();
+          return;
         }
-        case CoroIntrinsicKind::Yield: {
-          auto tagType = FunctionType::get(ctx, callOp.getOperandTypes(),
-                                           callOp.getResultTypes());
-          std::string tagSym =
-              "coro_tag_" + sanitizeSymbolPiece(intrinsic->suffix);
-          FailureOr<FlatSymbolRefAttr> tagRef =
-              ensureWamiTag(module, callOp, tagSym, tagType, moduleBuilder);
-          if (failed(tagRef)) {
-            passFailed = true;
-            break;
-          }
+      }
 
-          OperationState suspendState(callOp.getLoc(), "wami.suspend");
-          suspendState.addOperands(callOp.getOperands());
-          suspendState.addAttribute("tag", *tagRef);
-          suspendState.addTypes(callOp.getResultTypes());
-          Operation *suspendOp = b.create(suspendState);
-          callOp.replaceAllUsesWith(suspendOp->getResults());
-          eraseLater.push_back(callOp);
-          continue;
+      KindRuntimeInfo info;
+      info.resumeContType = canonical.resumeContType;
+      info.resumeArgTypes.assign(canonical.expectedResumeArgs.begin(),
+                                 canonical.expectedResumeArgs.end());
+      info.payloadTypes.assign(canonical.expectedResumePayloads.begin(),
+                               canonical.expectedResumePayloads.end());
+
+      auto tagType =
+          FunctionType::get(ctx, info.payloadTypes, info.resumeArgTypes);
+      std::string tagSym = "coro_tag_" + sanitizeSymbolPiece(kind);
+      FailureOr<FlatSymbolRefAttr> tagRef =
+          ensureWamiTag(module, module, tagSym, tagType, moduleBuilder);
+      if (failed(tagRef)) {
+        signalPassFailure();
+        return;
+      }
+      info.tagSym = *tagRef;
+
+      FailureOr<FlatSymbolRefAttr> helperRef = ensureCoroResumeHelper(
+          module, module, kind, info.resumeContType, info.resumeArgTypes,
+          info.payloadTypes, info.tagSym, moduleBuilder);
+      if (failed(helperRef)) {
+        signalPassFailure();
+        return;
+      }
+      info.helperSym = *helperRef;
+      kindInfo[kind] = info;
+    }
+
+    auto findSlotByHandle = [&](StringRef kind,
+                                int64_t handleId) -> RuntimeSlot * {
+      auto it = slotsByKind.find(kind);
+      if (it == slotsByKind.end())
+        return nullptr;
+      for (RuntimeSlot &slot : it->second) {
+        if (slot.handleId == handleId)
+          return &slot;
+      }
+      return nullptr;
+    };
+
+    // Third phase: rewrite intrinsic callsites.
+    for (wasmssa::FuncCallOp callOp : calls) {
+      if (!callOp || !callOp->getBlock())
+        continue;
+
+      FlatSymbolRefAttr callee = callOp.getCalleeAttr();
+      if (!callee)
+        continue;
+
+      auto intrinsic = parseCoroIntrinsicName(callee.getValue());
+      if (!intrinsic)
+        continue;
+
+      OpBuilder b(callOp);
+      switch (intrinsic->kind) {
+      case CoroIntrinsicKind::Spawn: {
+        auto handleIt = spawnHandleByOp.find(callOp.getOperation());
+        if (handleIt == spawnHandleByOp.end()) {
+          callOp.emitError("internal error: missing runtime slot for spawn");
+          passFailed = true;
+          break;
         }
-        case CoroIntrinsicKind::Cancel:
-          eraseLater.push_back(callOp);
-          continue;
-        case CoroIntrinsicKind::IsDone:
+
+        RuntimeSlot *slot =
+            findSlotByHandle(intrinsic->suffix, handleIt->second);
+        if (!slot) {
+          callOp.emitError("internal error: failed to resolve runtime slot");
+          passFailed = true;
+          break;
+        }
+
+        Type funcrefType = parseWamiTypeOrEmit(
+            callOp, ("!wami.funcref<@" + slot->implSym + ">"));
+        Type srcContType = buildContValueTypeOrEmit(callOp, slot->srcContType,
+                                                    /*nullable=*/false);
+        Type dstContType = buildContValueTypeOrEmit(
+            callOp, slot->resumeContType, /*nullable=*/false);
+        if (!funcrefType || !srcContType || !dstContType) {
+          passFailed = true;
+          break;
+        }
+
+        OperationState refFuncState(callOp.getLoc(), "wami.ref.func");
+        refFuncState.addAttribute(
+            "func", FlatSymbolRefAttr::get(b.getContext(), slot->implSym));
+        refFuncState.addTypes(funcrefType);
+        Operation *refFuncOp = b.create(refFuncState);
+
+        OperationState contNewState(callOp.getLoc(), "wami.cont.new");
+        contNewState.addOperands(refFuncOp->getResult(0));
+        contNewState.addAttribute("cont_type", slot->srcContType);
+        contNewState.addTypes(srcContType);
+        Operation *contValueOp = b.create(contNewState);
+        Value contValue = contValueOp->getResult(0);
+
+        if (callOp.getNumOperands() > 0) {
+          SmallVector<Value> bindOperands;
+          bindOperands.push_back(contValue);
+          bindOperands.append(callOp.getOperands().begin(),
+                              callOp.getOperands().end());
+          OperationState bindState(callOp.getLoc(), "wami.cont.bind");
+          bindState.addOperands(bindOperands);
+          bindState.addAttribute("src_cont_type", slot->srcContType);
+          bindState.addAttribute("dst_cont_type", slot->resumeContType);
+          bindState.addTypes(dstContType);
+          Operation *bindOp = b.create(bindState);
+          contValue = bindOp->getResult(0);
+        }
+
+        Value ready = createI32Const(b, callOp.getLoc(), 1);
+        if (failed(createWasmssaGlobalSet(
+                callOp, b, slot->contGlobal.getValue(), contValue)) ||
+            failed(createWasmssaGlobalSet(
+                callOp, b, slot->stateGlobal.getValue(), ready))) {
+          passFailed = true;
+          break;
+        }
+
+        Value handleConst = createI64Const(b, callOp.getLoc(), slot->handleId);
+        callOp.getResult(0).replaceAllUsesWith(handleConst);
+        eraseLater.push_back(callOp);
+        continue;
+      }
+      case CoroIntrinsicKind::Resume: {
+        if (callOp.getNumOperands() < 1) {
+          callOp.emitError("coro.resume.* requires a handle operand");
+          passFailed = true;
+          break;
+        }
+        if (!callOp.getOperand(0).getType().isInteger(64)) {
+          callOp.emitError("coro.resume.* handle operand must be i64");
+          passFailed = true;
+          break;
+        }
+        if (callOp.getNumResults() < 2 ||
+            !callOp.getResult(0).getType().isInteger(64) ||
+            !callOp.getResult(1).getType().isInteger(32)) {
+          callOp.emitError("coro.resume.* lowered signature must be "
+                           "(i64, i32, payload...)");
+          passFailed = true;
+          break;
+        }
+
+        auto slotIt = slotsByKind.find(intrinsic->suffix);
+        auto infoIt = kindInfo.find(intrinsic->suffix);
+        if (slotIt == slotsByKind.end() || slotIt->second.empty() ||
+            infoIt == kindInfo.end()) {
+          callOp.emitError("missing runtime state for kind '")
+              << intrinsic->suffix << "'";
+          passFailed = true;
+          break;
+        }
+        SmallVector<RuntimeSlot, 1> &slots = slotIt->second;
+        KindRuntimeInfo &info = infoIt->second;
+
+        SmallVector<Type> resumeArgTypes(callOp.getOperandTypes().begin() + 1,
+                                         callOp.getOperandTypes().end());
+        if (!typeSequencesEqual(resumeArgTypes, info.resumeArgTypes)) {
           callOp.emitError(
-              "coro.is_done.* lowering to WAMI is not implemented yet");
+              "resume argument types do not match continuation type");
           passFailed = true;
           break;
         }
-      }
 
-      if (passFailed)
-        break;
+        SmallVector<Type> payloadTypes(callOp.getResultTypes().begin() + 2,
+                                       callOp.getResultTypes().end());
+        if (!typeSequencesEqual(payloadTypes, info.payloadTypes)) {
+          callOp.emitError(
+              "resume payload result types do not match implementation");
+          passFailed = true;
+          break;
+        }
 
-      for (auto &entry : handleBindings) {
-        HandleBinding &binding = entry.second;
-        bool hasLiveUse = false;
-        for (OpOperand &use : binding.handleValue.getUses()) {
-          if (!llvm::is_contained(eraseLater, use.getOwner())) {
-            hasLiveUse = true;
+        Type contNullableType = buildContValueTypeOrEmit(
+            callOp, info.resumeContType, /*nullable=*/true);
+        if (!contNullableType) {
+          passFailed = true;
+          break;
+        }
+
+        // Fast path for the common single-slot case. Avoid reference-typed
+        // select materialization so runtimes without ref-select support can
+        // execute lowered coroutines.
+        if (slots.size() == 1) {
+          RuntimeSlot &slot = slots.front();
+          FailureOr<Value> oldCont = createWasmssaGlobalGet(
+              callOp, b, slot.contGlobal.getValue(), contNullableType);
+          FailureOr<Value> oldState = createWasmssaGlobalGet(
+              callOp, b, slot.stateGlobal.getValue(), b.getI32Type());
+          if (failed(oldCont) || failed(oldState)) {
+            passFailed = true;
+            break;
+          }
+
+          SmallVector<Value> helperOperands;
+          helperOperands.push_back(*oldCont);
+          helperOperands.append(callOp.getOperands().begin() + 1,
+                                callOp.getOperands().end());
+
+          SmallVector<Type> helperResultTypes;
+          helperResultTypes.push_back(b.getI32Type());
+          helperResultTypes.push_back(contNullableType);
+          helperResultTypes.append(info.payloadTypes.begin(),
+                                   info.payloadTypes.end());
+          FailureOr<SmallVector<Value>> helperResults =
+              createWasmssaCall(callOp, b, info.helperSym.getValue(),
+                                helperResultTypes, helperOperands);
+          if (failed(helperResults)) {
+            passFailed = true;
+            break;
+          }
+
+          Value doneI32 = (*helperResults)[0];
+          Value nextCont = (*helperResults)[1];
+          Value ready = createI32Const(b, callOp.getLoc(), 1);
+          Value doneState = createI32Const(b, callOp.getLoc(), 2);
+          Value resumedState =
+              createWamiSelect(b, callOp.getLoc(), doneState, ready, doneI32);
+
+          if (failed(createWasmssaGlobalSet(
+                  callOp, b, slot.stateGlobal.getValue(), resumedState)) ||
+              failed(createWasmssaGlobalSet(
+                  callOp, b, slot.contGlobal.getValue(), nextCont))) {
+            passFailed = true;
+            break;
+          }
+
+          callOp.getResult(0).replaceAllUsesWith(callOp.getOperand(0));
+          callOp.getResult(1).replaceAllUsesWith(doneI32);
+          for (auto [idx, payload] :
+               llvm::enumerate(ArrayRef<Value>(*helperResults).drop_front(2))) {
+            callOp.getResult(idx + 2).replaceAllUsesWith(payload);
+          }
+          eraseLater.push_back(callOp);
+          continue;
+        }
+
+        FailureOr<Value> nullCont =
+            createWamiRefNull(callOp, b, contNullableType);
+        if (failed(nullCont)) {
+          passFailed = true;
+          break;
+        }
+
+        SmallVector<Value> matches;
+        matches.reserve(slots.size());
+        for (const RuntimeSlot &slot : slots) {
+          Value handleConst = createI64Const(b, callOp.getLoc(), slot.handleId);
+          matches.push_back(createWasmssaEq(b, callOp.getLoc(),
+                                            callOp.getOperand(0), handleConst));
+        }
+
+        Value selectedCont = *nullCont;
+        Value selectedState = createI32Const(b, callOp.getLoc(), 0);
+        for (unsigned i = 0; i < slots.size(); ++i) {
+          FailureOr<Value> candidateCont = createWasmssaGlobalGet(
+              callOp, b, slots[i].contGlobal.getValue(), contNullableType);
+          FailureOr<Value> candidateState = createWasmssaGlobalGet(
+              callOp, b, slots[i].stateGlobal.getValue(), b.getI32Type());
+          if (failed(candidateCont) || failed(candidateState)) {
+            passFailed = true;
+            break;
+          }
+          selectedCont = createWamiSelect(b, callOp.getLoc(), *candidateCont,
+                                          selectedCont, matches[i]);
+          selectedState = createWamiSelect(b, callOp.getLoc(), *candidateState,
+                                           selectedState, matches[i]);
+        }
+        if (passFailed)
+          break;
+
+        Value ready = createI32Const(b, callOp.getLoc(), 1);
+        Value isReady =
+            createWasmssaEq(b, callOp.getLoc(), selectedState, ready);
+        Value safeCont = createWamiSelect(b, callOp.getLoc(), selectedCont,
+                                          *nullCont, isReady);
+
+        SmallVector<Value> helperOperands;
+        helperOperands.push_back(safeCont);
+        helperOperands.append(callOp.getOperands().begin() + 1,
+                              callOp.getOperands().end());
+
+        SmallVector<Type> helperResultTypes;
+        helperResultTypes.push_back(b.getI32Type());
+        helperResultTypes.push_back(contNullableType);
+        helperResultTypes.append(info.payloadTypes.begin(),
+                                 info.payloadTypes.end());
+        FailureOr<SmallVector<Value>> helperResults =
+            createWasmssaCall(callOp, b, info.helperSym.getValue(),
+                              helperResultTypes, helperOperands);
+        if (failed(helperResults)) {
+          passFailed = true;
+          break;
+        }
+        Value doneI32 = (*helperResults)[0];
+        Value nextCont = (*helperResults)[1];
+
+        Value doneState = createI32Const(b, callOp.getLoc(), 2);
+        Value resumedState =
+            createWamiSelect(b, callOp.getLoc(), doneState, ready, doneI32);
+
+        for (unsigned i = 0; i < slots.size(); ++i) {
+          FailureOr<Value> oldState = createWasmssaGlobalGet(
+              callOp, b, slots[i].stateGlobal.getValue(), b.getI32Type());
+          FailureOr<Value> oldCont = createWasmssaGlobalGet(
+              callOp, b, slots[i].contGlobal.getValue(), contNullableType);
+          if (failed(oldState) || failed(oldCont)) {
+            passFailed = true;
+            break;
+          }
+
+          Value stateWhenReady = createWamiSelect(
+              b, callOp.getLoc(), resumedState, *oldState, isReady);
+          Value contWhenReady =
+              createWamiSelect(b, callOp.getLoc(), nextCont, *oldCont, isReady);
+          Value finalState = createWamiSelect(
+              b, callOp.getLoc(), stateWhenReady, *oldState, matches[i]);
+          Value finalCont = createWamiSelect(b, callOp.getLoc(), contWhenReady,
+                                             *oldCont, matches[i]);
+
+          if (failed(createWasmssaGlobalSet(
+                  callOp, b, slots[i].stateGlobal.getValue(), finalState)) ||
+              failed(createWasmssaGlobalSet(
+                  callOp, b, slots[i].contGlobal.getValue(), finalCont))) {
+            passFailed = true;
             break;
           }
         }
-        if (hasLiveUse) {
-          binding.spawnOp->emitError(
-              "spawn handle escapes coro-to-wami supported pattern");
+        if (passFailed)
+          break;
+
+        callOp.getResult(0).replaceAllUsesWith(callOp.getOperand(0));
+        callOp.getResult(1).replaceAllUsesWith(doneI32);
+        for (auto [idx, payload] :
+             llvm::enumerate(ArrayRef<Value>(*helperResults).drop_front(2))) {
+          callOp.getResult(idx + 2).replaceAllUsesWith(payload);
+        }
+        eraseLater.push_back(callOp);
+        continue;
+      }
+      case CoroIntrinsicKind::Yield: {
+        auto infoIt = kindInfo.find(intrinsic->suffix);
+        if (infoIt == kindInfo.end()) {
+          callOp.emitError("missing runtime kind info for coro.yield.")
+              << intrinsic->suffix;
           passFailed = true;
           break;
         }
-        eraseLater.push_back(binding.spawnOp);
+        KindRuntimeInfo &info = infoIt->second;
+
+        if (!typeSequencesEqual(callOp.getOperandTypes(), info.payloadTypes)) {
+          callOp.emitError(
+              "yield payload types must match resume payload types");
+          passFailed = true;
+          break;
+        }
+        if (!typeSequencesEqual(callOp.getResultTypes(), info.resumeArgTypes)) {
+          callOp.emitError(
+              "yield result types must match resume argument types");
+          passFailed = true;
+          break;
+        }
+
+        OperationState suspendState(callOp.getLoc(), "wami.suspend");
+        suspendState.addOperands(callOp.getOperands());
+        suspendState.addAttribute("tag", info.tagSym);
+        suspendState.addTypes(callOp.getResultTypes());
+        Operation *suspendOp = b.create(suspendState);
+        callOp.replaceAllUsesWith(suspendOp->getResults());
+        eraseLater.push_back(callOp);
+        continue;
       }
+      case CoroIntrinsicKind::Cancel: {
+        if (callOp.getNumOperands() != 1 ||
+            !callOp.getOperand(0).getType().isInteger(64) ||
+            callOp.getNumResults() != 0) {
+          callOp.emitError("coro.cancel.* must have type (i64) -> ()");
+          passFailed = true;
+          break;
+        }
 
-      if (passFailed)
-        break;
+        auto slotIt = slotsByKind.find(intrinsic->suffix);
+        auto infoIt = kindInfo.find(intrinsic->suffix);
+        if (slotIt == slotsByKind.end() || slotIt->second.empty() ||
+            infoIt == kindInfo.end()) {
+          callOp.emitError("missing runtime state for kind '")
+              << intrinsic->suffix << "'";
+          passFailed = true;
+          break;
+        }
+        SmallVector<RuntimeSlot, 1> &slots = slotIt->second;
+        KindRuntimeInfo &info = infoIt->second;
 
-      for (Operation *op : eraseLater) {
-        if (op && op->getBlock())
-          op->erase();
+        Type contNullableType = buildContValueTypeOrEmit(
+            callOp, info.resumeContType, /*nullable=*/true);
+        if (!contNullableType) {
+          passFailed = true;
+          break;
+        }
+        FailureOr<Value> nullCont =
+            createWamiRefNull(callOp, b, contNullableType);
+        if (failed(nullCont)) {
+          passFailed = true;
+          break;
+        }
+
+        Value canceled = createI32Const(b, callOp.getLoc(), 3);
+        for (RuntimeSlot &slot : slots) {
+          Value handleConst = createI64Const(b, callOp.getLoc(), slot.handleId);
+          Value match = createWasmssaEq(b, callOp.getLoc(),
+                                        callOp.getOperand(0), handleConst);
+
+          FailureOr<Value> oldState = createWasmssaGlobalGet(
+              callOp, b, slot.stateGlobal.getValue(), b.getI32Type());
+          FailureOr<Value> oldCont = createWasmssaGlobalGet(
+              callOp, b, slot.contGlobal.getValue(), contNullableType);
+          if (failed(oldState) || failed(oldCont)) {
+            passFailed = true;
+            break;
+          }
+
+          Value newState =
+              createWamiSelect(b, callOp.getLoc(), canceled, *oldState, match);
+          Value newCont =
+              createWamiSelect(b, callOp.getLoc(), *nullCont, *oldCont, match);
+          if (failed(createWasmssaGlobalSet(
+                  callOp, b, slot.stateGlobal.getValue(), newState)) ||
+              failed(createWasmssaGlobalSet(
+                  callOp, b, slot.contGlobal.getValue(), newCont))) {
+            passFailed = true;
+            break;
+          }
+        }
+        if (passFailed)
+          break;
+        eraseLater.push_back(callOp);
+        continue;
+      }
+      case CoroIntrinsicKind::IsDone: {
+        if (callOp.getNumOperands() != 1 ||
+            !callOp.getOperand(0).getType().isInteger(64) ||
+            callOp.getNumResults() != 1 ||
+            !callOp.getResult(0).getType().isInteger(32)) {
+          callOp.emitError(
+              "coro.is_done.* lowered signature must be (i64) -> i32");
+          passFailed = true;
+          break;
+        }
+
+        auto slotIt = slotsByKind.find(intrinsic->suffix);
+        if (slotIt == slotsByKind.end() || slotIt->second.empty()) {
+          callOp.emitError("missing runtime state for kind '")
+              << intrinsic->suffix << "'";
+          passFailed = true;
+          break;
+        }
+        SmallVector<RuntimeSlot, 1> &slots = slotIt->second;
+
+        Value selectedState = createI32Const(b, callOp.getLoc(), 0);
+        for (RuntimeSlot &slot : slots) {
+          Value handleConst = createI64Const(b, callOp.getLoc(), slot.handleId);
+          Value match = createWasmssaEq(b, callOp.getLoc(),
+                                        callOp.getOperand(0), handleConst);
+          FailureOr<Value> state = createWasmssaGlobalGet(
+              callOp, b, slot.stateGlobal.getValue(), b.getI32Type());
+          if (failed(state)) {
+            passFailed = true;
+            break;
+          }
+          selectedState = createWamiSelect(b, callOp.getLoc(), *state,
+                                           selectedState, match);
+        }
+        if (passFailed)
+          break;
+
+        Value ready = createI32Const(b, callOp.getLoc(), 1);
+        Value isReady =
+            createWasmssaEq(b, callOp.getLoc(), selectedState, ready);
+        Value done = createWasmssaEqz(b, callOp.getLoc(), isReady);
+        callOp.getResult(0).replaceAllUsesWith(done);
+        eraseLater.push_back(callOp);
+        continue;
+      }
       }
     }
 
     if (passFailed) {
       signalPassFailure();
       return;
+    }
+
+    for (Operation *op : eraseLater) {
+      if (op && op->getBlock())
+        op->erase();
     }
 
     llvm::StringSet<> usedCallees;
@@ -1048,12 +1788,26 @@ public:
             passFailed = true;
             break;
           }
+          if (callOp.getNumResults() < 2 ||
+              !callOp.getResult(0).getType().isInteger(64) ||
+              !callOp.getResult(1).getType().isInteger(1)) {
+            callOp.emitError("coro.resume.* must return (i64, i1, payload...)");
+            passFailed = true;
+            break;
+          }
           SmallVector<Value> args(callOp.getOperands().begin() + 1,
                                   callOp.getOperands().end());
+          SmallVector<Type> payloadTypes(callOp.getResultTypes().begin() + 2,
+                                         callOp.getResultTypes().end());
           std::string implSym = buildImplSymbolForKind(intrinsic->suffix);
           auto direct = func::CallOp::create(b, callOp.getLoc(), implSym,
-                                             callOp.getResultTypes(), args);
-          callOp.replaceAllUsesWith(direct.getResults());
+                                             payloadTypes, args);
+          auto done = arith::ConstantIntOp::create(b, callOp.getLoc(), 1,
+                                                   /*width=*/1);
+          callOp.getResult(0).replaceAllUsesWith(callOp.getOperand(0));
+          callOp.getResult(1).replaceAllUsesWith(done.getResult());
+          for (auto [idx, payload] : llvm::enumerate(direct.getResults()))
+            callOp.getResult(idx + 2).replaceAllUsesWith(payload);
           callOp.erase();
           continue;
         }

@@ -6,7 +6,6 @@ module {
 
   wasmssa.func @driver() -> i32 {
     %c = wami.ref.null : !wami.cont<@ct, true>
-    // expected-error @+1 {{resume requires non-null continuation}}
     %r = "wami.resume"(%c) <{cont_type = @ct, handlers = []}> : (!wami.cont<@ct, true>) -> i32
     wasmssa.return %r : i32
   }

@@ -121,8 +121,18 @@ public:
 FuncOp WasmStackEmitter::emitFunction(wasmssa::FuncOp srcFunc) {
   Location loc = srcFunc.getLoc();
 
-  // Get function type
-  FunctionType funcType = srcFunc.getFunctionType();
+  // Convert function signature to wasmstack value/reference types.
+  FunctionType srcType = srcFunc.getFunctionType();
+  SmallVector<Type> inputTypes;
+  inputTypes.reserve(srcType.getNumInputs());
+  for (Type t : srcType.getInputs())
+    inputTypes.push_back(toWasmStackType(t));
+  SmallVector<Type> resultTypes;
+  resultTypes.reserve(srcType.getNumResults());
+  for (Type t : srcType.getResults())
+    resultTypes.push_back(toWasmStackType(t));
+  FunctionType funcType =
+      FunctionType::get(builder.getContext(), inputTypes, resultTypes);
 
   StringAttr exportName;
   if (srcFunc.getExported())
@@ -421,7 +431,11 @@ void WasmStackEmitter::emitOperation(Operation *op) {
     emitWrapOp(wrapOp);
   }
   // Source dialect local operations
-  else if (auto localGetOp = dyn_cast<wasmssa::LocalGetOp>(op)) {
+  else if (auto localDeclOp = dyn_cast<wasmssa::LocalOp>(op)) {
+    (void)localDeclOp;
+    // Source local declarations are consumed by LocalAllocator and do not emit
+    // stack instructions directly.
+  } else if (auto localGetOp = dyn_cast<wasmssa::LocalGetOp>(op)) {
     emitSourceLocalGet(localGetOp);
   } else if (auto localSetOp = dyn_cast<wasmssa::LocalSetOp>(op)) {
     emitSourceLocalSet(localSetOp);
@@ -480,6 +494,8 @@ void WasmStackEmitter::emitOperation(Operation *op) {
   // Global variable operations
   else if (auto globalGetOp = dyn_cast<wasmssa::GlobalGetOp>(op)) {
     emitGlobalGet(globalGetOp);
+  } else if (auto globalSetOp = dyn_cast<wasmssa::GlobalSetOp>(op)) {
+    emitGlobalSet(globalSetOp);
   }
   // Function call
   else if (auto callOp = dyn_cast<wasmssa::FuncCallOp>(op)) {
@@ -1414,13 +1430,26 @@ void WasmStackEmitter::emitResume(wami::ResumeOp resumeOp) {
     return;
   }
 
-  // Canonical stack order for invocation is args..., then continuation.
+  // Emit from locals to enforce deterministic stack order even when producer
+  // values were materialized earlier in a different order.
   for (Value v : operands.drop_front()) {
-    emitOperandIfNeeded(v);
-    if (failed)
+    int idx = allocator.getLocalIndex(v);
+    if (idx < 0) {
+      fail(resumeOp, "resume arguments must be local-backed during emission");
       return;
+    }
+    LocalGetOp::create(builder, v.getLoc(), static_cast<uint32_t>(idx),
+                       allocator.getLocalType(static_cast<unsigned>(idx)));
   }
-  emitOperandIfNeeded(operands.front());
+
+  Value cont = operands.front();
+  int contIdx = allocator.getLocalIndex(cont);
+  if (contIdx < 0) {
+    fail(resumeOp, "resume continuation must be local-backed during emission");
+    return;
+  }
+  LocalGetOp::create(builder, cont.getLoc(), static_cast<uint32_t>(contIdx),
+                     allocator.getLocalType(static_cast<unsigned>(contIdx)));
   if (failed)
     return;
 
@@ -1477,13 +1506,28 @@ void WasmStackEmitter::emitResumeThrow(wami::ResumeThrowOp resumeThrowOp) {
     return;
   }
 
-  // Canonical stack order for invocation is args..., then continuation.
+  // Emit from locals to enforce deterministic stack order even when producer
+  // values were materialized earlier in a different order.
   for (Value v : operands.drop_front()) {
-    emitOperandIfNeeded(v);
-    if (failed)
+    int idx = allocator.getLocalIndex(v);
+    if (idx < 0) {
+      fail(resumeThrowOp,
+           "resume_throw arguments must be local-backed during emission");
       return;
+    }
+    LocalGetOp::create(builder, v.getLoc(), static_cast<uint32_t>(idx),
+                       allocator.getLocalType(static_cast<unsigned>(idx)));
   }
-  emitOperandIfNeeded(operands.front());
+
+  Value cont = operands.front();
+  int contIdx = allocator.getLocalIndex(cont);
+  if (contIdx < 0) {
+    fail(resumeThrowOp,
+         "resume_throw continuation must be local-backed during emission");
+    return;
+  }
+  LocalGetOp::create(builder, cont.getLoc(), static_cast<uint32_t>(contIdx),
+                     allocator.getLocalType(static_cast<unsigned>(contIdx)));
   if (failed)
     return;
 
@@ -1575,7 +1619,7 @@ void WasmStackEmitter::emitBarrier(wami::BarrierOp barrierOp) {
 void WasmStackEmitter::emitGlobalGet(wasmssa::GlobalGetOp globalGetOp) {
   Location loc = globalGetOp.getLoc();
   Value result = globalGetOp.getResult();
-  Type resultType = result.getType();
+  Type resultType = toWasmStackType(result);
 
   // Get the global symbol name
   FlatSymbolRefAttr globalName = globalGetOp.getGlobalAttr();
@@ -1583,6 +1627,19 @@ void WasmStackEmitter::emitGlobalGet(wasmssa::GlobalGetOp globalGetOp) {
   // Emit wasmstack.global.get operation
   GlobalGetOp::create(builder, loc, globalName, TypeAttr::get(resultType));
   materializeResult(loc, result);
+}
+
+void WasmStackEmitter::emitGlobalSet(wasmssa::GlobalSetOp globalSetOp) {
+  Location loc = globalSetOp.getLoc();
+  Value value = globalSetOp.getValue();
+
+  emitOperandIfNeeded(value);
+  if (failed)
+    return;
+
+  FlatSymbolRefAttr globalName = globalSetOp.getGlobalAttr();
+  GlobalSetOp::create(builder, loc, globalName,
+                      TypeAttr::get(toWasmStackType(value)));
 }
 
 void WasmStackEmitter::emitCall(wasmssa::FuncCallOp callOp) {
@@ -1598,11 +1655,11 @@ void WasmStackEmitter::emitCall(wasmssa::FuncCallOp callOp) {
   // Get function type from operands and results
   SmallVector<Type> inputTypes;
   for (Value operand : callOp.getOperands()) {
-    inputTypes.push_back(operand.getType());
+    inputTypes.push_back(toWasmStackType(operand));
   }
   SmallVector<Type> resultTypes;
   for (Value result : callOp.getResults()) {
-    resultTypes.push_back(result.getType());
+    resultTypes.push_back(toWasmStackType(result));
   }
 
   FunctionType funcType =

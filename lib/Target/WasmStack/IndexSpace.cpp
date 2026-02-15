@@ -56,6 +56,11 @@ LogicalResult IndexSpace::analyze(Operation *moduleOp) {
     }
   }
 
+  // Freeze the pre-continuation prefix to explicitly declared function
+  // signatures. Function/import signatures may include continuation refs and
+  // must be emitted after continuation declarations.
+  preContTypeCount = types.size();
+
   // Imported functions are indexed before defined functions in wasm binaries.
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto importOp = dyn_cast<FuncImportOp>(op))
@@ -91,11 +96,6 @@ LogicalResult IndexSpace::analyze(Operation *moduleOp) {
       memoryNames.push_back(memoryOp.getSymName().str());
     }
   }
-
-  // Freeze base function-signature prefix. Continuations are emitted after this
-  // prefix and before any additional control-flow signatures that may carry
-  // typed continuation refs.
-  preContTypeCount = types.size();
 
   // Continuation type declarations are appended after base function signatures.
   for (Operation &op : moduleOp->getRegion(0).front()) {

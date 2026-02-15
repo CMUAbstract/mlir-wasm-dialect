@@ -163,6 +163,8 @@ private:
 
   /// Emit a wasmssa.global_get operation
   void emitGlobalGet(wasmssa::GlobalGetOp globalGetOp);
+  /// Emit a wasmssa.global_set operation
+  void emitGlobalSet(wasmssa::GlobalSetOp globalSetOp);
 
   /// Emit a WasmSSA call operation
   void emitCall(wasmssa::FuncCallOp callOp);

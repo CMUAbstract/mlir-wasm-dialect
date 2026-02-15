@@ -798,7 +798,7 @@ LogicalResult StackVerifier::handleResumeOp(ResumeOp op) {
   if (failed(contSig))
     return failure();
 
-  Type contRefType = getNonNullContRefType(op.getContTypeAttr());
+  Type contRefType = getNullableContRefType(op.getContTypeAttr());
   SmallVector<Type> expected;
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.push_back(contRefType);
@@ -889,7 +889,7 @@ LogicalResult StackVerifier::handleResumeThrowOp(ResumeThrowOp op) {
   if (failed(contSig))
     return failure();
 
-  Type contRefType = getNonNullContRefType(op.getContTypeAttr());
+  Type contRefType = getNullableContRefType(op.getContTypeAttr());
   SmallVector<Type> expected;
   expected.append(contSig->getInputs().begin(), contSig->getInputs().end());
   expected.push_back(contRefType);
