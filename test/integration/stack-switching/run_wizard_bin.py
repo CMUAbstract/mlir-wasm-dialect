@@ -9,6 +9,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -117,6 +118,57 @@ def extract_i32_result(stdout: str):
     return values[-1]
 
 
+def maybe_rewrite_env_print_i32_import(
+    input_wasm: Path,
+) -> tuple[Path, Optional[tempfile.TemporaryDirectory]]:
+    """Map env.print_i32 imports to wizeng.puti for Wizard host compatibility."""
+    wasm2wat = shutil.which("wasm2wat")
+    wat2wasm = shutil.which("wat2wasm")
+    if not wasm2wat or not wat2wasm:
+        return input_wasm, None
+
+    temp_dir = tempfile.TemporaryDirectory(prefix="wizard_wasm_rewrite_")
+    tmp_root = Path(temp_dir.name)
+    input_wat = tmp_root / "input.wat"
+    patched_wat = tmp_root / "patched.wat"
+    patched_wasm = tmp_root / "patched.wasm"
+
+    try:
+        to_wat = subprocess.run(
+            [wasm2wat, str(input_wasm), "-o", str(input_wat)],
+            capture_output=True,
+            text=True,
+        )
+        if to_wat.returncode != 0:
+            temp_dir.cleanup()
+            return input_wasm, None
+
+        wat_text = input_wat.read_text(encoding="utf-8")
+        patched_text, replacements = re.subn(
+            r'\(import\s+"env"\s+"print_i32"',
+            '(import "wizeng" "puti"',
+            wat_text,
+        )
+        if replacements == 0:
+            temp_dir.cleanup()
+            return input_wasm, None
+
+        patched_wat.write_text(patched_text, encoding="utf-8")
+        to_wasm = subprocess.run(
+            [wat2wasm, str(patched_wat), "-o", str(patched_wasm)],
+            capture_output=True,
+            text=True,
+        )
+        if to_wasm.returncode != 0:
+            temp_dir.cleanup()
+            return input_wasm, None
+
+        return patched_wasm, temp_dir
+    except Exception:
+        temp_dir.cleanup()
+        return input_wasm, None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run a wasm module with wizard engine and optionally check i32 result"
@@ -133,6 +185,12 @@ def main() -> int:
     except RuntimeError as err:
         return fail(str(err))
 
+    input_wasm = Path(args.input)
+    runtime_input = input_wasm
+    rewrite_tempdir = None
+
+    runtime_input, rewrite_tempdir = maybe_rewrite_env_print_i32_import(input_wasm)
+
     cmd = [str(wizeng)]
     extra_opts = os.environ.get("WIZARD_WIZENG_OPTS", "")
     if extra_opts:
@@ -143,7 +201,7 @@ def main() -> int:
         "--expose=wizeng",
         f"--invoke={args.invoke}",
         "--print-result",
-        args.input,
+        str(runtime_input),
     ])
 
     if args.program_args:
@@ -162,7 +220,11 @@ def main() -> int:
         elif java_bin not in current_path.split(os.pathsep):
             run_env["PATH"] = java_bin + os.pathsep + current_path
 
-    proc = subprocess.run(cmd, capture_output=True, text=True, env=run_env)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=run_env)
+    finally:
+        if rewrite_tempdir is not None:
+            rewrite_tempdir.cleanup()
 
     if args.expect_i32 is not None:
         observed = extract_i32_result(proc.stdout)
