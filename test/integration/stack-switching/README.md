@@ -1,12 +1,23 @@
 # Stack-Switching Runtime Integration Tests (Wizard, Opt-in)
 
-These tests exercise end-to-end runtime flow for stack-switching workloads:
+These tests exercise end-to-end runtime flow for stack-switching and coro
+workloads with two benchmark branches:
 
-1. WAMI/wasmssa input IR
-2. `--convert-to-wasmstack`
-3. `--verify-wasmstack`
-4. `wasm-emit --mlir-to-wasm`
-5. Execute generated wasm with Wizard Engine
+1. WAMI branch:
+   - WAMI/wasmssa lowering
+   - `--convert-to-wasmstack`
+   - `--verify-wasmstack`
+   - `wasm-emit --mlir-to-wasm`
+   - Execute generated wasm with Wizard Engine
+2. LLVM branch:
+   - `coro-to-llvm`
+   - MLIR-to-LLVM lowering
+   - `mlir-translate --mlir-to-llvmir`
+   - `llc` + `wasm-ld`
+   - Execute generated wasm with Wizard Engine
+
+The LLVM branch intentionally does not use `wami-convert-*`,
+`convert-to-wasmstack`, or `wasm-emit`.
 
 ## Environment
 
@@ -39,6 +50,8 @@ llvm-lit build/test/integration/stack-switching
 Notes:
 
 - Suite is opt-in and non-gating.
+- LLVM runtime branch also requires `llvm_wasm_backend` tools
+  (`mlir-translate`, `llc`, `wasm-ld`).
 
 ## Printing Debug Values
 
@@ -50,6 +63,8 @@ wasmssa.import_func "puti" from "wizeng" as @print_i32 {type = (i32) -> ()}
 ```
 
 `%run_wizard_bin` enables `--expose=wizeng`, so this host import resolves at runtime.
+For LLVM-backend artifacts that import `env.print_i32`, the runner applies a
+compatibility rewrite to `wizeng.puti` before execution.
 
 Recommended pattern:
 
@@ -63,6 +78,10 @@ Reference test:
 - `test/integration/stack-switching/spec-example-corpus-runtime.mlir`
 - `test/integration/stack-switching/wami-stack-switching-runtime.mlir` (result-oriented)
 - `test/integration/stack-switching/wami-stack-switching-trace.mlir` (trace-oriented)
+- `test/integration/stack-switching/coro-oneshot-runtime.mlir` (coro core one-shot coroutine, dual lowering)
+- `test/integration/stack-switching/coro-oneshot-trace-runtime.mlir` (coro core one-shot coroutine with print_i32 trace)
+- `test/integration/stack-switching/coro-scheduler-runtime.mlir` (coro core scheduler, dual lowering)
+- `test/integration/stack-switching/coro-interruptible-search-runtime.mlir` (coro core interruptible-search, dual lowering)
 
 ## Viewing Trace Output
 
