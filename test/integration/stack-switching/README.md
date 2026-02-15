@@ -81,7 +81,7 @@ Reference test:
 - `test/integration/stack-switching/coro-oneshot-runtime.mlir` (coro core one-shot coroutine, dual lowering)
 - `test/integration/stack-switching/coro-generator-loop-runtime.mlir` (coro looped generator with repeated yield/resume, WAMI runtime path)
 - `test/integration/stack-switching/coro-oneshot-trace-runtime.mlir` (coro core one-shot coroutine with print_i32 trace)
-- `test/integration/stack-switching/coro-scheduler-runtime.mlir` (coro core scheduler, dual lowering)
+- `test/integration/stack-switching/coro-scheduler-runtime.mlir` (cooperative multi-step scheduler loop with is_done checks, WAMI runtime path)
 - `test/integration/stack-switching/coro-interruptible-search-runtime.mlir` (coro core interruptible-search, dual lowering)
 - `test/integration/stack-switching/coro-multiresume-runtime.mlir` (public API v2 design-only example)
 
