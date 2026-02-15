@@ -60,8 +60,15 @@ struct FuncOpLowering : public OpConversionPattern<func::FuncOp> {
 
     // Handle external function declarations
     if (op.isDeclaration()) {
-      wasmssa::FuncImportOp::create(rewriter, op.getLoc(), op.getName(), "env",
-                                    op.getName(), newFuncType);
+      StringRef moduleName = "env";
+      StringRef importName = op.getName();
+      if (auto moduleAttr = op->getAttrOfType<StringAttr>("wasm.import_module"))
+        moduleName = moduleAttr.getValue();
+      if (auto importAttr = op->getAttrOfType<StringAttr>("wasm.import_name"))
+        importName = importAttr.getValue();
+
+      wasmssa::FuncImportOp::create(rewriter, op.getLoc(), op.getName(),
+                                    moduleName, importName, newFuncType);
       rewriter.eraseOp(op);
       return success();
     }

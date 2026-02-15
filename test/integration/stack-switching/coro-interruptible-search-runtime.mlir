@@ -10,7 +10,8 @@
 
 module {
   func.func private @coro.spawn.search() -> i64
-  func.func private @coro.resume.search(%h: i64, %candidate: i32) -> i32
+  func.func private @coro.resume.search(%h: i64, %candidate: i32)
+      -> (i64, i1, i32)
 
   func.func @coro.impl.search(%candidate: i32) -> i32 {
     %threshold = arith.constant 42 : i32
@@ -25,9 +26,13 @@ module {
   }
 
   func.func @main() -> i32 attributes { exported } {
-    %h = func.call @coro.spawn.search() : () -> i64
-    %probe = arith.constant 42 : i32
-    %r = func.call @coro.resume.search(%h, %probe) : (i64, i32) -> i32
-    return %r : i32
+    %h0 = func.call @coro.spawn.search() : () -> i64
+    %p0 = arith.constant 10 : i32
+    %p1 = arith.constant 42 : i32
+
+    %h1, %d1, %r1 = func.call @coro.resume.search(%h0, %p1)
+        : (i64, i32) -> (i64, i1, i32)
+
+    return %r1 : i32
   }
 }

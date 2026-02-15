@@ -2,15 +2,16 @@
 
 module {
   func.func private @coro.spawn.generator() -> i64
-  func.func private @coro.resume.generator(%h: i64, %x: i32) -> i32
+  func.func private @coro.resume.generator(%h: i64, %x: i32)
+      -> (i64, i1, i32)
   func.func private @coro.is_done.generator(%h: i64) -> i1
   func.func private @coro.cancel.generator(%h: i64)
-  func.func private @coro.yield.tick(%x: i32) -> i32
+  func.func private @coro.yield.generator(%x: i32) -> i32
 
   // CHECK-LABEL: func.func @coro.impl.generator
-  // CHECK-NOT: @coro.yield.tick
+  // CHECK-NOT: @coro.yield.generator
   func.func @coro.impl.generator(%x: i32) -> i32 {
-    %y = func.call @coro.yield.tick(%x) : (i32) -> i32
+    %y = func.call @coro.yield.generator(%x) : (i32) -> i32
     return %y : i32
   }
 
@@ -27,7 +28,8 @@ module {
     %d = func.call @coro.is_done.generator(%h) : (i64) -> i1
     %x = arith.constant 41 : i32
     %r = scf.if %d -> i32 {
-      %v = func.call @coro.resume.generator(%h, %x) : (i64, i32) -> i32
+      %h2, %done2, %v = func.call @coro.resume.generator(%h, %x)
+          : (i64, i32) -> (i64, i1, i32)
       func.call @coro.cancel.generator(%h) : (i64) -> ()
       scf.yield %v : i32
     } else {

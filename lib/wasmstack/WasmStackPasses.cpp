@@ -62,6 +62,21 @@ static LogicalResult analyzeStackification(wasmssa::FuncOp funcOp,
   allocateLocalsForBlockArgsOrdered(funcOp.getBody(), plan.needsLocal,
                                     plan.localOrder);
 
+  // Resume/resume_throw need deterministic operand rematerialization order
+  // during stackification (args..., cont). Force all operands local-backed so
+  // the emitter can materialize them explicitly via local.get.
+  funcOp.walk([&](Operation *op) {
+    if (auto resumeOp = dyn_cast<wami::ResumeOp>(op)) {
+      for (Value operand : resumeOp->getOperands())
+        plan.requireLocal(operand);
+      return;
+    }
+    if (auto resumeThrowOp = dyn_cast<wami::ResumeThrowOp>(op)) {
+      for (Value operand : resumeThrowOp->getOperands())
+        plan.requireLocal(operand);
+    }
+  });
+
   // Local-only policy takes precedence over tee.
   for (Value v : plan.needsLocal)
     plan.needsTee.erase(v);
@@ -122,6 +137,17 @@ static SmallVector<Value> getFilteredTeeOrder(const StackificationPlan &plan) {
   return filtered;
 }
 
+static Type toWasmStackType(Type srcType, MLIRContext *ctx) {
+  if (auto contType = dyn_cast<wami::ContType>(srcType)) {
+    if (contType.getNullable())
+      return wasmstack::ContRefType::get(ctx, contType.getTypeName());
+    return wasmstack::ContRefNonNullType::get(ctx, contType.getTypeName());
+  }
+  if (auto funcType = dyn_cast<wami::FuncRefType>(srcType))
+    return wasmstack::FuncRefType::get(ctx, funcType.getFuncName());
+  return srcType;
+}
+
 static LogicalResult emitGlobalConstExpr(wasmssa::ConstOp constOp,
                                          OpBuilder &builder) {
   if (succeeded(emitWasmStackConst(builder, constOp.getLoc(),
@@ -156,7 +182,15 @@ static LogicalResult lowerGlobalInitializer(wasmssa::GlobalOp srcGlobal,
     if (auto globalGetOp = dyn_cast<wasmssa::GlobalGetOp>(op)) {
       wasmstack::GlobalGetOp::create(
           builder, globalGetOp.getLoc(), globalGetOp.getGlobalAttr(),
-          TypeAttr::get(globalGetOp.getResult().getType()));
+          TypeAttr::get(toWasmStackType(globalGetOp.getResult().getType(),
+                                        builder.getContext())));
+      continue;
+    }
+    if (auto refNullOp = dyn_cast<wasmssa::RefNullOp>(op)) {
+      Type dstType = toWasmStackType(refNullOp.getResult().getType(),
+                                     builder.getContext());
+      wasmstack::RefNullOp::create(builder, refNullOp.getLoc(),
+                                   TypeAttr::get(dstType));
       continue;
     }
     if (auto returnOp = dyn_cast<wasmssa::ReturnOp>(op)) {
@@ -368,7 +402,8 @@ public:
         exportNameAttr = builder.getStringAttr(globalOp.getSymName());
 
       auto newGlobal = wasmstack::GlobalOp::create(
-          builder, globalOp.getLoc(), globalOp.getSymName(), globalOp.getType(),
+          builder, globalOp.getLoc(), globalOp.getSymName(),
+          toWasmStackType(globalOp.getType(), builder.getContext()),
           globalOp.getIsMutable(), exportNameAttr);
 
       if (failed(lowerGlobalInitializer(globalOp, newGlobal, builder))) {
