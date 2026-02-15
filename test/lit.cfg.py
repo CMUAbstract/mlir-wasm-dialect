@@ -98,6 +98,19 @@ llvm_config.add_tool_substitutions(
 if wasm_ld_tool.was_resolved:
     config.available_features.add("wasm_ld")
 
+# Optional LLVM-backend tools used by pure LLVM -> Wasm integration tests.
+llvm_backend_tools = [
+    ToolSubst("mlir-translate", command=FindTool("mlir-translate"),
+              unresolved="ignore"),
+    ToolSubst("llc", command=FindTool("llc"), unresolved="ignore"),
+]
+llvm_config.add_tool_substitutions(
+    llvm_backend_tools, tool_dirs + [config.environment.get("PATH", "")]
+)
+if (all(tool.was_resolved for tool in llvm_backend_tools) and
+        wasm_ld_tool.was_resolved):
+    config.available_features.add("llvm_wasm_backend")
+
 # Optional wasmtime execution integration tests (opt-in).
 # Enabled only when cargo is available and RUN_WASMTIME_BENCH=1.
 run_wasmtime_bench = os.environ.get("RUN_WASMTIME_BENCH", "") == "1"
