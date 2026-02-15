@@ -2,7 +2,6 @@
 
 // Test control flow and comparison operations
 
-// CHECK: ConvertToWasmStack pass running on module
 
 module {
   // Test comparison operation (operands pushed left-to-right for stack evaluation)

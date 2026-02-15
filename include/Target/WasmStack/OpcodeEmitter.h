@@ -14,6 +14,7 @@
 #include "Target/WasmStack/RelocationTracker.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "llvm/ADT/StringMap.h"
+#include <optional>
 
 namespace mlir {
 class Operation;
@@ -51,10 +52,11 @@ private:
   };
 
   /// Resolve a symbolic label to a branch depth index.
-  uint32_t resolveLabelDepth(llvm::StringRef label) const;
+  std::optional<uint32_t> resolveLabelDepth(llvm::StringRef label) const;
 
   /// Emit block type encoding for a block/loop/if.
-  bool emitBlockType(ArrayAttr paramTypes, ArrayAttr resultTypes);
+  bool emitBlockType(Operation *op, ArrayAttr paramTypes,
+                     ArrayAttr resultTypes);
 
   // Emit helpers for specific op categories
   bool emitConstOp(Operation *op);
@@ -70,7 +72,8 @@ private:
   bool emitMiscOp(Operation *op);
 
   /// Get the type-dispatched opcode for a binary/unary/compare operation.
-  uint8_t getTypedOpcode(llvm::StringRef opName, mlir::Type type) const;
+  std::optional<uint8_t> getTypedOpcode(llvm::StringRef opName,
+                                        mlir::Type type) const;
 
   BinaryWriter &writer;
   IndexSpace &indexSpace;

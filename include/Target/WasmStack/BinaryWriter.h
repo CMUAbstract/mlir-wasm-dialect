@@ -120,9 +120,12 @@ public:
       if (!indexSpace) {
         writeByte(static_cast<uint8_t>(wasm::ValType::ContRef));
       } else {
+        auto contIdx = indexSpace->tryGetContTypeIndex(
+            contRefType.getTypeName().getValue());
+        if (!contIdx)
+          return false;
         writeByte(wasm::RefType::RefNull);
-        writeSLEB128(static_cast<int64_t>(indexSpace->getContTypeIndex(
-            contRefType.getTypeName().getValue())));
+        writeSLEB128(static_cast<int64_t>(*contIdx));
       }
     } else if (auto contRefType = dyn_cast<ContRefNonNullType>(type)) {
       if (!indexSpace) {
@@ -130,9 +133,12 @@ public:
         // form when no heaptype index space is available.
         writeByte(static_cast<uint8_t>(wasm::ValType::ContRef));
       } else {
+        auto contIdx = indexSpace->tryGetContTypeIndex(
+            contRefType.getTypeName().getValue());
+        if (!contIdx)
+          return false;
         writeByte(wasm::RefType::Ref);
-        writeSLEB128(static_cast<int64_t>(indexSpace->getContTypeIndex(
-            contRefType.getTypeName().getValue())));
+        writeSLEB128(static_cast<int64_t>(*contIdx));
       }
     } else {
       return false;
@@ -155,16 +161,22 @@ public:
       if (!indexSpace) {
         writeByte(static_cast<uint8_t>(wasm::ValType::ContRef));
       } else {
-        writeSLEB128(static_cast<int64_t>(indexSpace->getContTypeIndex(
-            contRefType.getTypeName().getValue())));
+        auto contIdx = indexSpace->tryGetContTypeIndex(
+            contRefType.getTypeName().getValue());
+        if (!contIdx)
+          return false;
+        writeSLEB128(static_cast<int64_t>(*contIdx));
       }
       return true;
     }
     if (auto contRefType = dyn_cast<ContRefNonNullType>(type)) {
       if (!indexSpace)
         return false;
-      writeSLEB128(static_cast<int64_t>(
-          indexSpace->getContTypeIndex(contRefType.getTypeName().getValue())));
+      auto contIdx =
+          indexSpace->tryGetContTypeIndex(contRefType.getTypeName().getValue());
+      if (!contIdx)
+        return false;
+      writeSLEB128(static_cast<int64_t>(*contIdx));
       return true;
     }
     return false;

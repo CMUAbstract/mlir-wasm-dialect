@@ -48,6 +48,9 @@ public:
   /// Get or create a type index for a function signature.
   uint32_t getOrCreateTypeIndex(const FuncSig &sig);
 
+  /// Try to get type index for a function signature.
+  std::optional<uint32_t> tryGetTypeIndex(const FuncSig &sig) const;
+
   /// Get type index for a function signature (must already exist).
   uint32_t getTypeIndex(const FuncSig &sig) const;
 
@@ -60,8 +63,14 @@ public:
   /// Get global index by symbol name.
   uint32_t getGlobalIndex(llvm::StringRef name) const;
 
+  /// Try to get global index by symbol name.
+  std::optional<uint32_t> tryGetGlobalIndex(llvm::StringRef name) const;
+
   /// Get memory index by symbol name.
   uint32_t getMemoryIndex(llvm::StringRef name) const;
+
+  /// Try to get memory index by symbol name.
+  std::optional<uint32_t> tryGetMemoryIndex(llvm::StringRef name) const;
 
   /// Get all type signatures in order.
   const llvm::SmallVector<FuncSig> &getTypes() const { return types; }
@@ -95,6 +104,9 @@ public:
   /// Get wasm type index for a declared `wasmstack.type.cont`.
   uint32_t getContTypeIndex(llvm::StringRef name) const;
 
+  /// Try to get wasm type index for a declared `wasmstack.type.cont`.
+  std::optional<uint32_t> tryGetContTypeIndex(llvm::StringRef name) const;
+
   /// Get all continuation declarations in index order.
   const llvm::SmallVector<ContTypeInfo> &getContTypes() const {
     return contTypes;
@@ -103,8 +115,14 @@ public:
   /// Get type index for a declared `wasmstack.type.func`.
   uint32_t getTypeFuncIndex(llvm::StringRef name) const;
 
+  /// Try to get type index for a declared `wasmstack.type.func`.
+  std::optional<uint32_t> tryGetTypeFuncIndex(llvm::StringRef name) const;
+
   /// Get tag index by symbol name.
   uint32_t getTagIndex(llvm::StringRef name) const;
+
+  /// Try to get tag index by symbol name.
+  std::optional<uint32_t> tryGetTagIndex(llvm::StringRef name) const;
 
   /// Get all tag names in index order.
   const llvm::SmallVector<std::string> &getTagNames() const { return tagNames; }
@@ -132,6 +150,9 @@ public:
 
   /// Get the symbol index for a given name.
   uint32_t getSymbolIndex(llvm::StringRef name) const;
+
+  /// Try to get the symbol index for a given name.
+  std::optional<uint32_t> tryGetSymbolIndex(llvm::StringRef name) const;
 
   /// Get all symbols in order.
   const llvm::SmallVector<SymbolInfo> &getSymbols() const { return symbols; }

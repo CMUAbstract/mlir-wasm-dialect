@@ -32,27 +32,41 @@ static IndexSpace::FuncSig toFuncSig(FunctionType funcType) {
 }
 
 /// Emit the type section (section 1).
-static void emitTypeSection(BinaryWriter &output, IndexSpace &indexSpace) {
+static LogicalResult emitTypeSection(BinaryWriter &output,
+                                     IndexSpace &indexSpace,
+                                     Operation *moduleOp) {
   BinaryWriter section;
   const auto &funcTypes = indexSpace.getTypes();
   const auto &contTypes = indexSpace.getContTypes();
   uint32_t preContCount = indexSpace.getPreContTypeCount();
   section.writeULEB128(funcTypes.size() + contTypes.size());
 
-  auto emitFuncSig = [&](const IndexSpace::FuncSig &sig) {
+  auto emitFuncSig = [&](const IndexSpace::FuncSig &sig) -> LogicalResult {
     section.writeByte(wc::FuncTypeTag); // 0x60
     // Params
     section.writeULEB128(sig.params.size());
-    for (Type t : sig.params)
-      section.writeValType(t, &indexSpace);
+    for (Type t : sig.params) {
+      if (!section.writeValType(t, &indexSpace)) {
+        moduleOp->emitError("unsupported value type in wasm type signature: ")
+            << t;
+        return failure();
+      }
+    }
     // Results
     section.writeULEB128(sig.results.size());
-    for (Type t : sig.results)
-      section.writeValType(t, &indexSpace);
+    for (Type t : sig.results) {
+      if (!section.writeValType(t, &indexSpace)) {
+        moduleOp->emitError("unsupported result type in wasm type signature: ")
+            << t;
+        return failure();
+      }
+    }
+    return success();
   };
 
   for (uint32_t i = 0; i < preContCount; ++i) {
-    emitFuncSig(funcTypes[i]);
+    if (failed(emitFuncSig(funcTypes[i])))
+      return failure();
   }
 
   for (const auto &cont : contTypes) {
@@ -61,15 +75,18 @@ static void emitTypeSection(BinaryWriter &output, IndexSpace &indexSpace) {
   }
 
   for (uint32_t i = preContCount; i < funcTypes.size(); ++i) {
-    emitFuncSig(funcTypes[i]);
+    if (failed(emitFuncSig(funcTypes[i])))
+      return failure();
   }
 
   output.writeSection(wc::SectionId::Type, section);
+  return success();
 }
 
 /// Emit the import section (section 2).
-static void emitImportSection(BinaryWriter &output, IndexSpace &indexSpace,
-                              Operation *moduleOp) {
+static LogicalResult emitImportSection(BinaryWriter &output,
+                                       IndexSpace &indexSpace,
+                                       Operation *moduleOp) {
   SmallVector<FuncImportOp> imports;
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto importOp = dyn_cast<FuncImportOp>(op))
@@ -77,7 +94,7 @@ static void emitImportSection(BinaryWriter &output, IndexSpace &indexSpace,
   }
 
   if (imports.empty())
-    return;
+    return success();
 
   BinaryWriter section;
   section.writeULEB128(imports.size());
@@ -92,16 +109,22 @@ static void emitImportSection(BinaryWriter &output, IndexSpace &indexSpace,
       sig.params.push_back(t);
     for (Type t : funcType.getResults())
       sig.results.push_back(t);
-    uint32_t typeIdx = indexSpace.getTypeIndex(sig);
-    section.writeULEB128(typeIdx);
+    auto typeIdx = indexSpace.tryGetTypeIndex(sig);
+    if (!typeIdx) {
+      importOp.emitOpError("import signature was not indexed in type section");
+      return failure();
+    }
+    section.writeULEB128(*typeIdx);
   }
 
   output.writeSection(wc::SectionId::Import, section);
+  return success();
 }
 
 /// Emit the function section (section 3) - maps function index to type index.
-static void emitFunctionSection(BinaryWriter &output, IndexSpace &indexSpace,
-                                Operation *moduleOp) {
+static LogicalResult emitFunctionSection(BinaryWriter &output,
+                                         IndexSpace &indexSpace,
+                                         Operation *moduleOp) {
   BinaryWriter section;
 
   // Count defined functions
@@ -119,11 +142,16 @@ static void emitFunctionSection(BinaryWriter &output, IndexSpace &indexSpace,
       sig.params.push_back(t);
     for (Type t : funcType.getResults())
       sig.results.push_back(t);
-    uint32_t typeIdx = indexSpace.getTypeIndex(sig);
-    section.writeULEB128(typeIdx);
+    auto typeIdx = indexSpace.tryGetTypeIndex(sig);
+    if (!typeIdx) {
+      funcOp.emitOpError("function signature was not indexed in type section");
+      return failure();
+    }
+    section.writeULEB128(*typeIdx);
   }
 
   output.writeSection(wc::SectionId::Function, section);
+  return success();
 }
 
 /// Returns true when relocatable emission needs a synthetic table section.
@@ -180,8 +208,9 @@ static void emitMemorySection(BinaryWriter &output, Operation *moduleOp) {
 }
 
 /// Emit the tag section.
-static void emitTagSection(BinaryWriter &output, IndexSpace &indexSpace,
-                           Operation *moduleOp) {
+static LogicalResult emitTagSection(BinaryWriter &output,
+                                    IndexSpace &indexSpace,
+                                    Operation *moduleOp) {
   SmallVector<TagOp> tags;
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto tagOp = dyn_cast<TagOp>(op))
@@ -189,17 +218,22 @@ static void emitTagSection(BinaryWriter &output, IndexSpace &indexSpace,
   }
 
   if (tags.empty())
-    return;
+    return success();
 
   BinaryWriter section;
   section.writeULEB128(tags.size());
   for (auto tagOp : tags) {
     section.writeByte(0x00); // attribute
-    uint32_t typeIndex = indexSpace.getTypeIndex(toFuncSig(tagOp.getType()));
-    section.writeULEB128(typeIndex);
+    auto typeIndex = indexSpace.tryGetTypeIndex(toFuncSig(tagOp.getType()));
+    if (!typeIndex) {
+      tagOp.emitOpError("tag signature was not indexed in type section");
+      return failure();
+    }
+    section.writeULEB128(*typeIndex);
   }
 
   output.writeSection(wc::SectionId::Tag, section);
+  return success();
 }
 
 /// Emit the element section with declarative ref.func declarations.
@@ -220,8 +254,9 @@ static void emitElementSection(BinaryWriter &output, IndexSpace &indexSpace) {
 }
 
 /// Emit the global section (section 6).
-static void emitGlobalSection(BinaryWriter &output, IndexSpace &indexSpace,
-                              Operation *moduleOp) {
+static LogicalResult emitGlobalSection(BinaryWriter &output,
+                                       IndexSpace &indexSpace,
+                                       Operation *moduleOp) {
   SmallVector<GlobalOp> globals;
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto globalOp = dyn_cast<GlobalOp>(op))
@@ -229,13 +264,18 @@ static void emitGlobalSection(BinaryWriter &output, IndexSpace &indexSpace,
   }
 
   if (globals.empty())
-    return;
+    return success();
 
   BinaryWriter section;
   section.writeULEB128(globals.size());
   for (auto globalOp : globals) {
     // Global type: valtype + mutability
-    section.writeValType(globalOp.getTypeAttr().getValue(), &indexSpace);
+    if (!section.writeValType(globalOp.getTypeAttr().getValue(), &indexSpace)) {
+      globalOp.emitOpError(
+          "unsupported global value type for binary encoding: ")
+          << globalOp.getTypeAttr().getValue();
+      return failure();
+    }
     section.writeByte(globalOp.getIsMutable()
                           ? static_cast<uint8_t>(wc::Mutability::Var)
                           : static_cast<uint8_t>(wc::Mutability::Const));
@@ -243,16 +283,19 @@ static void emitGlobalSection(BinaryWriter &output, IndexSpace &indexSpace,
     // Init expression: emit the operations in the init region
     OpcodeEmitter emitter(section, indexSpace);
     for (Operation &initOp : globalOp.getInit().front()) {
-      emitter.emitOperation(&initOp);
+      if (!emitter.emitOperation(&initOp))
+        return failure();
     }
     section.writeByte(wc::Opcode::End);
   }
   output.writeSection(wc::SectionId::Global, section);
+  return success();
 }
 
 /// Emit the export section (section 7).
-static void emitExportSection(BinaryWriter &output, IndexSpace &indexSpace,
-                              Operation *moduleOp) {
+static LogicalResult emitExportSection(BinaryWriter &output,
+                                       IndexSpace &indexSpace,
+                                       Operation *moduleOp) {
   BinaryWriter section;
 
   // Collect exports
@@ -261,29 +304,45 @@ static void emitExportSection(BinaryWriter &output, IndexSpace &indexSpace,
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto funcOp = dyn_cast<FuncOp>(op)) {
       if (auto exportName = funcOp.getExportName()) {
-        uint32_t idx = indexSpace.getFuncIndex(funcOp.getSymName());
-        exports.push_back({*exportName, wc::ExportKind::Func, idx});
+        auto idx = indexSpace.tryGetFuncIndex(funcOp.getSymName());
+        if (!idx) {
+          funcOp.emitOpError("missing function index for exported symbol");
+          return failure();
+        }
+        exports.push_back({*exportName, wc::ExportKind::Func, *idx});
       }
     } else if (auto memOp = dyn_cast<MemoryOp>(op)) {
       if (auto exportName = memOp.getExportName()) {
-        uint32_t idx = indexSpace.getMemoryIndex(memOp.getSymName());
-        exports.push_back({*exportName, wc::ExportKind::Memory, idx});
+        auto idx = indexSpace.tryGetMemoryIndex(memOp.getSymName());
+        if (!idx) {
+          memOp.emitOpError("missing memory index for exported symbol");
+          return failure();
+        }
+        exports.push_back({*exportName, wc::ExportKind::Memory, *idx});
       }
     } else if (auto globalOp = dyn_cast<GlobalOp>(op)) {
       if (auto exportName = globalOp.getExportName()) {
-        uint32_t idx = indexSpace.getGlobalIndex(globalOp.getSymName());
-        exports.push_back({*exportName, wc::ExportKind::Global, idx});
+        auto idx = indexSpace.tryGetGlobalIndex(globalOp.getSymName());
+        if (!idx) {
+          globalOp.emitOpError("missing global index for exported symbol");
+          return failure();
+        }
+        exports.push_back({*exportName, wc::ExportKind::Global, *idx});
       }
     } else if (auto tagOp = dyn_cast<TagOp>(op)) {
       if (auto exportName = tagOp.getExportName()) {
-        uint32_t idx = indexSpace.getTagIndex(tagOp.getSymName());
-        exports.push_back({*exportName, wc::ExportKind::Tag, idx});
+        auto idx = indexSpace.tryGetTagIndex(tagOp.getSymName());
+        if (!idx) {
+          tagOp.emitOpError("missing tag index for exported symbol");
+          return failure();
+        }
+        exports.push_back({*exportName, wc::ExportKind::Tag, *idx});
       }
     }
   }
 
   if (exports.empty())
-    return;
+    return success();
 
   section.writeULEB128(exports.size());
   for (auto &[name, kind, idx] : exports) {
@@ -293,6 +352,7 @@ static void emitExportSection(BinaryWriter &output, IndexSpace &indexSpace,
   }
 
   output.writeSection(wc::SectionId::Export, section);
+  return success();
 }
 
 /// Emit the data count section (section 12).
@@ -345,7 +405,11 @@ static LogicalResult emitCodeSection(BinaryWriter &output,
     funcBody.writeULEB128(localGroups.size());
     for (auto &[count, type] : localGroups) {
       funcBody.writeULEB128(count);
-      funcBody.writeValType(type, &indexSpace);
+      if (!funcBody.writeValType(type, &indexSpace)) {
+        funcOp.emitOpError("unsupported local type for binary encoding: ")
+            << type;
+        return failure();
+      }
     }
 
     // The sectionOffset for relocations is the current position in the section
@@ -355,10 +419,8 @@ static LogicalResult emitCodeSection(BinaryWriter &output,
 
     // Emit function body opcodes
     OpcodeEmitter emitter(funcBody, indexSpace, tracker, sectionOffset);
-    if (!emitter.emitFunctionBody(funcOp)) {
-      funcOp.emitError("failed to emit function body");
+    if (!emitter.emitFunctionBody(funcOp))
       return failure();
-    }
 
     // Write function body with size prefix
     section.writeULEB128(funcBody.size());
@@ -390,8 +452,10 @@ static LogicalResult emitCodeSection(BinaryWriter &output,
 
 /// Emit the data section (section 11).
 /// When tracker is non-null, uses placeholder offsets with relocations.
-static void emitDataSection(BinaryWriter &output, IndexSpace &indexSpace,
-                            Operation *moduleOp, RelocationTracker *tracker) {
+static LogicalResult emitDataSection(BinaryWriter &output,
+                                     IndexSpace &indexSpace,
+                                     Operation *moduleOp,
+                                     RelocationTracker *tracker) {
   SmallVector<DataOp> dataOps;
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto dataOp = dyn_cast<DataOp>(op))
@@ -399,7 +463,7 @@ static void emitDataSection(BinaryWriter &output, IndexSpace &indexSpace,
   }
 
   if (dataOps.empty())
-    return;
+    return success();
 
   BinaryWriter section;
   section.writeULEB128(dataOps.size());
@@ -413,10 +477,15 @@ static void emitDataSection(BinaryWriter &output, IndexSpace &indexSpace,
     if (tracker) {
       // Record relocation for the data segment offset
       std::string symName = (".data." + llvm::Twine(segmentIndex)).str();
-      uint32_t symIdx = indexSpace.getSymbolIndex(symName);
+      auto symIdx = indexSpace.tryGetSymbolIndex(symName);
+      if (!symIdx) {
+        dataOp.emitOpError("missing relocation symbol for data segment ")
+            << "'" << symName << "'";
+        return failure();
+      }
       tracker->addDataRelocation(
           static_cast<uint8_t>(wc::RelocType::R_WASM_MEMORY_ADDR_SLEB),
-          section.offset(), symIdx, dataOp.getOffset());
+          section.offset(), *symIdx, dataOp.getOffset());
       section.writeFixedSLEB128(0); // placeholder
     } else {
       section.writeSLEB128(dataOp.getOffset());
@@ -431,6 +500,7 @@ static void emitDataSection(BinaryWriter &output, IndexSpace &indexSpace,
   }
 
   output.writeSection(wc::SectionId::Data, section);
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -553,35 +623,44 @@ static void emitTargetFeaturesSection(BinaryWriter &output) {
 LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
                                               llvm::raw_ostream &output,
                                               bool relocatable) {
-  // Find the wasmstack.module inside the MLIR module
-  Operation *wasmModule = nullptr;
-  if (isa<wasmstack::ModuleOp>(op)) {
-    wasmModule = op;
+  wasmstack::ModuleOp wasmModule;
+  if (auto directModule = dyn_cast<wasmstack::ModuleOp>(op)) {
+    wasmModule = directModule;
+  } else if (auto topModule = dyn_cast<mlir::ModuleOp>(op)) {
+    SmallVector<wasmstack::ModuleOp> nestedModules;
+    for (auto candidate : topModule.getOps<wasmstack::ModuleOp>())
+      nestedModules.push_back(candidate);
+    if (nestedModules.empty()) {
+      op->emitError("expected one top-level wasmstack.module, found none");
+      return failure();
+    }
+    if (nestedModules.size() > 1) {
+      op->emitError("expected one top-level wasmstack.module, found ")
+          << nestedModules.size();
+      return failure();
+    }
+    wasmModule = nestedModules.front();
   } else {
-    // Walk the top-level mlir::ModuleOp to find wasmstack.module
-    op->walk([&](wasmstack::ModuleOp mod) { wasmModule = mod; });
-  }
-
-  if (!wasmModule) {
-    op->emitError("no wasmstack.module found");
+    op->emitError("emitWasmBinary expects input op to be module or "
+                  "wasmstack.module");
     return failure();
   }
 
   // 1. Analyze index spaces
   IndexSpace indexSpace;
-  if (failed(indexSpace.analyze(wasmModule)))
+  if (failed(indexSpace.analyze(wasmModule.getOperation())))
     return failure();
 
   // Build symbol table for relocatable mode
   RelocationTracker tracker;
   RelocationTracker *trackerPtr = relocatable ? &tracker : nullptr;
   if (relocatable)
-    indexSpace.buildSymbolTable(wasmModule);
+    indexSpace.buildSymbolTable(wasmModule.getOperation());
 
   // 2. Build output
   BinaryWriter writer;
   bool emitSyntheticTable =
-      needsSyntheticTable(wasmModule, indexSpace, relocatable);
+      needsSyntheticTable(wasmModule.getOperation(), indexSpace, relocatable);
   uint32_t sectionIndex = 0;
   std::optional<uint32_t> codeSectionIndex;
   std::optional<uint32_t> dataSectionIndex;
@@ -600,15 +679,19 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
 
   // Emit sections in order.
   size_t beforeSize = writer.size();
-  emitTypeSection(writer, indexSpace);
+  if (failed(emitTypeSection(writer, indexSpace, wasmModule.getOperation())))
+    return failure();
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
-  emitImportSection(writer, indexSpace, wasmModule);
+  if (failed(emitImportSection(writer, indexSpace, wasmModule.getOperation())))
+    return failure();
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
-  emitFunctionSection(writer, indexSpace, wasmModule);
+  if (failed(
+          emitFunctionSection(writer, indexSpace, wasmModule.getOperation())))
+    return failure();
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
@@ -616,21 +699,25 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
-  emitMemorySection(writer, wasmModule);
+  emitMemorySection(writer, wasmModule.getOperation());
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
-  emitTagSection(writer, indexSpace, wasmModule);
+  if (failed(emitTagSection(writer, indexSpace, wasmModule.getOperation())))
+    return failure();
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
-  emitGlobalSection(writer, indexSpace, wasmModule);
+  if (failed(emitGlobalSection(writer, indexSpace, wasmModule.getOperation())))
+    return failure();
   noteSectionEmission(beforeSize);
 
   // Export section: skip in relocatable mode (exports become symbol flags)
   if (!relocatable) {
     beforeSize = writer.size();
-    emitExportSection(writer, indexSpace, wasmModule);
+    if (failed(
+            emitExportSection(writer, indexSpace, wasmModule.getOperation())))
+      return failure();
     noteSectionEmission(beforeSize);
   }
 
@@ -639,27 +726,35 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
-  emitDataCountSection(writer, wasmModule);
+  emitDataCountSection(writer, wasmModule.getOperation());
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
-  if (failed(emitCodeSection(writer, indexSpace, wasmModule, trackerPtr)))
+  if (failed(emitCodeSection(writer, indexSpace, wasmModule.getOperation(),
+                             trackerPtr)))
     return failure();
   noteSectionEmission(beforeSize, &codeSectionIndex);
 
   beforeSize = writer.size();
-  emitDataSection(writer, indexSpace, wasmModule, trackerPtr);
+  if (failed(emitDataSection(writer, indexSpace, wasmModule.getOperation(),
+                             trackerPtr)))
+    return failure();
   noteSectionEmission(beforeSize, &dataSectionIndex);
 
   // Emit linking and relocation sections in relocatable mode
   if (relocatable) {
     beforeSize = writer.size();
-    emitLinkingSection(writer, indexSpace, wasmModule, emitSyntheticTable);
+    emitLinkingSection(writer, indexSpace, wasmModule.getOperation(),
+                       emitSyntheticTable);
     noteSectionEmission(beforeSize);
 
     if (!tracker.getCodeRelocations().empty()) {
-      assert(codeSectionIndex &&
-             "code relocations require emitted code section");
+      if (!codeSectionIndex) {
+        wasmModule.emitError(
+            "internal error: code relocations present without emitted code "
+            "section");
+        return failure();
+      }
       beforeSize = writer.size();
       emitRelocSection(writer, "reloc.CODE", *codeSectionIndex,
                        tracker.getCodeRelocations());
@@ -667,8 +762,12 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
     }
 
     if (!tracker.getDataRelocations().empty()) {
-      assert(dataSectionIndex &&
-             "data relocations require emitted data section");
+      if (!dataSectionIndex) {
+        wasmModule.emitError(
+            "internal error: data relocations present without emitted data "
+            "section");
+        return failure();
+      }
       beforeSize = writer.size();
       emitRelocSection(writer, "reloc.DATA", *dataSectionIndex,
                        tracker.getDataRelocations());

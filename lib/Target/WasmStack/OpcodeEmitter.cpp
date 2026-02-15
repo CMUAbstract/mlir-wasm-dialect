@@ -19,20 +19,23 @@ namespace wc = mlir::wasmstack::wasm;
 // Label resolution
 //===----------------------------------------------------------------------===//
 
-uint32_t OpcodeEmitter::resolveLabelDepth(llvm::StringRef label) const {
-  // Search from top of stack (innermost) to bottom (outermost)
-  for (int i = labelStack.size() - 1; i >= 0; --i) {
-    if (labelStack[i].first == label)
-      return labelStack.size() - 1 - i;
+std::optional<uint32_t>
+OpcodeEmitter::resolveLabelDepth(llvm::StringRef label) const {
+  uint32_t depth = 0;
+  for (auto it = labelStack.rbegin(), end = labelStack.rend(); it != end;
+       ++it, ++depth) {
+    if (it->first == label)
+      return depth;
   }
-  llvm_unreachable("label not found in label stack");
+  return std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
 // Block type encoding
 //===----------------------------------------------------------------------===//
 
-bool OpcodeEmitter::emitBlockType(ArrayAttr paramTypes, ArrayAttr resultTypes) {
+bool OpcodeEmitter::emitBlockType(Operation *op, ArrayAttr paramTypes,
+                                  ArrayAttr resultTypes) {
   bool noParams = !paramTypes || paramTypes.empty();
   size_t numResults = resultTypes ? resultTypes.size() : 0;
 
@@ -57,8 +60,13 @@ bool OpcodeEmitter::emitBlockType(ArrayAttr paramTypes, ArrayAttr resultTypes) {
       for (Attribute a : resultTypes)
         sig.results.push_back(cast<TypeAttr>(a).getValue());
     }
-    int32_t typeIdx = static_cast<int32_t>(indexSpace.getTypeIndex(sig));
-    writer.writeSLEB128(typeIdx);
+    auto typeIdx = indexSpace.tryGetTypeIndex(sig);
+    if (!typeIdx) {
+      op->emitOpError("block signature type was not indexed for binary "
+                      "encoding");
+      return false;
+    }
+    writer.writeSLEB128(static_cast<int32_t>(*typeIdx));
     return true;
   }
 }
@@ -176,29 +184,49 @@ bool OpcodeEmitter::emitLocalOp(Operation *op) {
 bool OpcodeEmitter::emitGlobalOp(Operation *op) {
   if (auto globalGet = dyn_cast<GlobalGetOp>(op)) {
     writer.writeByte(wc::Opcode::GlobalGet);
-    uint32_t idx = indexSpace.getGlobalIndex(globalGet.getGlobal());
+    auto idx = indexSpace.tryGetGlobalIndex(globalGet.getGlobal());
+    if (!idx) {
+      globalGet.emitOpError("unresolved global symbol '")
+          << globalGet.getGlobal() << "' in binary emitter";
+      return false;
+    }
     if (tracker) {
-      uint32_t symIdx = indexSpace.getSymbolIndex(globalGet.getGlobal());
+      auto symIdx = indexSpace.tryGetSymbolIndex(globalGet.getGlobal());
+      if (!symIdx) {
+        globalGet.emitOpError("missing relocation symbol for global '")
+            << globalGet.getGlobal() << "'";
+        return false;
+      }
       tracker->addCodeRelocation(
           static_cast<uint8_t>(wc::RelocType::R_WASM_GLOBAL_INDEX_LEB),
-          sectionOffset + writer.offset(), symIdx);
-      writer.writeFixedULEB128(idx);
+          sectionOffset + writer.offset(), *symIdx);
+      writer.writeFixedULEB128(*idx);
     } else {
-      writer.writeULEB128(idx);
+      writer.writeULEB128(*idx);
     }
     return true;
   }
   if (auto globalSet = dyn_cast<GlobalSetOp>(op)) {
     writer.writeByte(wc::Opcode::GlobalSet);
-    uint32_t idx = indexSpace.getGlobalIndex(globalSet.getGlobal());
+    auto idx = indexSpace.tryGetGlobalIndex(globalSet.getGlobal());
+    if (!idx) {
+      globalSet.emitOpError("unresolved global symbol '")
+          << globalSet.getGlobal() << "' in binary emitter";
+      return false;
+    }
     if (tracker) {
-      uint32_t symIdx = indexSpace.getSymbolIndex(globalSet.getGlobal());
+      auto symIdx = indexSpace.tryGetSymbolIndex(globalSet.getGlobal());
+      if (!symIdx) {
+        globalSet.emitOpError("missing relocation symbol for global '")
+            << globalSet.getGlobal() << "'";
+        return false;
+      }
       tracker->addCodeRelocation(
           static_cast<uint8_t>(wc::RelocType::R_WASM_GLOBAL_INDEX_LEB),
-          sectionOffset + writer.offset(), symIdx);
-      writer.writeFixedULEB128(idx);
+          sectionOffset + writer.offset(), *symIdx);
+      writer.writeFixedULEB128(*idx);
     } else {
-      writer.writeULEB128(idx);
+      writer.writeULEB128(*idx);
     }
     return true;
   }
@@ -209,8 +237,8 @@ bool OpcodeEmitter::emitGlobalOp(Operation *op) {
 // Type-dispatched opcode helper
 //===----------------------------------------------------------------------===//
 
-uint8_t OpcodeEmitter::getTypedOpcode(llvm::StringRef opName,
-                                      mlir::Type type) const {
+std::optional<uint8_t> OpcodeEmitter::getTypedOpcode(llvm::StringRef opName,
+                                                     mlir::Type type) const {
   bool isI32 = type.isInteger(32);
   bool isI64 = type.isInteger(64);
   bool isF32 = type.isF32();
@@ -508,7 +536,7 @@ uint8_t OpcodeEmitter::getTypedOpcode(llvm::StringRef opName,
       return wc::Opcode::F64Ge;
   }
 
-  llvm_unreachable("unsupported opcode/type combination");
+  return std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
@@ -539,13 +567,25 @@ bool OpcodeEmitter::emitArithmeticOp(Operation *op) {
 
   for (auto name : binaryOps) {
     if (mnemonic == name) {
-      writer.writeByte(getTypedOpcode(name, type));
+      auto opcode = getTypedOpcode(name, type);
+      if (!opcode) {
+        op->emitOpError("unsupported typed opcode for '")
+            << name << "' with type " << type;
+        return false;
+      }
+      writer.writeByte(*opcode);
       return true;
     }
   }
   for (auto name : unaryOps) {
     if (mnemonic == name) {
-      writer.writeByte(getTypedOpcode(name, type));
+      auto opcode = getTypedOpcode(name, type);
+      if (!opcode) {
+        op->emitOpError("unsupported typed opcode for '")
+            << name << "' with type " << type;
+        return false;
+      }
+      writer.writeByte(*opcode);
       return true;
     }
   }
@@ -573,7 +613,13 @@ bool OpcodeEmitter::emitCompareOp(Operation *op) {
 
   for (auto name : compareOps) {
     if (mnemonic == name) {
-      writer.writeByte(getTypedOpcode(name, type));
+      auto opcode = getTypedOpcode(name, type);
+      if (!opcode) {
+        op->emitOpError("unsupported typed opcode for '")
+            << name << "' with type " << type;
+        return false;
+      }
+      writer.writeByte(*opcode);
       return true;
     }
   }
@@ -696,7 +742,7 @@ bool OpcodeEmitter::emitConversionOp(Operation *op) {
 bool OpcodeEmitter::emitControlFlowOp(Operation *op) {
   if (auto blockOp = dyn_cast<BlockOp>(op)) {
     writer.writeByte(wc::Opcode::Block);
-    if (!emitBlockType(blockOp.getParamTypes(), blockOp.getResultTypes())) {
+    if (!emitBlockType(op, blockOp.getParamTypes(), blockOp.getResultTypes())) {
       blockOp.emitOpError("failed to encode block result type");
       return false;
     }
@@ -713,7 +759,7 @@ bool OpcodeEmitter::emitControlFlowOp(Operation *op) {
 
   if (auto loopOp = dyn_cast<LoopOp>(op)) {
     writer.writeByte(wc::Opcode::Loop);
-    if (!emitBlockType(loopOp.getParamTypes(), loopOp.getResultTypes())) {
+    if (!emitBlockType(op, loopOp.getParamTypes(), loopOp.getResultTypes())) {
       loopOp.emitOpError("failed to encode loop result type");
       return false;
     }
@@ -730,7 +776,7 @@ bool OpcodeEmitter::emitControlFlowOp(Operation *op) {
 
   if (auto ifOp = dyn_cast<IfOp>(op)) {
     writer.writeByte(wc::Opcode::If);
-    if (!emitBlockType(ifOp.getParamTypes(), ifOp.getResultTypes())) {
+    if (!emitBlockType(op, ifOp.getParamTypes(), ifOp.getResultTypes())) {
       ifOp.emitOpError("failed to encode if result type");
       return false;
     }
@@ -756,15 +802,25 @@ bool OpcodeEmitter::emitControlFlowOp(Operation *op) {
 
   if (auto brOp = dyn_cast<BrOp>(op)) {
     writer.writeByte(wc::Opcode::Br);
-    uint32_t depth = resolveLabelDepth(brOp.getTarget());
-    writer.writeULEB128(depth);
+    auto depth = resolveLabelDepth(brOp.getTarget());
+    if (!depth) {
+      brOp.emitOpError("branch target '")
+          << brOp.getTarget() << "' not found in active label stack";
+      return false;
+    }
+    writer.writeULEB128(*depth);
     return true;
   }
 
   if (auto brIfOp = dyn_cast<BrIfOp>(op)) {
     writer.writeByte(wc::Opcode::BrIf);
-    uint32_t depth = resolveLabelDepth(brIfOp.getTarget());
-    writer.writeULEB128(depth);
+    auto depth = resolveLabelDepth(brIfOp.getTarget());
+    if (!depth) {
+      brIfOp.emitOpError("branch target '")
+          << brIfOp.getTarget() << "' not found in active label stack";
+      return false;
+    }
+    writer.writeULEB128(*depth);
     return true;
   }
 
@@ -774,11 +830,22 @@ bool OpcodeEmitter::emitControlFlowOp(Operation *op) {
     writer.writeULEB128(targets.size());
     for (Attribute target : targets) {
       auto ref = cast<FlatSymbolRefAttr>(target);
-      uint32_t depth = resolveLabelDepth(ref.getValue());
-      writer.writeULEB128(depth);
+      auto depth = resolveLabelDepth(ref.getValue());
+      if (!depth) {
+        brTableOp.emitOpError("branch table target '")
+            << ref.getValue() << "' not found in active label stack";
+        return false;
+      }
+      writer.writeULEB128(*depth);
     }
-    uint32_t defaultDepth = resolveLabelDepth(brTableOp.getDefaultTarget());
-    writer.writeULEB128(defaultDepth);
+    auto defaultDepth = resolveLabelDepth(brTableOp.getDefaultTarget());
+    if (!defaultDepth) {
+      brTableOp.emitOpError("default branch target '")
+          << brTableOp.getDefaultTarget()
+          << "' not found in active label stack";
+      return false;
+    }
+    writer.writeULEB128(*defaultDepth);
     return true;
   }
 
@@ -970,10 +1037,15 @@ bool OpcodeEmitter::emitCallOp(Operation *op) {
 
     writer.writeByte(wc::Opcode::Call);
     if (tracker) {
-      uint32_t symIdx = indexSpace.getSymbolIndex(callOp.getCallee());
+      auto symIdx = indexSpace.tryGetSymbolIndex(callOp.getCallee());
+      if (!symIdx) {
+        callOp.emitOpError("missing relocation symbol for callee '")
+            << callOp.getCallee() << "'";
+        return false;
+      }
       tracker->addCodeRelocation(
           static_cast<uint8_t>(wc::RelocType::R_WASM_FUNCTION_INDEX_LEB),
-          sectionOffset + writer.offset(), symIdx);
+          sectionOffset + writer.offset(), *symIdx);
       writer.writeFixedULEB128(*funcIdx);
     } else {
       writer.writeULEB128(*funcIdx);
@@ -989,14 +1061,18 @@ bool OpcodeEmitter::emitCallOp(Operation *op) {
       sig.params.push_back(t);
     for (Type t : funcType.getResults())
       sig.results.push_back(t);
-    uint32_t typeIdx = indexSpace.getTypeIndex(sig);
+    auto typeIdx = indexSpace.tryGetTypeIndex(sig);
+    if (!typeIdx) {
+      callIndirectOp.emitOpError("callee signature not found in type section");
+      return false;
+    }
     if (tracker) {
       tracker->addCodeRelocation(
           static_cast<uint8_t>(wc::RelocType::R_WASM_TYPE_INDEX_LEB),
-          sectionOffset + writer.offset(), typeIdx);
-      writer.writeFixedULEB128(typeIdx);
+          sectionOffset + writer.offset(), *typeIdx);
+      writer.writeFixedULEB128(*typeIdx);
     } else {
-      writer.writeULEB128(typeIdx);
+      writer.writeULEB128(*typeIdx);
     }
     writer.writeByte(0x00); // table index 0
     return true;
@@ -1021,11 +1097,16 @@ bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
 
     writer.writeByte(wc::Opcode::RefFunc);
     if (tracker) {
-      uint32_t symIdx =
-          indexSpace.getSymbolIndex(refFuncOp.getFuncAttr().getValue());
+      auto symIdx =
+          indexSpace.tryGetSymbolIndex(refFuncOp.getFuncAttr().getValue());
+      if (!symIdx) {
+        refFuncOp.emitOpError("missing relocation symbol for function '")
+            << refFuncOp.getFuncAttr().getValue() << "'";
+        return false;
+      }
       tracker->addCodeRelocation(
           static_cast<uint8_t>(wc::RelocType::R_WASM_FUNCTION_INDEX_LEB),
-          sectionOffset + writer.offset(), symIdx);
+          sectionOffset + writer.offset(), *symIdx);
       writer.writeFixedULEB128(*funcIdx);
     } else {
       writer.writeULEB128(*funcIdx);
@@ -1046,24 +1127,47 @@ bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
 
   if (auto contNewOp = dyn_cast<ContNewOp>(op)) {
     writer.writeByte(wc::Opcode::ContNew);
-    writer.writeULEB128(
-        indexSpace.getContTypeIndex(contNewOp.getContTypeAttr().getValue()));
+    auto contIdx =
+        indexSpace.tryGetContTypeIndex(contNewOp.getContTypeAttr().getValue());
+    if (!contIdx) {
+      contNewOp.emitOpError("unknown wasmstack.type.cont symbol ")
+          << contNewOp.getContTypeAttr();
+      return false;
+    }
+    writer.writeULEB128(*contIdx);
     return true;
   }
 
   if (auto contBindOp = dyn_cast<ContBindOp>(op)) {
     writer.writeByte(wc::Opcode::ContBind);
-    writer.writeULEB128(indexSpace.getContTypeIndex(
-        contBindOp.getSrcContTypeAttr().getValue()));
-    writer.writeULEB128(indexSpace.getContTypeIndex(
-        contBindOp.getDstContTypeAttr().getValue()));
+    auto srcContIdx = indexSpace.tryGetContTypeIndex(
+        contBindOp.getSrcContTypeAttr().getValue());
+    if (!srcContIdx) {
+      contBindOp.emitOpError("unknown source wasmstack.type.cont symbol ")
+          << contBindOp.getSrcContTypeAttr();
+      return false;
+    }
+    auto dstContIdx = indexSpace.tryGetContTypeIndex(
+        contBindOp.getDstContTypeAttr().getValue());
+    if (!dstContIdx) {
+      contBindOp.emitOpError("unknown destination wasmstack.type.cont symbol ")
+          << contBindOp.getDstContTypeAttr();
+      return false;
+    }
+    writer.writeULEB128(*srcContIdx);
+    writer.writeULEB128(*dstContIdx);
     return true;
   }
 
   if (auto suspendOp = dyn_cast<SuspendOp>(op)) {
     writer.writeByte(wc::Opcode::Suspend);
-    writer.writeULEB128(
-        indexSpace.getTagIndex(suspendOp.getTagAttr().getValue()));
+    auto tagIdx = indexSpace.tryGetTagIndex(suspendOp.getTagAttr().getValue());
+    if (!tagIdx) {
+      suspendOp.emitOpError("unknown wasmstack.tag symbol ")
+          << suspendOp.getTagAttr();
+      return false;
+    }
+    writer.writeULEB128(*tagIdx);
     return true;
   }
 
@@ -1071,9 +1175,14 @@ bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
     writer.writeULEB128(handlers.size());
     for (Attribute attr : handlers) {
       if (auto onSwitch = dyn_cast<OnSwitchHandlerAttr>(attr)) {
+        auto tagIdx = indexSpace.tryGetTagIndex(onSwitch.getTag().getValue());
+        if (!tagIdx) {
+          resumeLikeOp->emitError("unknown handler tag symbol ")
+              << onSwitch.getTag();
+          return false;
+        }
         writer.writeULEB128(1); // switch handler kind
-        writer.writeULEB128(
-            indexSpace.getTagIndex(onSwitch.getTag().getValue()));
+        writer.writeULEB128(*tagIdx);
         continue;
       }
 
@@ -1085,16 +1194,35 @@ bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
       }
 
       writer.writeULEB128(0); // ordinary suspension handler
-      writer.writeULEB128(indexSpace.getTagIndex(onLabel.getTag().getValue()));
-      writer.writeULEB128(resolveLabelDepth(onLabel.getLabel().getValue()));
+      auto tagIdx = indexSpace.tryGetTagIndex(onLabel.getTag().getValue());
+      if (!tagIdx) {
+        resumeLikeOp->emitError("unknown handler tag symbol ")
+            << onLabel.getTag();
+        return false;
+      }
+      auto labelDepth = resolveLabelDepth(onLabel.getLabel().getValue());
+      if (!labelDepth) {
+        resumeLikeOp->emitError("handler label '")
+            << onLabel.getLabel().getValue()
+            << "' not found in active label stack";
+        return false;
+      }
+      writer.writeULEB128(*tagIdx);
+      writer.writeULEB128(*labelDepth);
     }
     return true;
   };
 
   if (auto resumeOp = dyn_cast<ResumeOp>(op)) {
     writer.writeByte(wc::Opcode::Resume);
-    writer.writeULEB128(
-        indexSpace.getContTypeIndex(resumeOp.getContTypeAttr().getValue()));
+    auto contIdx =
+        indexSpace.tryGetContTypeIndex(resumeOp.getContTypeAttr().getValue());
+    if (!contIdx) {
+      resumeOp.emitOpError("unknown wasmstack.type.cont symbol ")
+          << resumeOp.getContTypeAttr();
+      return false;
+    }
+    writer.writeULEB128(*contIdx);
     return emitHandlers(op, resumeOp.getHandlers());
   }
 
@@ -1102,8 +1230,14 @@ bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
     // Current wasmstack.resume_throw IR shape has handler table but no explicit
     // throw-tag immediate; emit the handler-only form.
     writer.writeByte(wc::Opcode::ResumeThrowRef);
-    writer.writeULEB128(indexSpace.getContTypeIndex(
-        resumeThrowOp.getContTypeAttr().getValue()));
+    auto contIdx = indexSpace.tryGetContTypeIndex(
+        resumeThrowOp.getContTypeAttr().getValue());
+    if (!contIdx) {
+      resumeThrowOp.emitOpError("unknown wasmstack.type.cont symbol ")
+          << resumeThrowOp.getContTypeAttr();
+      return false;
+    }
+    writer.writeULEB128(*contIdx);
     return emitHandlers(op, resumeThrowOp.getHandlers());
   }
 
@@ -1115,10 +1249,21 @@ bool OpcodeEmitter::emitStackSwitchingOp(Operation *op) {
 
   if (auto switchOp = dyn_cast<SwitchOp>(op)) {
     writer.writeByte(wc::Opcode::Switch);
-    writer.writeULEB128(
-        indexSpace.getContTypeIndex(switchOp.getContTypeAttr().getValue()));
-    writer.writeULEB128(
-        indexSpace.getTagIndex(switchOp.getTagAttr().getValue()));
+    auto contIdx =
+        indexSpace.tryGetContTypeIndex(switchOp.getContTypeAttr().getValue());
+    if (!contIdx) {
+      switchOp.emitOpError("unknown wasmstack.type.cont symbol ")
+          << switchOp.getContTypeAttr();
+      return false;
+    }
+    auto tagIdx = indexSpace.tryGetTagIndex(switchOp.getTagAttr().getValue());
+    if (!tagIdx) {
+      switchOp.emitOpError("unknown wasmstack.tag symbol ")
+          << switchOp.getTagAttr();
+      return false;
+    }
+    writer.writeULEB128(*contIdx);
+    writer.writeULEB128(*tagIdx);
     return true;
   }
 

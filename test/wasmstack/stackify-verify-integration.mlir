@@ -8,7 +8,6 @@
 // in WasmSSA, so we only test parameterless functions here. For functions with
 // parameters, see full-pipeline-verify.mlir which starts from standard MLIR.
 
-// CHECK: ConvertToWasmStack pass running on module
 
 module {
 

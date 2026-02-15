@@ -5,7 +5,6 @@
 // Tests complex value orderings, multi-use values, and control flow interactions
 
 // Verify conversion runs
-// CHECK: ConvertToWasmStack pass running on module
 // VERIFY-NOT: error
 
 // Verify no unrealized conversion casts remain

@@ -3,7 +3,6 @@
 // Regression test: stackification must not drop side-effecting or trap-capable
 // ops just because their SSA results are unused.
 
-// CHECK: ConvertToWasmStack pass running on module
 
 // CHECK-LABEL: wasmstack.func @unused_call_should_be_preserved
 // CHECK: wasmstack.call @foo : () -> i32

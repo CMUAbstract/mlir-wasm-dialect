@@ -17,7 +17,6 @@
 // If labelStack is not properly managed (i.e., if the nested block's label isn't popped),
 // then labelStack.back() would return @block_2 instead of @loop_1, causing incorrect behavior.
 
-// CHECK: ConvertToWasmStack pass running on module
 
 module {
   // Test case: Loop with multi-block CFG where one block contains a nested

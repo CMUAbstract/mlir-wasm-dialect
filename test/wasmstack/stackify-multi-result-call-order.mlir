@@ -3,7 +3,6 @@
 // Regression test: multi-result call materialization must store results in
 // stack-pop order, so SSA result ordering remains correct.
 
-// CHECK: ConvertToWasmStack pass running on module
 
 // CHECK-LABEL: wasmstack.func @diff
 // CHECK: wasmstack.local [[L0:[0-9]+]] : i32
