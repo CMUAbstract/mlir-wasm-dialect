@@ -118,4 +118,64 @@ def WAMIConvertAll : Pass<"wami-convert-all", "ModuleOp"> {
   ];
 }
 
+def CoroVerifyIntrinsics : Pass<"coro-verify-intrinsics", "ModuleOp"> {
+  let summary = "Verify canonical coro.* intrinsic ABI usage";
+  let description = [{
+    Validates source-level coro intrinsic calls:
+    - coro.spawn.<kind>
+    - coro.resume.<kind>
+    - coro.yield.<tag>
+    - coro.is_done.<kind>
+    - coro.cancel.<kind>
+
+    It enforces naming conventions, basic signature shape, and consistency
+    between spawn/resume calls and their corresponding implementation function
+    symbol @coro.impl.<kind>.
+  }];
+  let dependentDialects = [
+    "func::FuncDialect",
+    "arith::ArithDialect"
+  ];
+}
+
+def CoroNormalize : Pass<"coro-normalize", "ModuleOp"> {
+  let summary = "Normalize canonical coro intrinsic declarations";
+  let description = [{
+    Lightweight normalization for the coro intrinsic ABI.
+    This pass currently enforces declaration-only intrinsic symbols and
+    canonical private visibility for declarations.
+  }];
+  let dependentDialects = [
+    "func::FuncDialect"
+  ];
+}
+
+def CoroToWAMI : Pass<"coro-to-wami", "ModuleOp"> {
+  let summary = "Lower coro intrinsic calls to WAMI stack-switching ops";
+  let description = [{
+    Lowers wasmssa.call sites of coro.spawn/resume/yield to explicit WAMI
+    continuation and suspension operations.
+  }];
+  let dependentDialects = [
+    "wasmssa::WasmSSADialect",
+    "wami::WAMIDialect"
+  ];
+}
+
+def CoroToLLVM : Pass<"coro-to-llvm", "ModuleOp"> {
+  let summary = "Lower coro intrinsic calls to a direct-call LLVM-style baseline";
+  let description = [{
+    Lowers func.call sites of coro intrinsics to a direct-call baseline:
+    - spawn -> i64 constant handle
+    - resume -> call @coro.impl.<kind>
+    - yield -> passthrough value (or erase for void)
+    - is_done -> constant true
+    - cancel -> erase
+  }];
+  let dependentDialects = [
+    "func::FuncDialect",
+    "arith::ArithDialect"
+  ];
+}
+
 #endif // WAMI_PASSES
