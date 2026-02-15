@@ -473,7 +473,8 @@ void WasmStackEmitter::emitOperation(Operation *op) {
     emitOperandIfNeeded(selectOp.getCondition());
     if (failed)
       return;
-    SelectOp::create(builder, loc, TypeAttr::get(selectOp.getType()));
+    SelectOp::create(builder, loc,
+                     TypeAttr::get(toWasmStackType(selectOp.getType())));
     materializeResult(loc, selectOp.getResult());
   }
   // Global variable operations
