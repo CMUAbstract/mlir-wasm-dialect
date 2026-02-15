@@ -83,15 +83,6 @@ Reference test:
 - `test/integration/stack-switching/coro-oneshot-trace-runtime.mlir` (coro core one-shot coroutine with print_i32 trace)
 - `test/integration/stack-switching/coro-scheduler-runtime.mlir` (cooperative multi-step scheduler loop with is_done checks, WAMI runtime path)
 - `test/integration/stack-switching/coro-interruptible-search-runtime.mlir` (coro core interruptible-search, dual lowering)
-- `test/integration/stack-switching/coro-multiresume-runtime.mlir` (public API v2 design-only example)
-
-Public API v2 design examples (not runnable in current pipeline yet):
-
-- `docs/examples/coro-public-api-v2/README.md`
-- `docs/examples/coro-public-api-v2/coro-generator-v2.mlir`
-- `docs/examples/coro-public-api-v2/coro-scheduler-v2.mlir`
-- `docs/examples/coro-public-api-v2/coro-interruptible-search-v2.mlir`
-- `docs/examples/coro-public-api-v2/coro-multiresume-v2.mlir`
 
 ## Viewing Trace Output
 
