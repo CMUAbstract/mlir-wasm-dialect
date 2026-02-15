@@ -3,7 +3,6 @@
 // Regression test: if-branch block arguments that are local-backed must be
 // initialized at branch entry before local.get-based reuses.
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: wasmstack.func @if_inputs
 // CHECK: wasmstack.if : ([i32]) -> [i32] then {
 // CHECK-NEXT: wasmstack.local.set [[THEN:[0-9]+]] : i32

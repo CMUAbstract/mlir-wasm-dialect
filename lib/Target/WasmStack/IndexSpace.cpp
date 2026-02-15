@@ -188,12 +188,18 @@ uint32_t IndexSpace::getOrCreateTypeIndex(const FuncSig &sig) {
   return toGlobalTypeIndex(idx);
 }
 
-uint32_t IndexSpace::getTypeIndex(const FuncSig &sig) const {
+std::optional<uint32_t> IndexSpace::tryGetTypeIndex(const FuncSig &sig) const {
   for (uint32_t i = 0; i < types.size(); ++i) {
     if (types[i] == sig)
       return toGlobalTypeIndex(i);
   }
-  llvm_unreachable("type signature not found in index space");
+  return std::nullopt;
+}
+
+uint32_t IndexSpace::getTypeIndex(const FuncSig &sig) const {
+  auto idx = tryGetTypeIndex(sig);
+  assert(idx && "type signature not found in index space");
+  return *idx;
 }
 
 uint32_t IndexSpace::toGlobalTypeIndex(uint32_t funcSigOrdinal) const {
@@ -217,34 +223,71 @@ IndexSpace::tryGetFuncIndex(llvm::StringRef name) const {
 }
 
 uint32_t IndexSpace::getGlobalIndex(llvm::StringRef name) const {
+  auto idx = tryGetGlobalIndex(name);
+  assert(idx && "global not found in index space");
+  return *idx;
+}
+
+std::optional<uint32_t>
+IndexSpace::tryGetGlobalIndex(llvm::StringRef name) const {
   auto it = globalIndexMap.find(name);
-  assert(it != globalIndexMap.end() && "global not found in index space");
+  if (it == globalIndexMap.end())
+    return std::nullopt;
   return it->second;
 }
 
 uint32_t IndexSpace::getMemoryIndex(llvm::StringRef name) const {
+  auto idx = tryGetMemoryIndex(name);
+  assert(idx && "memory not found in index space");
+  return *idx;
+}
+
+std::optional<uint32_t>
+IndexSpace::tryGetMemoryIndex(llvm::StringRef name) const {
   auto it = memoryIndexMap.find(name);
-  assert(it != memoryIndexMap.end() && "memory not found in index space");
+  if (it == memoryIndexMap.end())
+    return std::nullopt;
   return it->second;
 }
 
 uint32_t IndexSpace::getContTypeIndex(llvm::StringRef name) const {
+  auto idx = tryGetContTypeIndex(name);
+  assert(idx && "continuation type not found in index space");
+  return *idx;
+}
+
+std::optional<uint32_t>
+IndexSpace::tryGetContTypeIndex(llvm::StringRef name) const {
   auto it = contTypeIndexMap.find(name);
-  assert(it != contTypeIndexMap.end() &&
-         "continuation type not found in index space");
+  if (it == contTypeIndexMap.end())
+    return std::nullopt;
   return it->second;
 }
 
 uint32_t IndexSpace::getTypeFuncIndex(llvm::StringRef name) const {
+  auto idx = tryGetTypeFuncIndex(name);
+  assert(idx && "function type not found in index space");
+  return *idx;
+}
+
+std::optional<uint32_t>
+IndexSpace::tryGetTypeFuncIndex(llvm::StringRef name) const {
   auto it = typeFuncIndexMap.find(name);
-  assert(it != typeFuncIndexMap.end() &&
-         "function type not found in index space");
+  if (it == typeFuncIndexMap.end())
+    return std::nullopt;
   return it->second;
 }
 
 uint32_t IndexSpace::getTagIndex(llvm::StringRef name) const {
+  auto idx = tryGetTagIndex(name);
+  assert(idx && "tag not found in index space");
+  return *idx;
+}
+
+std::optional<uint32_t> IndexSpace::tryGetTagIndex(llvm::StringRef name) const {
   auto it = tagIndexMap.find(name);
-  assert(it != tagIndexMap.end() && "tag not found in index space");
+  if (it == tagIndexMap.end())
+    return std::nullopt;
   return it->second;
 }
 
@@ -320,8 +363,16 @@ void IndexSpace::buildSymbolTable(Operation *moduleOp) {
 }
 
 uint32_t IndexSpace::getSymbolIndex(llvm::StringRef name) const {
+  auto idx = tryGetSymbolIndex(name);
+  assert(idx && "symbol not found in symbol table");
+  return *idx;
+}
+
+std::optional<uint32_t>
+IndexSpace::tryGetSymbolIndex(llvm::StringRef name) const {
   auto it = symbolIndexMap.find(name);
-  assert(it != symbolIndexMap.end() && "symbol not found in symbol table");
+  if (it == symbolIndexMap.end())
+    return std::nullopt;
   return it->second;
 }
 

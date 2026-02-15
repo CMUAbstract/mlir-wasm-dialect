@@ -4,7 +4,6 @@
 // terminator lowering so branch operands are preserved and else-successor CFG
 // is emitted correctly.
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: wasmstack.func @if_branch_if_with_args
 // CHECK: wasmstack.if : ([i32]) -> [i32] then {
 // CHECK: wasmstack.br_if @[[IF_EXIT:if_[0-9]+]]

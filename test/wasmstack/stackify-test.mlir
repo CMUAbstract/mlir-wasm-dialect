@@ -2,11 +2,6 @@
 
 // Test basic stackification on WasmSSA dialect
 
-// Debug output comes first on stderr
-// CHECK: ConvertToWasmStack pass running on module
-// CHECK: Values needing tee: 1
-// CHECK: Allocated locals: 1 (params: 0, total: 1)
-
 // Then MLIR output on stdout
 // CHECK-LABEL: wasmstack.func @const_add
 // CHECK:         wasmstack.i32.const 10

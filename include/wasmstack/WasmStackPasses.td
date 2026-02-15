@@ -41,6 +41,10 @@ def ConvertToWasmStack : Pass<"convert-to-wasmstack", "::mlir::ModuleOp"> {
     "wasmssa::WasmSSADialect",
     "wami::WAMIDialect"
   ];
+  let options = [
+    Option<"emitStats", "emit-stats", "bool", "false",
+           "Emit per-function stackification statistics as remarks.">
+  ];
 }
 
 def VerifyWasmStack : Pass<"verify-wasmstack", "::mlir::ModuleOp"> {

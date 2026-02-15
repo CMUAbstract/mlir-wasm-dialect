@@ -3,7 +3,6 @@
 // Regression test: local allocation should be deterministic and follow
 // stackification discovery order.
 
-// CHECK: ConvertToWasmStack pass running on module
 // CHECK-LABEL: wasmstack.func @deterministic_local_order
 // CHECK: wasmstack.local 0 : i32
 // CHECK-NEXT: wasmstack.local 1 : i32

@@ -26,8 +26,12 @@
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "convert-to-wasmstack"
 
 namespace mlir::wasmstack {
 
@@ -231,8 +235,8 @@ public:
     auto module = getOperation();
     MLIRContext *ctx = module.getContext();
 
-    llvm::errs() << "ConvertToWasmStack pass running on module\n";
-    llvm::errs().flush();
+    LLVM_DEBUG(llvm::dbgs()
+               << "convert-to-wasmstack: running on module operation\n");
 
     // This pass expects pre-wasmstack input and materializes exactly one
     // wasmstack.module wrapper for emitted WasmStack functions.
@@ -315,28 +319,8 @@ public:
     if (needsLinearMemory) {
       memorySym = "__linear_memory";
       auto symbolIsTaken = [&](StringRef name) {
-        for (auto importOp : importsToConvert)
-          if (importOp.getSymName() == name)
-            return true;
-        for (auto funcOp : funcsToConvert)
-          if (funcOp.getSymName() == name)
-            return true;
-        for (auto globalOp : globalsToConvert)
-          if (globalOp.getSymName() == name)
-            return true;
-        for (auto dataOp : dataToConvert)
-          if (dataOp.getSymName() == name)
-            return true;
-        for (auto typeFunc : typeFuncsToConvert)
-          if (typeFunc.getSymName() == name)
-            return true;
-        for (auto typeCont : typeContsToConvert)
-          if (typeCont.getSymName() == name)
-            return true;
-        for (auto tag : tagsToConvert)
-          if (tag.getSymName() == name)
-            return true;
-        return false;
+        return SymbolTable::lookupSymbolIn(
+                   module, StringAttr::get(ctx, name)) != nullptr;
       };
       for (unsigned suffix = 0; symbolIsTaken(memorySym); ++suffix)
         memorySym = ("__linear_memory_" + llvm::Twine(suffix + 1)).str();
@@ -416,20 +400,26 @@ public:
       LocalAllocator allocator;
       allocator.allocate(funcOp, plan.getLocalOrder(), teeOrder);
 
-      // Report allocation results
-      if (!plan.needsLocal.empty()) {
-        llvm::errs() << "    Values needing locals: " << plan.needsLocal.size()
-                     << "\n";
-      }
-      if (!plan.needsTee.empty()) {
-        llvm::errs() << "    Values needing tee: " << plan.needsTee.size()
-                     << "\n";
-      }
-      if (allocator.getNumLocals() > allocator.getNumParams()) {
-        llvm::errs() << "    Allocated locals: "
-                     << (allocator.getNumLocals() - allocator.getNumParams())
-                     << " (params: " << allocator.getNumParams()
-                     << ", total: " << allocator.getNumLocals() << ")\n";
+      unsigned numValuesNeedingLocals = plan.needsLocal.size();
+      unsigned numValuesNeedingTee = plan.needsTee.size();
+      unsigned numAllocatedLocals = allocator.getNumLocals();
+      unsigned numParams = allocator.getNumParams();
+      unsigned numIntroducedLocals =
+          numAllocatedLocals >= numParams ? numAllocatedLocals - numParams : 0;
+      LLVM_DEBUG(llvm::dbgs()
+                 << "convert-to-wasmstack: @" << funcOp.getSymName()
+                 << " values-needing-locals=" << numValuesNeedingLocals
+                 << ", values-needing-tee=" << numValuesNeedingTee
+                 << ", introduced-locals=" << numIntroducedLocals
+                 << " (params=" << numParams
+                 << ", total-locals=" << numAllocatedLocals << ")\n");
+      if (emitStats) {
+        funcOp.emitRemark() << "stackification stats: values-needing-locals="
+                            << numValuesNeedingLocals
+                            << ", values-needing-tee=" << numValuesNeedingTee
+                            << ", introduced-locals=" << numIntroducedLocals
+                            << " (params=" << numParams
+                            << ", total-locals=" << numAllocatedLocals << ")";
       }
 
       // Emit WasmStack function

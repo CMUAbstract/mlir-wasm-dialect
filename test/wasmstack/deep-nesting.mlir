@@ -4,7 +4,6 @@
 // This verifies that getLabelForExitLevel correctly resolves exit levels
 // to the appropriate enclosing block/loop labels.
 
-// CHECK: ConvertToWasmStack pass running on module
 
 module {
   //===--------------------------------------------------------------------===//
