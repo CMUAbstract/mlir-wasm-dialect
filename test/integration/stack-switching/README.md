@@ -51,10 +51,18 @@ wasmssa.import_func "puti" from "wizeng" as @print_i32 {type = (i32) -> ()}
 
 `%run_wizard_bin` enables `--expose=wizeng`, so this host import resolves at runtime.
 
+Recommended pattern:
+
+- Keep deterministic runtime-result tests separate from trace tests.
+- Runtime-result tests should avoid host print imports when possible.
+- Trace tests may keep `print_i32` instrumentation for debugging flow.
+
 Reference test:
 
 - `test/integration/stack-switching/wizard-print-i32-runtime.mlir`
 - `test/integration/stack-switching/spec-example-corpus-runtime.mlir`
+- `test/integration/stack-switching/wami-stack-switching-runtime.mlir` (result-oriented)
+- `test/integration/stack-switching/wami-stack-switching-trace.mlir` (trace-oriented)
 
 ## Viewing Trace Output
 
