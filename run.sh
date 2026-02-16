@@ -7,7 +7,7 @@ CMDARGS="$@"
 
 # Check if the minimum number of arguments is provided
 if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <mlir_file> --type=[wami|llvm] [--optimize] [--use-aot=<true|false>] --silent -- <aot_flags>"
+    echo "Usage: $0 <mlir_file> --compiler=[wami|llvm] [--use-aot=<true|false>] [--silent] -- <aot_flags>"
     exit 1
 fi
 
@@ -60,9 +60,9 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-# Check for valid values of --type
+# Check for valid values of --compiler
 if [[ "$COMPILER" != "wami" && "$COMPILER" != "llvm" ]]; then
-    echo "Error: --type must be either 'wami' or 'llvm'."
+    echo "Error: --compiler must be either 'wami' or 'llvm'."
     exit 1
 fi
 
@@ -209,4 +209,3 @@ elif [ "$DEVICE" = "mcu" ]; then
 else
     echo "Error: Invalid device specified. Use 'local' or 'mcu'."
 fi
-
