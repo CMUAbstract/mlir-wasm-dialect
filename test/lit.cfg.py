@@ -68,7 +68,6 @@ tool_dirs = [config.wasm_tools_dir, config.llvm_tools_dir]
 tools = [
     "mlir-opt",
     "wasm-opt",
-    "wasm-translate",
     "wasm-emit",
 ]
 
