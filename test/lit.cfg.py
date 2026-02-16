@@ -99,9 +99,11 @@ if wasm_ld_tool.was_resolved:
     config.available_features.add("wasm_ld")
 
 # Optional LLVM-backend tools used by pure LLVM -> Wasm integration tests.
+# (Includes explicit LLVM coroutine optimization pipeline via `opt`.)
 llvm_backend_tools = [
     ToolSubst("mlir-translate", command=FindTool("mlir-translate"),
               unresolved="ignore"),
+    ToolSubst("opt", command=FindTool("opt"), unresolved="ignore"),
     ToolSubst("llc", command=FindTool("llc"), unresolved="ignore"),
 ]
 llvm_config.add_tool_substitutions(

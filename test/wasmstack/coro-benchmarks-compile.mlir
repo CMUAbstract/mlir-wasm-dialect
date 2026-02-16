@@ -1,5 +1,5 @@
 // RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize --wami-convert-all --reconcile-unrealized-casts --coro-to-wami --convert-to-wasmstack --verify-wasmstack -split-input-file
-// RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize --coro-to-llvm -split-input-file | mlir-opt --lower-affine --convert-scf-to-cf --convert-arith-to-llvm="index-bitwidth=32" --convert-func-to-llvm="index-bitwidth=32" --memref-expand --expand-strided-metadata --finalize-memref-to-llvm="index-bitwidth=32" --convert-cf-to-llvm="index-bitwidth=32" --convert-to-llvm --reconcile-unrealized-casts | mlir-translate --mlir-to-llvmir -o /dev/null
+// RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize -split-input-file | mlir-opt --lower-affine --convert-scf-to-cf --convert-arith-to-llvm="index-bitwidth=32" --convert-func-to-llvm="index-bitwidth=32" --memref-expand --expand-strided-metadata --finalize-memref-to-llvm="index-bitwidth=32" --convert-cf-to-llvm="index-bitwidth=32" --convert-to-llvm --reconcile-unrealized-casts -split-input-file | wasm-opt --coro-to-llvm -split-input-file | mlir-translate --mlir-to-llvmir -o /dev/null
 
 module {
   func.func private @coro.spawn.oneshot() -> i64
