@@ -13,6 +13,7 @@ workloads with two benchmark branches:
    - `coro-to-llvm`
    - MLIR-to-LLVM lowering
    - `mlir-translate --mlir-to-llvmir`
+   - `opt -passes='coro-early,coro-split,coro-elide,coro-cleanup'`
    - `llc` + `wasm-ld`
    - Execute generated wasm with Wizard Engine
 
@@ -51,7 +52,7 @@ Notes:
 
 - Suite is opt-in and non-gating.
 - LLVM runtime branch also requires `llvm_wasm_backend` tools
-  (`mlir-translate`, `llc`, `wasm-ld`).
+  (`mlir-translate`, `opt`, `llc`, `wasm-ld`).
 
 ## Printing Debug Values
 

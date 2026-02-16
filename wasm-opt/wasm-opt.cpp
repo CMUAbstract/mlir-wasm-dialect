@@ -19,6 +19,7 @@
 #include "wasmstack/WasmStackOps.h"
 #include "wasmstack/WasmStackPasses.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/MLIRContext.h"
@@ -36,13 +37,14 @@ int main(int argc, char **argv) {
   mlir::wasmstack::registerPasses();
 
   mlir::DialectRegistry registry;
-  registry.insert<
-      mlir::wasm::WasmDialect, mlir::intermittent::IntermittentDialect,
-      mlir::arith::ArithDialect, mlir::func::FuncDialect, mlir::scf::SCFDialect,
-      mlir::memref::MemRefDialect, mlir::affine::AffineDialect,
-      mlir::ssawasm::SsaWasmDialect, mlir::dcont::DContDialect,
-      mlir::math::MathDialect, mlir::wasmssa::WasmSSADialect,
-      mlir::wami::WAMIDialect, mlir::wasmstack::WasmStackDialect>();
+  registry
+      .insert<mlir::wasm::WasmDialect, mlir::intermittent::IntermittentDialect,
+              mlir::arith::ArithDialect, mlir::func::FuncDialect,
+              mlir::scf::SCFDialect, mlir::memref::MemRefDialect,
+              mlir::affine::AffineDialect, mlir::ssawasm::SsaWasmDialect,
+              mlir::dcont::DContDialect, mlir::math::MathDialect,
+              mlir::wasmssa::WasmSSADialect, mlir::wami::WAMIDialect,
+              mlir::wasmstack::WasmStackDialect, mlir::LLVM::LLVMDialect>();
   // Add the following to include *all* MLIR Core dialects, or selectively
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated
