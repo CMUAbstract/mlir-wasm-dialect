@@ -38,7 +38,15 @@ Preferred lowering path for new development:
 
 ## Build
 
-Build LLVM/MLIR first, then this project:
+Build LLVM/MLIR first, then this project.
+
+This repository currently requires a patched LLVM/MLIR from:
+
+- https://github.com/byeongjee/llvm-project/tree/wami-compatibility
+
+Using upstream LLVM/MLIR without these compatibility patches is not supported.
+
+Then configure and build this project:
 
 ```sh
 mkdir -p build
