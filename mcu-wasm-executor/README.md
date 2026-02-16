@@ -25,9 +25,10 @@ wasm code.
     - MNIST_LLVM : For wasm files produced by llvm backend from
     `../test/conv2d.mlir` or `../test/lenet.mlir`. This uses the function
     defined in `src/mnist_llvm.h`.
-    - MNIST_MLIR : For wasm files produced by `convert-to-wasm` pass from
-    `../test/conv2d.mlir` or `../test/lenet.mlir`.. This uses the function
-    defined in `src/mnist_llvm.h`. 
+    - MNIST_MLIR : For wasm files produced by the current WAMI pipeline
+    (`wami-convert-*` + `convert-to-wasmstack` + `wasm-emit`) from
+    `../test/conv2d.mlir` or `../test/lenet.mlir`. This uses the function
+    defined in `src/mnist_llvm.h`.
 
 
 ## Monitoring Output
