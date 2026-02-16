@@ -12,7 +12,6 @@ configure_lit_site_cfg(
 set(WASM_TEST_DEPENDS
         FileCheck count not
         wasm-opt
-        wasm-translate
         wasm-emit
         )
 if(MLIR_ENABLE_BINDINGS_PYTHON)

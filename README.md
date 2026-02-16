@@ -12,9 +12,8 @@ This branch is under active reimplementation.
   - `wasmssa` (upstream MLIR dialect)
   - `wami` (`include/WAMI/`, `lib/WAMI/`)
   - `wasmstack` (`include/wasmstack/`, `lib/wasmstack/`)
-- Deprecated (compatibility only):
-  - `ssawasm` (`include/SsaWasm/`, `lib/SsaWasm/`)
-  - `wasm` (`include/Wasm/`, `lib/Wasm/`)
+- Removed legacy dialects/passes:
+  - `ssawasm`, `wasm`, `intermittent`
 
 Preferred lowering path for new development:
 
@@ -122,6 +121,5 @@ build/bin/wasm-emit out.wasmstack.mlir --mlir-to-wasm -o out.wasm
 ./run.sh polybench/small/2mm.mlir --compiler=wami --use-aot=false
 ```
 
-Note: `compile.sh --compiler=wami` currently uses the legacy backend flow for
-compatibility with existing harnesses. For new compiler development and
-correctness checks, use the preferred `wami -> wasmstack` pipeline above.
+`compile.sh --compiler=wami` follows the same `wami -> wasmstack -> wasm-emit`
+pipeline shown above.

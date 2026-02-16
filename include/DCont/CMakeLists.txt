@@ -11,7 +11,3 @@ add_dependencies(mlir-headers MLIRDContOpsIncGen)
 
 add_mlir_doc(DContDialect DContDialect DCont/ -gen-dialect-doc)
 add_mlir_doc(DContOps DContOps DCont/ -gen-op-doc)
-
-set(LLVM_TARGET_DEFINITIONS DContPasses.td)
-mlir_tablegen(DContPasses.h.inc --gen-pass-decls)
-add_public_tablegen_target(MLIRDContPassesIncGen)
