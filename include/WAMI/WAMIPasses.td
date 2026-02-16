@@ -167,18 +167,17 @@ def CoroToWAMI : Pass<"coro-to-wami", "ModuleOp"> {
 }
 
 def CoroToLLVM : Pass<"coro-to-llvm", "ModuleOp"> {
-  let summary = "Lower coro intrinsic calls to a direct-call LLVM-style baseline";
+  let summary = "Lower coro intrinsics to LLVM coroutine runtime/helpers";
   let description = [{
-    Lowers func.call sites of coro intrinsics to a direct-call baseline:
-    - spawn -> i64 constant handle
-    - resume -> call @coro.impl.<kind>
-    - yield -> passthrough value (or erase for void)
-    - is_done -> constant true
-    - cancel -> erase
+    Expects LLVM dialect input (typically after convert-func/cf/scf/arith-to-LLVM)
+    and lowers coro intrinsics to per-kind LLVM runtime helpers with:
+    - opaque pointer handle encoded as i64
+    - persistent per-instance runtime object state
+    - coroutine suspend/resume via llvm.coro.* intrinsics
+    - deterministic invalid-handle trap paths
   }];
   let dependentDialects = [
-    "func::FuncDialect",
-    "arith::ArithDialect"
+    "LLVM::LLVMDialect"
   ];
 }
 

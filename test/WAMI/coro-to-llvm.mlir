@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize --coro-to-llvm | FileCheck %s
+// RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize | mlir-opt --lower-affine --convert-scf-to-cf --convert-arith-to-llvm="index-bitwidth=32" --convert-func-to-llvm="index-bitwidth=32" --convert-cf-to-llvm="index-bitwidth=32" --convert-to-llvm --reconcile-unrealized-casts | wasm-opt --coro-to-llvm | FileCheck %s
 
 module {
   func.func private @coro.spawn.generator() -> i64
@@ -8,21 +8,30 @@ module {
   func.func private @coro.cancel.generator(%h: i64)
   func.func private @coro.yield.generator(%x: i32) -> i32
 
-  // CHECK-LABEL: func.func @coro.impl.generator
-  // CHECK-NOT: @coro.yield.generator
+  // CHECK-LABEL: llvm.func @coro.rt.llvm.spawn.generator
+  // CHECK-LABEL: llvm.func @coro.rt.llvm.resume.generator
+  // CHECK: llvm.call @llvm.trap
+  // CHECK-LABEL: llvm.func @coro.rt.llvm.is_done.generator
+  // CHECK-LABEL: llvm.func @coro.rt.llvm.cancel.generator
+  // CHECK-LABEL: llvm.func @coro.impl.generator
+  // CHECK-SAME: (%[[X:arg[0-9]+]]: i32, %[[RT:arg[0-9]+]]: !llvm.ptr)
+  // CHECK-DAG: llvm.call @llvm.coro.suspend
+  // CHECK-DAG: llvm.call @llvm.coro.end
+  // CHECK-DAG: llvm.call @llvm.coro.free
   func.func @coro.impl.generator(%x: i32) -> i32 {
     %y = func.call @coro.yield.generator(%x) : (i32) -> i32
     return %y : i32
   }
 
-// CHECK-LABEL: func.func @main
-// CHECK: %[[H:.*]] = arith.constant 1 : i64
-// CHECK: %[[D:.*]] = arith.constant true
-// CHECK: %[[OUT:.*]] = scf.if
-// CHECK: %[[R:.*]] = func.call @coro.impl.generator(
+// CHECK-LABEL: llvm.func @main
+// CHECK: llvm.call @coro.rt.llvm.spawn.generator
+// CHECK: llvm.call @coro.rt.llvm.is_done.generator
+// CHECK: llvm.call @coro.rt.llvm.resume.generator
+// CHECK: llvm.call @coro.rt.llvm.cancel.generator
+// CHECK-NOT: @coro.spawn.generator
 // CHECK-NOT: @coro.resume.generator
+// CHECK-NOT: @coro.is_done.generator
 // CHECK-NOT: @coro.cancel.generator
-// CHECK: return %[[OUT]] : i32
   func.func @main() -> i32 {
     %h = func.call @coro.spawn.generator() : () -> i64
     %d = func.call @coro.is_done.generator(%h) : (i64) -> i1

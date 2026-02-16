@@ -24,6 +24,7 @@
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -33,6 +34,7 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
@@ -1731,123 +1733,516 @@ public:
 // CoroToLLVM Pass
 //===----------------------------------------------------------------------===//
 
+struct CoroLLVMRuntimeDecls {
+  LLVM::LLVMFuncOp mallocFn;
+  LLVM::LLVMFuncOp freeFn;
+  LLVM::LLVMFuncOp trapFn;
+  LLVM::LLVMFuncOp coroIdFn;
+  LLVM::LLVMFuncOp coroSizeFn;
+  LLVM::LLVMFuncOp coroBeginFn;
+  LLVM::LLVMFuncOp coroSaveFn;
+  LLVM::LLVMFuncOp coroSuspendFn;
+  LLVM::LLVMFuncOp coroEndFn;
+  LLVM::LLVMFuncOp coroFreeFn;
+  LLVM::LLVMFuncOp coroResumeFn;
+  LLVM::LLVMFuncOp coroDestroyFn;
+};
+
+struct CoroLLVMKindInfo {
+  std::string kind;
+  LLVM::LLVMFuncOp spawnDecl;
+  LLVM::LLVMFuncOp resumeDecl;
+  LLVM::LLVMFuncOp isDoneDecl;
+  LLVM::LLVMFuncOp cancelDecl;
+  LLVM::LLVMFuncOp yieldDecl;
+  LLVM::LLVMFuncOp implFunc;
+
+  SmallVector<Type> spawnArgTypes;
+  SmallVector<Type> resumeArgTypes;
+  SmallVector<Type> payloadTypes;
+  Type implPayloadPackedType;
+  Type yieldResumePackedType;
+  LLVM::LLVMStructType runtimeType;
+
+  unsigned magicField = 0;
+  unsigned doneField = 1;
+  unsigned frameField = 2;
+  unsigned spawnBase = 3;
+  unsigned resumeBase = 3;
+  unsigned payloadBase = 3;
+  uint64_t magic = 0;
+  bool hasYield = false;
+
+  std::string spawnHelperSym;
+  std::string resumeHelperSym;
+  std::string isDoneHelperSym;
+  std::string cancelHelperSym;
+};
+
+static Value createLLVMConstI1(OpBuilder &b, Location loc, bool value) {
+  return b.create<LLVM::ConstantOp>(loc, b.getI1Type(), b.getBoolAttr(value));
+}
+
+static Value createLLVMConstI32(OpBuilder &b, Location loc, int32_t value) {
+  return b.create<LLVM::ConstantOp>(loc, b.getI32Type(),
+                                    b.getI32IntegerAttr(value));
+}
+
+static Value createLLVMConstU64(OpBuilder &b, Location loc, uint64_t value) {
+  return b.create<LLVM::ConstantOp>(
+      loc, b.getI64Type(),
+      b.getIntegerAttr(b.getI64Type(), APInt(/*numBits=*/64, value)));
+}
+
+static Value createLLVMNullPtr(OpBuilder &b, Location loc) {
+  return b.create<LLVM::ZeroOp>(loc,
+                                LLVM::LLVMPointerType::get(b.getContext()));
+}
+
+static Value createRuntimeFieldPtr(OpBuilder &b, Location loc, Value rtPtr,
+                                   LLVM::LLVMStructType runtimeTy,
+                                   unsigned fieldIndex) {
+  auto ptrTy = LLVM::LLVMPointerType::get(b.getContext());
+  return b.create<LLVM::GEPOp>(
+      loc, ptrTy, runtimeTy, rtPtr,
+      ArrayRef<LLVM::GEPArg>{0, static_cast<int32_t>(fieldIndex)});
+}
+
+static Value loadRuntimeField(OpBuilder &b, Location loc, Value rtPtr,
+                              LLVM::LLVMStructType runtimeTy, Type fieldTy,
+                              unsigned fieldIndex) {
+  Value fieldPtr = createRuntimeFieldPtr(b, loc, rtPtr, runtimeTy, fieldIndex);
+  return b.create<LLVM::LoadOp>(loc, fieldTy, fieldPtr);
+}
+
+static void storeRuntimeField(OpBuilder &b, Location loc, Value rtPtr,
+                              LLVM::LLVMStructType runtimeTy, unsigned fieldIdx,
+                              Value value) {
+  Value fieldPtr = createRuntimeFieldPtr(b, loc, rtPtr, runtimeTy, fieldIdx);
+  b.create<LLVM::StoreOp>(loc, value, fieldPtr);
+}
+
+static Type getPackedLLVMTypeForValues(MLIRContext *ctx,
+                                       ArrayRef<Type> values) {
+  if (values.empty())
+    return LLVM::LLVMVoidType::get(ctx);
+  if (values.size() == 1)
+    return values.front();
+  return LLVM::LLVMStructType::getLiteral(ctx, values);
+}
+
+static Value packLLVMValues(OpBuilder &b, Location loc, Type packedType,
+                            ArrayRef<Value> values) {
+  if (values.empty())
+    return Value();
+  if (values.size() == 1)
+    return values.front();
+
+  Value packed = b.create<LLVM::UndefOp>(loc, packedType);
+  for (auto [idx, v] : llvm::enumerate(values))
+    packed = b.create<LLVM::InsertValueOp>(loc, packed, v, idx);
+  return packed;
+}
+
+static SmallVector<Value> unpackLLVMValues(OpBuilder &b, Location loc,
+                                           Value packed,
+                                           ArrayRef<Type> unpackedTypes) {
+  SmallVector<Value> out;
+  if (unpackedTypes.empty())
+    return out;
+  if (unpackedTypes.size() == 1) {
+    out.push_back(packed);
+    return out;
+  }
+  out.reserve(unpackedTypes.size());
+  for (auto [idx, ty] : llvm::enumerate(unpackedTypes))
+    out.push_back(b.create<LLVM::ExtractValueOp>(loc, ty, packed, idx));
+  return out;
+}
+
+static Value buildResumeTupleValue(OpBuilder &b, Location loc, Type tupleTy,
+                                   Value handle, Value done,
+                                   ArrayRef<Value> payloads) {
+  auto structTy = dyn_cast<LLVM::LLVMStructType>(tupleTy);
+  if (!structTy)
+    return Value();
+
+  Value tuple = b.create<LLVM::UndefOp>(loc, tupleTy);
+  tuple = b.create<LLVM::InsertValueOp>(loc, tuple, handle, /*position=*/0);
+  tuple = b.create<LLVM::InsertValueOp>(loc, tuple, done, /*position=*/1);
+  for (auto [idx, payload] : llvm::enumerate(payloads))
+    tuple = b.create<LLVM::InsertValueOp>(loc, tuple, payload, idx + 2);
+  return tuple;
+}
+
+static FailureOr<LLVM::LLVMFuncOp>
+ensureLLVMFunctionDecl(ModuleOp module, Operation *diagOp, StringRef symName,
+                       LLVM::LLVMFunctionType type, OpBuilder &moduleBuilder,
+                       bool isExternal, bool makePrivate = false) {
+  if (auto existing = module.lookupSymbol<LLVM::LLVMFuncOp>(symName)) {
+    if (existing.getFunctionType() != type)
+      return diagOp->emitError("symbol @")
+             << symName << " exists with mismatched LLVM function type";
+    return existing;
+  }
+
+  auto fn =
+      moduleBuilder.create<LLVM::LLVMFuncOp>(diagOp->getLoc(), symName, type);
+  if (isExternal)
+    fn.setLinkage(LLVM::Linkage::External);
+  if (makePrivate)
+    fn.setPrivate();
+  return fn;
+}
+
+static FailureOr<CoroLLVMRuntimeDecls>
+ensureCoroLLVMRuntimeDecls(ModuleOp module, Operation *diagOp,
+                           OpBuilder &moduleBuilder) {
+  MLIRContext *ctx = module.getContext();
+  auto ptrTy = LLVM::LLVMPointerType::get(ctx);
+  auto tokTy = LLVM::LLVMTokenType::get(ctx);
+  auto i1Ty = IntegerType::get(ctx, 1);
+  auto i8Ty = IntegerType::get(ctx, 8);
+  auto i32Ty = IntegerType::get(ctx, 32);
+  auto voidTy = LLVM::LLVMVoidType::get(ctx);
+
+  CoroLLVMRuntimeDecls decls;
+
+  auto mallocTy = LLVM::LLVMFunctionType::get(ptrTy, {i32Ty}, false);
+  auto freeTy = LLVM::LLVMFunctionType::get(voidTy, {ptrTy}, false);
+  auto trapTy = LLVM::LLVMFunctionType::get(voidTy, {}, false);
+  auto coroIdTy =
+      LLVM::LLVMFunctionType::get(tokTy, {i32Ty, ptrTy, ptrTy, ptrTy}, false);
+  auto coroSizeTy = LLVM::LLVMFunctionType::get(i32Ty, {}, false);
+  auto coroBeginTy = LLVM::LLVMFunctionType::get(ptrTy, {tokTy, ptrTy}, false);
+  auto coroSaveTy = LLVM::LLVMFunctionType::get(tokTy, {ptrTy}, false);
+  auto coroSuspendTy = LLVM::LLVMFunctionType::get(i8Ty, {tokTy, i1Ty}, false);
+  auto coroEndTy =
+      LLVM::LLVMFunctionType::get(voidTy, {ptrTy, i1Ty, tokTy}, false);
+  auto coroFreeTy = LLVM::LLVMFunctionType::get(ptrTy, {tokTy, ptrTy}, false);
+  auto coroResumeTy = LLVM::LLVMFunctionType::get(voidTy, {ptrTy}, false);
+  auto coroDestroyTy = LLVM::LLVMFunctionType::get(voidTy, {ptrTy}, false);
+
+  auto mallocFn = ensureLLVMFunctionDecl(
+      module, diagOp, "coro.rt.llvm.alloc", mallocTy, moduleBuilder,
+      /*isExternal=*/false, /*makePrivate=*/true);
+  auto freeFn = ensureLLVMFunctionDecl(
+      module, diagOp, "coro.rt.llvm.free", freeTy, moduleBuilder,
+      /*isExternal=*/false, /*makePrivate=*/true);
+  auto trapFn =
+      ensureLLVMFunctionDecl(module, diagOp, "llvm.trap", trapTy, moduleBuilder,
+                             /*isExternal=*/true);
+  auto coroIdFn =
+      ensureLLVMFunctionDecl(module, diagOp, "llvm.coro.id", coroIdTy,
+                             moduleBuilder, /*isExternal=*/true);
+  auto coroSizeFn = ensureLLVMFunctionDecl(module, diagOp, "llvm.coro.size.i32",
+                                           coroSizeTy, moduleBuilder,
+                                           /*isExternal=*/true);
+  auto coroBeginFn = ensureLLVMFunctionDecl(module, diagOp, "llvm.coro.begin",
+                                            coroBeginTy, moduleBuilder,
+                                            /*isExternal=*/true);
+  auto coroSaveFn =
+      ensureLLVMFunctionDecl(module, diagOp, "llvm.coro.save", coroSaveTy,
+                             moduleBuilder, /*isExternal=*/true);
+  auto coroSuspendFn = ensureLLVMFunctionDecl(
+      module, diagOp, "llvm.coro.suspend", coroSuspendTy, moduleBuilder,
+      /*isExternal=*/true);
+  auto coroEndFn =
+      ensureLLVMFunctionDecl(module, diagOp, "llvm.coro.end", coroEndTy,
+                             moduleBuilder, /*isExternal=*/true);
+  auto coroFreeFn =
+      ensureLLVMFunctionDecl(module, diagOp, "llvm.coro.free", coroFreeTy,
+                             moduleBuilder, /*isExternal=*/true);
+  auto coroResumeFn = ensureLLVMFunctionDecl(module, diagOp, "llvm.coro.resume",
+                                             coroResumeTy, moduleBuilder,
+                                             /*isExternal=*/true);
+  auto coroDestroyFn = ensureLLVMFunctionDecl(
+      module, diagOp, "llvm.coro.destroy", coroDestroyTy, moduleBuilder,
+      /*isExternal=*/true);
+
+  if (failed(mallocFn) || failed(freeFn) || failed(trapFn) ||
+      failed(coroIdFn) || failed(coroSizeFn) || failed(coroBeginFn) ||
+      failed(coroSaveFn) || failed(coroSuspendFn) || failed(coroEndFn) ||
+      failed(coroFreeFn) || failed(coroResumeFn) || failed(coroDestroyFn))
+    return failure();
+
+  // Internal bump allocator state used to avoid host malloc/free imports.
+  constexpr const char *heapGlobalSym = "coro.rt.llvm.heap_ptr";
+  LLVM::GlobalOp heapGlobal =
+      module.lookupSymbol<LLVM::GlobalOp>(heapGlobalSym);
+  if (!heapGlobal) {
+    heapGlobal = moduleBuilder.create<LLVM::GlobalOp>(
+        diagOp->getLoc(), i32Ty,
+        /*isConstant=*/false, LLVM::Linkage::Internal, heapGlobalSym,
+        moduleBuilder.getI32IntegerAttr(70000), /*alignment=*/0,
+        /*addr_space=*/0);
+  } else if (heapGlobal.getGlobalType() != i32Ty || heapGlobal.getConstant()) {
+    diagOp->emitError("existing @")
+        << heapGlobalSym << " has incompatible type/constness";
+    return failure();
+  }
+
+  if ((*mallocFn).empty()) {
+    OpBuilder allocBuilder(ctx);
+    Block *entry = (*mallocFn).addEntryBlock(allocBuilder);
+    allocBuilder.setInsertionPointToStart(entry);
+    Value heapAddr = allocBuilder.create<LLVM::AddressOfOp>(
+        diagOp->getLoc(), ptrTy, heapGlobal.getSymName());
+    Value cur =
+        allocBuilder.create<LLVM::LoadOp>(diagOp->getLoc(), i32Ty, heapAddr);
+    Value c7 = createLLVMConstI32(allocBuilder, diagOp->getLoc(), 7);
+    Value cNeg8 = createLLVMConstI32(allocBuilder, diagOp->getLoc(), -8);
+    Value curAligned = allocBuilder.create<LLVM::AndOp>(
+        diagOp->getLoc(),
+        allocBuilder.create<LLVM::AddOp>(diagOp->getLoc(), cur, c7), cNeg8);
+    Value size = entry->getArgument(0);
+    Value sizeAligned = allocBuilder.create<LLVM::AndOp>(
+        diagOp->getLoc(),
+        allocBuilder.create<LLVM::AddOp>(diagOp->getLoc(), size, c7), cNeg8);
+    Value next = allocBuilder.create<LLVM::AddOp>(diagOp->getLoc(), curAligned,
+                                                  sizeAligned);
+    allocBuilder.create<LLVM::StoreOp>(diagOp->getLoc(), next, heapAddr);
+    Value ptr = allocBuilder.create<LLVM::IntToPtrOp>(diagOp->getLoc(), ptrTy,
+                                                      curAligned);
+    allocBuilder.create<LLVM::ReturnOp>(diagOp->getLoc(), ptr);
+  }
+
+  if ((*freeFn).empty()) {
+    OpBuilder freeBuilder(ctx);
+    Block *entry = (*freeFn).addEntryBlock(freeBuilder);
+    freeBuilder.setInsertionPointToStart(entry);
+    freeBuilder.create<LLVM::ReturnOp>(diagOp->getLoc(), ValueRange());
+  }
+
+  decls.mallocFn = *mallocFn;
+  decls.freeFn = *freeFn;
+  decls.trapFn = *trapFn;
+  decls.coroIdFn = *coroIdFn;
+  decls.coroSizeFn = *coroSizeFn;
+  decls.coroBeginFn = *coroBeginFn;
+  decls.coroSaveFn = *coroSaveFn;
+  decls.coroSuspendFn = *coroSuspendFn;
+  decls.coroEndFn = *coroEndFn;
+  decls.coroFreeFn = *coroFreeFn;
+  decls.coroResumeFn = *coroResumeFn;
+  decls.coroDestroyFn = *coroDestroyFn;
+  return decls;
+}
+
+static LogicalResult
+decodeResumeSignature(Operation *diagOp, LLVM::LLVMFuncOp resumeDecl,
+                      SmallVectorImpl<Type> &resumeArgTypes,
+                      SmallVectorImpl<Type> &payloadTypes) {
+  LLVM::LLVMFunctionType ty = resumeDecl.getFunctionType();
+  ArrayRef<Type> params = ty.getParams();
+  if (params.empty() || !params.front().isInteger(64))
+    return diagOp->emitError(
+        "coro.resume.* must have leading i64 handle parameter");
+  resumeArgTypes.assign(params.begin() + 1, params.end());
+
+  auto retStruct = dyn_cast<LLVM::LLVMStructType>(ty.getReturnType());
+  if (!retStruct || retStruct.getBody().size() < 2)
+    return diagOp->emitError(
+        "coro.resume.* must return LLVM struct (i64, i1, payload...)");
+
+  ArrayRef<Type> elems = retStruct.getBody();
+  if (!elems[0].isInteger(64) || !elems[1].isInteger(1))
+    return diagOp->emitError(
+        "coro.resume.* result struct must start with (i64, i1)");
+
+  payloadTypes.assign(elems.begin() + 2, elems.end());
+  return success();
+}
+
+static void appendTrapBlock(LLVM::LLVMFuncOp helperFunc, Block *trapBlock,
+                            const CoroLLVMRuntimeDecls &decls, Location loc) {
+  OpBuilder tb = OpBuilder::atBlockBegin(trapBlock);
+  tb.create<LLVM::CallOp>(loc, TypeRange(), SymbolRefAttr::get(decls.trapFn),
+                          ValueRange());
+  tb.create<LLVM::UnreachableOp>(loc);
+}
+
 class CoroToLLVM : public impl::CoroToLLVMBase<CoroToLLVM> {
 public:
   using impl::CoroToLLVMBase<CoroToLLVM>::CoroToLLVMBase;
 
   void runOnOperation() final {
     ModuleOp module = getOperation();
+    MLIRContext *ctx = module.getContext();
+    auto ptrTy = LLVM::LLVMPointerType::get(ctx);
 
-    llvm::StringMap<int64_t> kindHandleIds;
-    int64_t nextHandleId = 1;
+    if (module.getOps<LLVM::LLVMFuncOp>().empty()) {
+      bool hasFuncCoro = false;
+      for (func::FuncOp f : module.getOps<func::FuncOp>()) {
+        if (isCoroIntrinsicSymbol(f.getSymName()) ||
+            f.getSymName().starts_with("coro.impl.")) {
+          hasFuncCoro = true;
+          break;
+        }
+      }
+      if (hasFuncCoro) {
+        module.emitError(
+            "coro-to-llvm expects LLVM dialect input; run standard "
+            "func/cf/scf/arithmetic-to-LLVM lowering first");
+        signalPassFailure();
+      }
+      return;
+    }
+
+    llvm::StringMap<CoroLLVMKindInfo> infosByKind;
+    for (LLVM::LLVMFuncOp fn : module.getOps<LLVM::LLVMFuncOp>()) {
+      StringRef sym = fn.getSymName();
+      if (sym.starts_with("coro.impl.")) {
+        StringRef kind = sym.drop_front(strlen("coro.impl."));
+        infosByKind[kind].kind = kind.str();
+        infosByKind[kind].implFunc = fn;
+        continue;
+      }
+
+      auto intrinsic = parseCoroIntrinsicName(sym);
+      if (!intrinsic)
+        continue;
+      CoroLLVMKindInfo &info = infosByKind[intrinsic->suffix];
+      info.kind = intrinsic->suffix;
+      switch (intrinsic->kind) {
+      case CoroIntrinsicKind::Spawn:
+        info.spawnDecl = fn;
+        break;
+      case CoroIntrinsicKind::Resume:
+        info.resumeDecl = fn;
+        break;
+      case CoroIntrinsicKind::Yield:
+        info.yieldDecl = fn;
+        break;
+      case CoroIntrinsicKind::IsDone:
+        info.isDoneDecl = fn;
+        break;
+      case CoroIntrinsicKind::Cancel:
+        info.cancelDecl = fn;
+        break;
+      }
+    }
+
+    if (infosByKind.empty())
+      return;
+
+    OpBuilder moduleBuilder(ctx);
+    moduleBuilder.setInsertionPointToStart(module.getBody());
+
+    FailureOr<CoroLLVMRuntimeDecls> runtimeDecls =
+        ensureCoroLLVMRuntimeDecls(module, module, moduleBuilder);
+    if (failed(runtimeDecls)) {
+      signalPassFailure();
+      return;
+    }
+
+    SmallVector<CoroLLVMKindInfo *> orderedKinds;
+    orderedKinds.reserve(infosByKind.size());
+    for (auto &it : infosByKind)
+      orderedKinds.push_back(&it.second);
+
+    llvm::sort(orderedKinds,
+               [](const CoroLLVMKindInfo *a, const CoroLLVMKindInfo *b) {
+                 return a->kind < b->kind;
+               });
+
     bool passFailed = false;
+    for (CoroLLVMKindInfo *info : orderedKinds) {
+      if (!info->spawnDecl || !info->resumeDecl || !info->implFunc) {
+        module.emitError(
+            "coro-to-llvm requires @coro.spawn.<kind>, "
+            "@coro.resume.<kind>, and @coro.impl.<kind> for kind '")
+            << info->kind << "'";
+        passFailed = true;
+        break;
+      }
 
-    for (func::FuncOp funcOp : module.getOps<func::FuncOp>()) {
-      SmallVector<func::CallOp> calls;
-      funcOp.walk([&](func::CallOp callOp) { calls.push_back(callOp); });
+      LLVM::LLVMFunctionType spawnTy = info->spawnDecl.getFunctionType();
+      if (!spawnTy.getReturnType().isInteger(64)) {
+        info->spawnDecl.emitError("coro.spawn.* must return i64");
+        passFailed = true;
+        break;
+      }
+      info->spawnArgTypes.assign(spawnTy.getParams().begin(),
+                                 spawnTy.getParams().end());
 
-      for (func::CallOp callOp : calls) {
-        if (!callOp || !callOp->getBlock())
-          continue;
+      if (failed(decodeResumeSignature(info->resumeDecl, info->resumeDecl,
+                                       info->resumeArgTypes,
+                                       info->payloadTypes))) {
+        passFailed = true;
+        break;
+      }
 
-        FlatSymbolRefAttr callee = callOp.getCalleeAttr();
-        if (!callee)
-          continue;
+      info->implPayloadPackedType =
+          info->implFunc.getFunctionType().getReturnType();
+      info->yieldResumePackedType =
+          getPackedLLVMTypeForValues(ctx, info->resumeArgTypes);
 
-        auto intrinsic = parseCoroIntrinsicName(callee.getValue());
-        if (!intrinsic)
-          continue;
+      Type expectedImplReturn =
+          getPackedLLVMTypeForValues(ctx, info->payloadTypes);
+      if (expectedImplReturn != info->implPayloadPackedType) {
+        info->implFunc.emitError(
+            "impl return type does not match payload type packing for kind '")
+            << info->kind << "'";
+        passFailed = true;
+        break;
+      }
 
-        OpBuilder b(callOp);
-        switch (intrinsic->kind) {
-        case CoroIntrinsicKind::Spawn: {
-          if (callOp.getNumResults() != 1 ||
-              !callOp.getResult(0).getType().isInteger(64)) {
-            callOp.emitError("coro.spawn.* must return a single i64 handle");
-            passFailed = true;
-            break;
-          }
+      LLVM::LLVMFunctionType implTy = info->implFunc.getFunctionType();
+      SmallVector<Type> expectedImplParams;
+      expectedImplParams.append(info->spawnArgTypes.begin(),
+                                info->spawnArgTypes.end());
+      expectedImplParams.append(info->resumeArgTypes.begin(),
+                                info->resumeArgTypes.end());
+      if (!typeSequencesEqual(implTy.getParams(), expectedImplParams)) {
+        info->implFunc.emitError("impl parameter types must equal spawn args + "
+                                 "resume args for kind '")
+            << info->kind << "'";
+        passFailed = true;
+        break;
+      }
 
-          int64_t handleId = 0;
-          auto it = kindHandleIds.find(intrinsic->suffix);
-          if (it == kindHandleIds.end()) {
-            handleId = nextHandleId++;
-            kindHandleIds[intrinsic->suffix] = handleId;
-          } else {
-            handleId = it->second;
-          }
-          auto cst = arith::ConstantIntOp::create(b, callOp.getLoc(), handleId,
-                                                  /*width=*/64);
-          callOp.getResult(0).replaceAllUsesWith(cst.getResult());
-          callOp.erase();
-          continue;
-        }
-        case CoroIntrinsicKind::Resume: {
-          if (callOp.getNumOperands() < 1) {
-            callOp.emitError("coro.resume.* requires a handle operand");
-            passFailed = true;
-            break;
-          }
-          if (callOp.getNumResults() < 2 ||
-              !callOp.getResult(0).getType().isInteger(64) ||
-              !callOp.getResult(1).getType().isInteger(1)) {
-            callOp.emitError("coro.resume.* must return (i64, i1, payload...)");
-            passFailed = true;
-            break;
-          }
-          SmallVector<Value> args(callOp.getOperands().begin() + 1,
-                                  callOp.getOperands().end());
-          SmallVector<Type> payloadTypes(callOp.getResultTypes().begin() + 2,
-                                         callOp.getResultTypes().end());
-          std::string implSym = buildImplSymbolForKind(intrinsic->suffix);
-          auto direct = func::CallOp::create(b, callOp.getLoc(), implSym,
-                                             payloadTypes, args);
-          auto done = arith::ConstantIntOp::create(b, callOp.getLoc(), 1,
-                                                   /*width=*/1);
-          callOp.getResult(0).replaceAllUsesWith(callOp.getOperand(0));
-          callOp.getResult(1).replaceAllUsesWith(done.getResult());
-          for (auto [idx, payload] : llvm::enumerate(direct.getResults()))
-            callOp.getResult(idx + 2).replaceAllUsesWith(payload);
-          callOp.erase();
-          continue;
-        }
-        case CoroIntrinsicKind::Yield: {
-          if (callOp.getNumResults() == 0) {
-            callOp.erase();
-            continue;
-          }
-          if (callOp.getNumResults() == 1 && callOp.getNumOperands() == 1 &&
-              callOp.getResult(0).getType() == callOp.getOperand(0).getType()) {
-            callOp.getResult(0).replaceAllUsesWith(callOp.getOperand(0));
-            callOp.erase();
-            continue;
-          }
-          callOp.emitError(
-              "coro.yield.* direct lowering currently supports only "
-              "(T)->T or ()");
+      if (info->yieldDecl) {
+        LLVM::LLVMFunctionType yieldTy = info->yieldDecl.getFunctionType();
+        ArrayRef<Type> yieldParams = yieldTy.getParams();
+        if (!typeSequencesEqual(yieldParams, info->payloadTypes)) {
+          info->yieldDecl.emitError(
+              "coro.yield.* operand types must match payload types");
           passFailed = true;
           break;
         }
-        case CoroIntrinsicKind::IsDone: {
-          if (callOp.getNumResults() != 1 ||
-              !callOp.getResult(0).getType().isInteger(1)) {
-            callOp.emitError("coro.is_done.* must return i1");
-            passFailed = true;
-            break;
-          }
-          auto one = arith::ConstantIntOp::create(b, callOp.getLoc(), 1,
-                                                  /*width=*/1);
-          callOp.getResult(0).replaceAllUsesWith(one.getResult());
-          callOp.erase();
-          continue;
-        }
-        case CoroIntrinsicKind::Cancel:
-          callOp.erase();
-          continue;
+        if (yieldTy.getReturnType() != info->yieldResumePackedType) {
+          info->yieldDecl.emitError("coro.yield.* result type must match "
+                                    "packed resume argument type");
+          passFailed = true;
+          break;
         }
       }
-      if (passFailed)
-        break;
+
+      // Runtime object layout:
+      // [0]=magic(i64), [1]=done(i1), [2]=frame(ptr),
+      // [spawn args...], [resume args...], [payload...]
+      SmallVector<Type> fields;
+      fields.push_back(IntegerType::get(ctx, 64));
+      fields.push_back(IntegerType::get(ctx, 1));
+      fields.push_back(ptrTy);
+      info->spawnBase = fields.size();
+      fields.append(info->spawnArgTypes.begin(), info->spawnArgTypes.end());
+      info->resumeBase = fields.size();
+      fields.append(info->resumeArgTypes.begin(), info->resumeArgTypes.end());
+      info->payloadBase = fields.size();
+      fields.append(info->payloadTypes.begin(), info->payloadTypes.end());
+      info->runtimeType = LLVM::LLVMStructType::getLiteral(ctx, fields);
+
+      info->magic = static_cast<uint64_t>(llvm::hash_value(info->kind));
+      if (info->magic == 0)
+        info->magic = 1;
+
+      std::string k = sanitizeSymbolPiece(info->kind);
+      info->spawnHelperSym = ("coro.rt.llvm.spawn." + k);
+      info->resumeHelperSym = ("coro.rt.llvm.resume." + k);
+      info->isDoneHelperSym = ("coro.rt.llvm.is_done." + k);
+      info->cancelHelperSym = ("coro.rt.llvm.cancel." + k);
     }
 
     if (passFailed) {
@@ -1855,15 +2250,673 @@ public:
       return;
     }
 
-    SmallVector<func::FuncOp> eraseDecls;
-    for (func::FuncOp funcOp : module.getOps<func::FuncOp>()) {
-      if (!isCoroIntrinsicSymbol(funcOp.getSymName()))
-        continue;
-      if (funcOp.use_empty())
-        eraseDecls.push_back(funcOp);
+    // 1) Rebuild implementation functions with runtime pointer argument and
+    //    lower yield calls to llvm.coro suspend/resume logic.
+    for (CoroLLVMKindInfo *info : orderedKinds) {
+      LLVM::LLVMFuncOp implFn = info->implFunc;
+      if (implFn.use_empty() == false) {
+        implFn.emitError("direct calls to @coro.impl.* are not supported in "
+                         "coro-to-llvm; use coro intrinsics only");
+        passFailed = true;
+        break;
+      }
+
+      if (implFn.empty()) {
+        implFn.emitError("coro implementation must have a body");
+        passFailed = true;
+        break;
+      }
+
+      LLVM::LLVMFunctionType oldTy = implFn.getFunctionType();
+      SmallVector<Type> newParams(oldTy.getParams().begin(),
+                                  oldTy.getParams().end());
+      newParams.push_back(ptrTy);
+      auto newTy = LLVM::LLVMFunctionType::get(oldTy.getReturnType(), newParams,
+                                               oldTy.isVarArg());
+      implFn.setFunctionType(newTy);
+      Block &entry = implFn.getBody().front();
+      BlockArgument rtArg = entry.addArgument(ptrTy, implFn.getLoc());
+      SmallVector<LLVM::ReturnOp> originalReturns;
+      implFn.walk(
+          [&](LLVM::ReturnOp retOp) { originalReturns.push_back(retOp); });
+
+      SmallVector<LLVM::CallOp> yields;
+      implFn.walk([&](LLVM::CallOp callOp) {
+        FlatSymbolRefAttr callee = callOp.getCalleeAttr();
+        if (!callee)
+          return;
+        auto intrinsic = parseCoroIntrinsicName(callee.getValue());
+        if (!intrinsic || intrinsic->kind != CoroIntrinsicKind::Yield)
+          return;
+        if (intrinsic->suffix != info->kind) {
+          callOp.emitError("yield kind does not match impl kind");
+          passFailed = true;
+          return;
+        }
+        yields.push_back(callOp);
+      });
+      if (passFailed)
+        break;
+
+      info->hasYield = !yields.empty();
+
+      Value coroId;
+      Value coroHdl;
+      Block *commonSuspendBlock = nullptr;
+      if (info->hasYield) {
+        implFn->setAttr(
+            "passthrough",
+            ArrayAttr::get(ctx, {StringAttr::get(ctx, "presplitcoroutine")}));
+
+        OpBuilder eb = OpBuilder::atBlockBegin(&entry);
+        Value zeroI32 = createLLVMConstI32(eb, implFn.getLoc(), 0);
+        Value nullPtr = createLLVMNullPtr(eb, implFn.getLoc());
+        coroId =
+            eb.create<LLVM::CallOp>(
+                  implFn.getLoc(), TypeRange{LLVM::LLVMTokenType::get(ctx)},
+                  SymbolRefAttr::get(runtimeDecls->coroIdFn),
+                  ValueRange{zeroI32, nullPtr, nullPtr, nullPtr})
+                .getResult();
+        Value frameSizeI32 =
+            eb.create<LLVM::CallOp>(
+                  implFn.getLoc(), TypeRange{eb.getI32Type()},
+                  SymbolRefAttr::get(runtimeDecls->coroSizeFn), ValueRange())
+                .getResult();
+        Value frameMem =
+            eb.create<LLVM::CallOp>(implFn.getLoc(), TypeRange{ptrTy},
+                                    SymbolRefAttr::get(runtimeDecls->mallocFn),
+                                    frameSizeI32)
+                .getResult();
+        coroHdl = eb.create<LLVM::CallOp>(
+                        implFn.getLoc(), TypeRange{ptrTy},
+                        SymbolRefAttr::get(runtimeDecls->coroBeginFn),
+                        ValueRange{coroId, frameMem})
+                      .getResult();
+        storeRuntimeField(eb, implFn.getLoc(), rtArg, info->runtimeType,
+                          info->frameField, coroHdl);
+
+        // Use a single suspend-return block per coroutine impl so LLVM sees
+        // exactly one fallthrough coro.end in the function.
+        Region &r = implFn.getBody();
+        commonSuspendBlock = new Block();
+        r.push_back(commonSuspendBlock);
+        OpBuilder sb = OpBuilder::atBlockBegin(commonSuspendBlock);
+        Value noneToken = sb.create<LLVM::NoneTokenOp>(implFn.getLoc());
+        Value unwind = createLLVMConstI1(sb, implFn.getLoc(), false);
+        sb.create<LLVM::CallOp>(implFn.getLoc(), TypeRange(),
+                                SymbolRefAttr::get(runtimeDecls->coroEndFn),
+                                ValueRange{coroHdl, unwind, noneToken});
+        SmallVector<Value> rets;
+        if (!isa<LLVM::LLVMVoidType>(info->implPayloadPackedType))
+          rets.push_back(sb.create<LLVM::UndefOp>(implFn.getLoc(),
+                                                  info->implPayloadPackedType));
+        sb.create<LLVM::ReturnOp>(implFn.getLoc(), rets);
+      }
+
+      // Rewrite each yield to real suspend/resume machinery.
+      for (LLVM::CallOp yieldCall : yields) {
+        if (!yieldCall || !yieldCall->getBlock())
+          continue;
+
+        Block *preBlock = yieldCall->getBlock();
+        auto nextIt = std::next(Block::iterator(yieldCall));
+        Block *contBlock = preBlock->splitBlock(nextIt);
+
+        // Thread resumed value into continuation block.
+        if (yieldCall.getNumResults() == 1)
+          contBlock->addArgument(yieldCall.getResult().getType(),
+                                 yieldCall.getLoc());
+
+        if (yieldCall.getNumResults() == 1) {
+          Value oldRes = yieldCall.getResult();
+          Value contArg = contBlock->getArgument(0);
+          oldRes.replaceAllUsesWith(contArg);
+        }
+
+        // Create resume/cleanup blocks.
+        Region &r = implFn.getBody();
+        Block *resumeBlock = new Block();
+        Block *cleanupBlock = new Block();
+        r.push_back(resumeBlock);
+        r.push_back(cleanupBlock);
+
+        OpBuilder pb(yieldCall);
+        for (auto [idx, payload] : llvm::enumerate(yieldCall.getOperands())) {
+          storeRuntimeField(pb, yieldCall.getLoc(), rtArg, info->runtimeType,
+                            info->payloadBase + idx, payload);
+        }
+        storeRuntimeField(pb, yieldCall.getLoc(), rtArg, info->runtimeType,
+                          info->doneField,
+                          createLLVMConstI1(pb, yieldCall.getLoc(), false));
+
+        Value saveTok =
+            pb.create<LLVM::CallOp>(
+                  yieldCall.getLoc(), TypeRange{LLVM::LLVMTokenType::get(ctx)},
+                  SymbolRefAttr::get(runtimeDecls->coroSaveFn),
+                  ValueRange{coroHdl})
+                .getResult();
+        Value isFinal = createLLVMConstI1(pb, yieldCall.getLoc(), false);
+        Value suspendCode =
+            pb.create<LLVM::CallOp>(
+                  yieldCall.getLoc(), TypeRange{pb.getI8Type()},
+                  SymbolRefAttr::get(runtimeDecls->coroSuspendFn),
+                  ValueRange{saveTok, isFinal})
+                .getResult();
+        Value suspendCodeI32 = pb.create<LLVM::SExtOp>(
+            yieldCall.getLoc(), pb.getI32Type(), suspendCode);
+
+        SmallVector<int32_t, 2> caseVals = {0, 1};
+        SmallVector<Block *, 2> caseDests = {resumeBlock, cleanupBlock};
+        pb.create<LLVM::SwitchOp>(
+            yieldCall.getLoc(), suspendCodeI32,
+            /*defaultDestination=*/commonSuspendBlock,
+            /*defaultOperands=*/ValueRange(),
+            /*caseValues=*/caseVals,
+            /*caseDestinations=*/caseDests,
+            /*caseOperands=*/ArrayRef<ValueRange>({ValueRange(), ValueRange()}),
+            /*branchWeights=*/ArrayRef<int32_t>());
+        yieldCall.erase();
+
+        // Resume block: load resume args and continue.
+        OpBuilder rb = OpBuilder::atBlockBegin(resumeBlock);
+        SmallVector<Value> resumeValues;
+        for (auto [idx, ty] : llvm::enumerate(info->resumeArgTypes)) {
+          resumeValues.push_back(loadRuntimeField(rb, implFn.getLoc(), rtArg,
+                                                  info->runtimeType, ty,
+                                                  info->resumeBase + idx));
+        }
+        SmallVector<Value> brArgs;
+        if (!resumeValues.empty()) {
+          Value packed = packLLVMValues(
+              rb, implFn.getLoc(), info->yieldResumePackedType, resumeValues);
+          brArgs.push_back(packed);
+        }
+        rb.create<LLVM::BrOp>(implFn.getLoc(), brArgs, contBlock);
+
+        // Cleanup block: free frame (destroy path), set state, then go suspend.
+        OpBuilder cb = OpBuilder::atBlockBegin(cleanupBlock);
+        Value frameMem = cb.create<LLVM::CallOp>(
+                               implFn.getLoc(), TypeRange{ptrTy},
+                               SymbolRefAttr::get(runtimeDecls->coroFreeFn),
+                               ValueRange{coroId, coroHdl})
+                             .getResult();
+        cb.create<LLVM::CallOp>(implFn.getLoc(), TypeRange(),
+                                SymbolRefAttr::get(runtimeDecls->freeFn),
+                                frameMem);
+        storeRuntimeField(cb, implFn.getLoc(), rtArg, info->runtimeType,
+                          info->frameField,
+                          createLLVMNullPtr(cb, implFn.getLoc()));
+        storeRuntimeField(cb, implFn.getLoc(), rtArg, info->runtimeType,
+                          info->doneField,
+                          createLLVMConstI1(cb, implFn.getLoc(), true));
+        cb.create<LLVM::BrOp>(implFn.getLoc(), ValueRange(),
+                              commonSuspendBlock);
+      }
+
+      // Rewrite original returns to publish done/payload.
+      for (LLVM::ReturnOp retOp : originalReturns) {
+        if (!retOp || !retOp->getBlock())
+          continue;
+
+        OpBuilder rb(retOp);
+        SmallVector<Value> payloadValues;
+        if (!info->payloadTypes.empty()) {
+          if (retOp.getNumOperands() != 1) {
+            retOp.emitError("impl return must carry packed payload value");
+            passFailed = true;
+            break;
+          }
+          payloadValues = unpackLLVMValues(
+              rb, retOp.getLoc(), retOp.getOperand(0), info->payloadTypes);
+        }
+        for (auto [idx, payload] : llvm::enumerate(payloadValues)) {
+          storeRuntimeField(rb, retOp.getLoc(), rtArg, info->runtimeType,
+                            info->payloadBase + idx, payload);
+        }
+        storeRuntimeField(rb, retOp.getLoc(), rtArg, info->runtimeType,
+                          info->doneField,
+                          createLLVMConstI1(rb, retOp.getLoc(), true));
+        if (!info->hasYield) {
+          // Non-suspending impls complete immediately and never own a coro
+          // frame.
+          storeRuntimeField(rb, retOp.getLoc(), rtArg, info->runtimeType,
+                            info->frameField,
+                            createLLVMNullPtr(rb, retOp.getLoc()));
+          continue;
+        }
+
+        // For suspending coroutines, lower source-level return to LLVM final
+        // suspend form. A direct return from a resumed coroutine is not valid
+        // and gets lowered to unreachable by coro-split.
+        Region &r = implFn.getBody();
+        Block *trapBlock = new Block();
+        Block *cleanupBlock = new Block();
+        r.push_back(trapBlock);
+        r.push_back(cleanupBlock);
+
+        Value noneToken = rb.create<LLVM::NoneTokenOp>(retOp.getLoc());
+        Value isFinal = createLLVMConstI1(rb, retOp.getLoc(), true);
+        Value suspendCode =
+            rb.create<LLVM::CallOp>(
+                  retOp.getLoc(), TypeRange{rb.getI8Type()},
+                  SymbolRefAttr::get(runtimeDecls->coroSuspendFn),
+                  ValueRange{noneToken, isFinal})
+                .getResult();
+        Value suspendCodeI32 = rb.create<LLVM::SExtOp>(
+            retOp.getLoc(), rb.getI32Type(), suspendCode);
+        SmallVector<int32_t, 2> caseVals = {0, 1};
+        SmallVector<Block *, 2> caseDests = {trapBlock, cleanupBlock};
+        rb.create<LLVM::SwitchOp>(
+            retOp.getLoc(), suspendCodeI32,
+            /*defaultDestination=*/commonSuspendBlock,
+            /*defaultOperands=*/ValueRange(),
+            /*caseValues=*/caseVals,
+            /*caseDestinations=*/caseDests,
+            /*caseOperands=*/ArrayRef<ValueRange>({ValueRange(), ValueRange()}),
+            /*branchWeights=*/ArrayRef<int32_t>());
+        retOp.erase();
+
+        appendTrapBlock(implFn, trapBlock, *runtimeDecls, implFn.getLoc());
+
+        OpBuilder cb = OpBuilder::atBlockBegin(cleanupBlock);
+        Value frameMem = cb.create<LLVM::CallOp>(
+                               implFn.getLoc(), TypeRange{ptrTy},
+                               SymbolRefAttr::get(runtimeDecls->coroFreeFn),
+                               ValueRange{coroId, coroHdl})
+                             .getResult();
+        cb.create<LLVM::CallOp>(implFn.getLoc(), TypeRange(),
+                                SymbolRefAttr::get(runtimeDecls->freeFn),
+                                frameMem);
+        storeRuntimeField(cb, implFn.getLoc(), rtArg, info->runtimeType,
+                          info->frameField,
+                          createLLVMNullPtr(cb, implFn.getLoc()));
+        cb.create<LLVM::BrOp>(implFn.getLoc(), ValueRange(),
+                              commonSuspendBlock);
+      }
+      if (passFailed)
+        break;
+
+      // Create per-kind runtime helper functions.
+      auto spawnHelperTy = info->spawnDecl.getFunctionType();
+      auto resumeHelperTy = info->resumeDecl.getFunctionType();
+      auto doneHelperTy = info->isDoneDecl ? info->isDoneDecl.getFunctionType()
+                                           : LLVM::LLVMFunctionType();
+      auto cancelHelperTy = info->cancelDecl
+                                ? info->cancelDecl.getFunctionType()
+                                : LLVM::LLVMFunctionType();
+
+      auto spawnHelper = ensureLLVMFunctionDecl(
+          module, info->spawnDecl, info->spawnHelperSym, spawnHelperTy,
+          moduleBuilder, /*isExternal=*/false, /*makePrivate=*/true);
+      auto resumeHelper = ensureLLVMFunctionDecl(
+          module, info->resumeDecl, info->resumeHelperSym, resumeHelperTy,
+          moduleBuilder, /*isExternal=*/false, /*makePrivate=*/true);
+      if (failed(spawnHelper) || failed(resumeHelper)) {
+        passFailed = true;
+        break;
+      }
+
+      std::optional<LLVM::LLVMFuncOp> doneHelper;
+      std::optional<LLVM::LLVMFuncOp> cancelHelper;
+      if (info->isDoneDecl) {
+        FailureOr<LLVM::LLVMFuncOp> helper = ensureLLVMFunctionDecl(
+            module, info->isDoneDecl, info->isDoneHelperSym, doneHelperTy,
+            moduleBuilder, /*isExternal=*/false, /*makePrivate=*/true);
+        if (failed(helper)) {
+          passFailed = true;
+          break;
+        }
+        doneHelper = *helper;
+      }
+      if (info->cancelDecl) {
+        FailureOr<LLVM::LLVMFuncOp> helper = ensureLLVMFunctionDecl(
+            module, info->cancelDecl, info->cancelHelperSym, cancelHelperTy,
+            moduleBuilder, /*isExternal=*/false, /*makePrivate=*/true);
+        if (failed(helper)) {
+          passFailed = true;
+          break;
+        }
+        cancelHelper = *helper;
+      }
+
+      // Build spawn helper body.
+      if (spawnHelper->empty()) {
+        OpBuilder sb(ctx);
+        Block *entryBlock = spawnHelper->addEntryBlock(sb);
+        sb.setInsertionPointToStart(entryBlock);
+
+        Value nullPtr = createLLVMNullPtr(sb, spawnHelper->getLoc());
+        Value sizePtr = sb.create<LLVM::GEPOp>(spawnHelper->getLoc(), ptrTy,
+                                               info->runtimeType, nullPtr,
+                                               ArrayRef<LLVM::GEPArg>{1});
+        Value sizeI32 = sb.create<LLVM::PtrToIntOp>(spawnHelper->getLoc(),
+                                                    sb.getI32Type(), sizePtr);
+        Value rtPtr = sb.create<LLVM::CallOp>(
+                            spawnHelper->getLoc(), TypeRange{ptrTy},
+                            SymbolRefAttr::get(runtimeDecls->mallocFn), sizeI32)
+                          .getResult();
+
+        storeRuntimeField(
+            sb, spawnHelper->getLoc(), rtPtr, info->runtimeType,
+            info->magicField,
+            createLLVMConstU64(sb, spawnHelper->getLoc(), info->magic));
+        storeRuntimeField(sb, spawnHelper->getLoc(), rtPtr, info->runtimeType,
+                          info->doneField,
+                          createLLVMConstI1(sb, spawnHelper->getLoc(), false));
+        storeRuntimeField(sb, spawnHelper->getLoc(), rtPtr, info->runtimeType,
+                          info->frameField,
+                          createLLVMNullPtr(sb, spawnHelper->getLoc()));
+
+        for (auto [idx, arg] : llvm::enumerate(entryBlock->getArguments())) {
+          storeRuntimeField(sb, spawnHelper->getLoc(), rtPtr, info->runtimeType,
+                            info->spawnBase + idx, arg);
+        }
+
+        Value handle = sb.create<LLVM::PtrToIntOp>(spawnHelper->getLoc(),
+                                                   sb.getI64Type(), rtPtr);
+        sb.create<LLVM::ReturnOp>(spawnHelper->getLoc(), handle);
+      }
+
+      // Build resume helper body.
+      if (resumeHelper->empty()) {
+        OpBuilder rb(ctx);
+        Block *entryBlock = resumeHelper->addEntryBlock(rb);
+        Region &r = resumeHelper->getBody();
+        auto *trapBlock = new Block();
+        auto *checkDoneBlock = new Block();
+        auto *runBlock = new Block();
+        auto *startBlock = new Block();
+        auto *firstStartBlock = new Block();
+        auto *resumeExistingBlock = new Block();
+        auto *collectBlock = new Block();
+        r.push_back(trapBlock);
+        r.push_back(checkDoneBlock);
+        r.push_back(runBlock);
+        r.push_back(startBlock);
+        r.push_back(firstStartBlock);
+        r.push_back(resumeExistingBlock);
+        r.push_back(collectBlock);
+
+        // entry: decode handle + validate magic
+        rb.setInsertionPointToStart(entryBlock);
+        Value handle = entryBlock->getArgument(0);
+        Value rtPtr =
+            rb.create<LLVM::IntToPtrOp>(resumeHelper->getLoc(), ptrTy, handle);
+        Value nullPtr = createLLVMNullPtr(rb, resumeHelper->getLoc());
+        Value isNull = rb.create<LLVM::ICmpOp>(
+            resumeHelper->getLoc(), LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
+        rb.create<LLVM::CondBrOp>(resumeHelper->getLoc(), isNull, trapBlock,
+                                  ValueRange(), checkDoneBlock, ValueRange());
+
+        // check magic / done
+        OpBuilder cb = OpBuilder::atBlockBegin(checkDoneBlock);
+        Value magic = loadRuntimeField(cb, resumeHelper->getLoc(), rtPtr,
+                                       info->runtimeType, cb.getI64Type(),
+                                       info->magicField);
+        Value magicOk = cb.create<LLVM::ICmpOp>(
+            resumeHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
+            createLLVMConstU64(cb, resumeHelper->getLoc(), info->magic));
+        cb.create<LLVM::CondBrOp>(resumeHelper->getLoc(), magicOk, runBlock,
+                                  ValueRange(), trapBlock, ValueRange());
+
+        OpBuilder runb = OpBuilder::atBlockBegin(runBlock);
+        Value doneNow = loadRuntimeField(runb, resumeHelper->getLoc(), rtPtr,
+                                         info->runtimeType, runb.getI1Type(),
+                                         info->doneField);
+        Block *doneFastBlock = new Block();
+        r.push_back(doneFastBlock);
+        runb.create<LLVM::CondBrOp>(resumeHelper->getLoc(), doneNow,
+                                    doneFastBlock, ValueRange(), startBlock,
+                                    ValueRange());
+
+        // done fast path: return current payload, done=true
+        OpBuilder doneb = OpBuilder::atBlockBegin(doneFastBlock);
+        SmallVector<Value> donePayloads;
+        for (auto [idx, ty] : llvm::enumerate(info->payloadTypes)) {
+          donePayloads.push_back(loadRuntimeField(doneb, resumeHelper->getLoc(),
+                                                  rtPtr, info->runtimeType, ty,
+                                                  info->payloadBase + idx));
+        }
+        Value doneTuple = buildResumeTupleValue(doneb, resumeHelper->getLoc(),
+                                                resumeHelperTy.getReturnType(),
+                                                handle, doneNow, donePayloads);
+        doneb.create<LLVM::ReturnOp>(resumeHelper->getLoc(), doneTuple);
+
+        // start block: store new resume args, dispatch first-start vs resume.
+        OpBuilder startb = OpBuilder::atBlockBegin(startBlock);
+        for (unsigned i = 0; i < info->resumeArgTypes.size(); ++i) {
+          Value arg = entryBlock->getArgument(i + 1);
+          storeRuntimeField(startb, resumeHelper->getLoc(), rtPtr,
+                            info->runtimeType, info->resumeBase + i, arg);
+        }
+        Value frame =
+            loadRuntimeField(startb, resumeHelper->getLoc(), rtPtr,
+                             info->runtimeType, ptrTy, info->frameField);
+        Value frameNull = startb.create<LLVM::ICmpOp>(
+            resumeHelper->getLoc(), LLVM::ICmpPredicate::eq, frame, nullPtr);
+        startb.create<LLVM::CondBrOp>(resumeHelper->getLoc(), frameNull,
+                                      firstStartBlock, ValueRange(),
+                                      resumeExistingBlock, ValueRange());
+
+        // first start path
+        OpBuilder firstb = OpBuilder::atBlockBegin(firstStartBlock);
+        SmallVector<Value> callArgs;
+        callArgs.reserve(info->spawnArgTypes.size() +
+                         info->resumeArgTypes.size() + 1);
+        for (auto [idx, ty] : llvm::enumerate(info->spawnArgTypes)) {
+          callArgs.push_back(loadRuntimeField(firstb, resumeHelper->getLoc(),
+                                              rtPtr, info->runtimeType, ty,
+                                              info->spawnBase + idx));
+        }
+        for (unsigned i = 0; i < info->resumeArgTypes.size(); ++i)
+          callArgs.push_back(entryBlock->getArgument(i + 1));
+        callArgs.push_back(rtPtr);
+        firstb.create<LLVM::CallOp>(
+            resumeHelper->getLoc(), TypeRange{info->implPayloadPackedType},
+            SymbolRefAttr::get(info->implFunc), callArgs);
+        firstb.create<LLVM::BrOp>(resumeHelper->getLoc(), ValueRange(),
+                                  collectBlock);
+
+        // resume-existing path (frame != null)
+        OpBuilder rib = OpBuilder::atBlockBegin(resumeExistingBlock);
+        Value frameForResume =
+            loadRuntimeField(rib, resumeHelper->getLoc(), rtPtr,
+                             info->runtimeType, ptrTy, info->frameField);
+        rib.create<LLVM::CallOp>(resumeHelper->getLoc(), TypeRange(),
+                                 SymbolRefAttr::get(runtimeDecls->coroResumeFn),
+                                 frameForResume);
+        rib.create<LLVM::BrOp>(resumeHelper->getLoc(), ValueRange(),
+                               collectBlock);
+
+        OpBuilder collb = OpBuilder::atBlockBegin(collectBlock);
+        Value doneFinal = loadRuntimeField(collb, resumeHelper->getLoc(), rtPtr,
+                                           info->runtimeType, collb.getI1Type(),
+                                           info->doneField);
+        SmallVector<Value> payloadVals;
+        for (auto [idx, ty] : llvm::enumerate(info->payloadTypes)) {
+          payloadVals.push_back(loadRuntimeField(collb, resumeHelper->getLoc(),
+                                                 rtPtr, info->runtimeType, ty,
+                                                 info->payloadBase + idx));
+        }
+        Value tuple = buildResumeTupleValue(collb, resumeHelper->getLoc(),
+                                            resumeHelperTy.getReturnType(),
+                                            handle, doneFinal, payloadVals);
+        collb.create<LLVM::ReturnOp>(resumeHelper->getLoc(), tuple);
+
+        appendTrapBlock(*resumeHelper, trapBlock, *runtimeDecls,
+                        resumeHelper->getLoc());
+      }
+
+      // Build is_done helper body.
+      if (doneHelper && doneHelper->empty()) {
+        OpBuilder db(ctx);
+        Block *entryBlock = doneHelper->addEntryBlock(db);
+        Region &r = doneHelper->getBody();
+        auto *trapBlock = new Block();
+        auto *okBlock = new Block();
+        r.push_back(trapBlock);
+        r.push_back(okBlock);
+
+        db.setInsertionPointToStart(entryBlock);
+        Value handle = entryBlock->getArgument(0);
+        Value rtPtr =
+            db.create<LLVM::IntToPtrOp>(doneHelper->getLoc(), ptrTy, handle);
+        Value nullPtr = createLLVMNullPtr(db, doneHelper->getLoc());
+        Value isNull = db.create<LLVM::ICmpOp>(
+            doneHelper->getLoc(), LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
+        db.create<LLVM::CondBrOp>(doneHelper->getLoc(), isNull, trapBlock,
+                                  ValueRange(), okBlock, ValueRange());
+
+        OpBuilder okb = OpBuilder::atBlockBegin(okBlock);
+        Value magic = loadRuntimeField(okb, doneHelper->getLoc(), rtPtr,
+                                       info->runtimeType, okb.getI64Type(),
+                                       info->magicField);
+        Value magicOk = okb.create<LLVM::ICmpOp>(
+            doneHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
+            createLLVMConstU64(okb, doneHelper->getLoc(), info->magic));
+        Block *retBlock = new Block();
+        r.push_back(retBlock);
+        okb.create<LLVM::CondBrOp>(doneHelper->getLoc(), magicOk, retBlock,
+                                   ValueRange(), trapBlock, ValueRange());
+
+        OpBuilder retb = OpBuilder::atBlockBegin(retBlock);
+        Value done = loadRuntimeField(retb, doneHelper->getLoc(), rtPtr,
+                                      info->runtimeType, retb.getI1Type(),
+                                      info->doneField);
+        retb.create<LLVM::ReturnOp>(doneHelper->getLoc(), done);
+
+        appendTrapBlock(*doneHelper, trapBlock, *runtimeDecls,
+                        doneHelper->getLoc());
+      }
+
+      // Build cancel helper body.
+      if (cancelHelper && cancelHelper->empty()) {
+        OpBuilder cb(ctx);
+        Block *entryBlock = cancelHelper->addEntryBlock(cb);
+        Region &r = cancelHelper->getBody();
+        auto *trapBlock = new Block();
+        auto *okBlock = new Block();
+        auto *freeBlock = new Block();
+        auto *retBlock = new Block();
+        r.push_back(trapBlock);
+        r.push_back(okBlock);
+        r.push_back(freeBlock);
+        r.push_back(retBlock);
+
+        cb.setInsertionPointToStart(entryBlock);
+        Value handle = entryBlock->getArgument(0);
+        Value rtPtr =
+            cb.create<LLVM::IntToPtrOp>(cancelHelper->getLoc(), ptrTy, handle);
+        Value nullPtr = createLLVMNullPtr(cb, cancelHelper->getLoc());
+        Value isNull = cb.create<LLVM::ICmpOp>(
+            cancelHelper->getLoc(), LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
+        cb.create<LLVM::CondBrOp>(cancelHelper->getLoc(), isNull, trapBlock,
+                                  ValueRange(), okBlock, ValueRange());
+
+        OpBuilder okb = OpBuilder::atBlockBegin(okBlock);
+        Value magic = loadRuntimeField(okb, cancelHelper->getLoc(), rtPtr,
+                                       info->runtimeType, okb.getI64Type(),
+                                       info->magicField);
+        Value magicOk = okb.create<LLVM::ICmpOp>(
+            cancelHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
+            createLLVMConstU64(okb, cancelHelper->getLoc(), info->magic));
+        okb.create<LLVM::CondBrOp>(cancelHelper->getLoc(), magicOk, freeBlock,
+                                   ValueRange(), trapBlock, ValueRange());
+
+        OpBuilder freeb = OpBuilder::atBlockBegin(freeBlock);
+        Value frame =
+            loadRuntimeField(freeb, cancelHelper->getLoc(), rtPtr,
+                             info->runtimeType, ptrTy, info->frameField);
+        Value frameNull = freeb.create<LLVM::ICmpOp>(
+            cancelHelper->getLoc(), LLVM::ICmpPredicate::eq, frame, nullPtr);
+        Block *destroyBlock = new Block();
+        r.push_back(destroyBlock);
+        freeb.create<LLVM::CondBrOp>(cancelHelper->getLoc(), frameNull,
+                                     retBlock, ValueRange(), destroyBlock,
+                                     ValueRange());
+
+        OpBuilder destrb = OpBuilder::atBlockBegin(destroyBlock);
+        destrb.create<LLVM::CallOp>(
+            cancelHelper->getLoc(), TypeRange(),
+            SymbolRefAttr::get(runtimeDecls->coroDestroyFn), frame);
+        destrb.create<LLVM::BrOp>(cancelHelper->getLoc(), ValueRange(),
+                                  retBlock);
+
+        OpBuilder retb = OpBuilder::atBlockBegin(retBlock);
+        retb.create<LLVM::CallOp>(cancelHelper->getLoc(), TypeRange(),
+                                  SymbolRefAttr::get(runtimeDecls->freeFn),
+                                  rtPtr);
+        retb.create<LLVM::ReturnOp>(cancelHelper->getLoc(), ValueRange());
+
+        appendTrapBlock(*cancelHelper, trapBlock, *runtimeDecls,
+                        cancelHelper->getLoc());
+      }
     }
-    for (func::FuncOp funcOp : eraseDecls)
-      funcOp.erase();
+
+    if (passFailed) {
+      signalPassFailure();
+      return;
+    }
+
+    // 2) Rewrite intrinsic callsites to helper functions.
+    SmallVector<LLVM::CallOp> calls;
+    module.walk([&](LLVM::CallOp callOp) { calls.push_back(callOp); });
+    for (LLVM::CallOp callOp : calls) {
+      if (!callOp || !callOp->getBlock())
+        continue;
+      FlatSymbolRefAttr callee = callOp.getCalleeAttr();
+      if (!callee)
+        continue;
+
+      auto intrinsic = parseCoroIntrinsicName(callee.getValue());
+      if (!intrinsic)
+        continue;
+      auto it = infosByKind.find(intrinsic->suffix);
+      if (it == infosByKind.end())
+        continue;
+      CoroLLVMKindInfo &info = it->second;
+
+      StringRef helperSym;
+      switch (intrinsic->kind) {
+      case CoroIntrinsicKind::Spawn:
+        helperSym = info.spawnHelperSym;
+        break;
+      case CoroIntrinsicKind::Resume:
+        helperSym = info.resumeHelperSym;
+        break;
+      case CoroIntrinsicKind::IsDone:
+        if (!info.isDoneDecl)
+          continue;
+        helperSym = info.isDoneHelperSym;
+        break;
+      case CoroIntrinsicKind::Cancel:
+        if (!info.cancelDecl)
+          continue;
+        helperSym = info.cancelHelperSym;
+        break;
+      case CoroIntrinsicKind::Yield:
+        continue;
+      }
+
+      OpBuilder b(callOp);
+      auto repl = b.create<LLVM::CallOp>(
+          callOp.getLoc(), callOp.getResultTypes(),
+          SymbolRefAttr::get(ctx, helperSym), callOp.getOperands());
+      if (callOp.getNumResults() == 1)
+        callOp.getResult().replaceAllUsesWith(repl.getResult());
+      callOp.erase();
+    }
+
+    // 3) Drop now-unused coro intrinsic declarations.
+    SmallVector<LLVM::LLVMFuncOp> eraseDecls;
+    for (LLVM::LLVMFuncOp fn : module.getOps<LLVM::LLVMFuncOp>()) {
+      if (!isCoroIntrinsicSymbol(fn.getSymName()))
+        continue;
+      if (fn.use_empty())
+        eraseDecls.push_back(fn);
+    }
+    for (LLVM::LLVMFuncOp fn : eraseDecls)
+      fn.erase();
   }
 };
 
