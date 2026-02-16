@@ -7,20 +7,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "DCont/DContDialect.h"
-#include "DCont/DContPasses.h"
-#include "Intermittent/IntermittentDialect.h"
-#include "Intermittent/IntermittentPasses.h"
-#include "SsaWasm/SsaWasmDialect.h"
-#include "SsaWasm/SsaWasmPasses.h"
 #include "WAMI/WAMIDialect.h"
 #include "WAMI/WAMIPasses.h"
-#include "Wasm/WasmDialect.h"
 #include "wasmstack/WasmStackDialect.h"
 #include "wasmstack/WasmStackOps.h"
 #include "wasmstack/WasmStackPasses.h"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
@@ -30,21 +29,16 @@
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
-  mlir::intermittent::registerPasses();
-  mlir::ssawasm::registerPasses();
-  mlir::dcont::registerPasses();
   mlir::wami::registerPasses();
   mlir::wasmstack::registerPasses();
 
   mlir::DialectRegistry registry;
-  registry
-      .insert<mlir::wasm::WasmDialect, mlir::intermittent::IntermittentDialect,
-              mlir::arith::ArithDialect, mlir::func::FuncDialect,
-              mlir::scf::SCFDialect, mlir::memref::MemRefDialect,
-              mlir::affine::AffineDialect, mlir::ssawasm::SsaWasmDialect,
-              mlir::dcont::DContDialect, mlir::math::MathDialect,
-              mlir::wasmssa::WasmSSADialect, mlir::wami::WAMIDialect,
-              mlir::wasmstack::WasmStackDialect, mlir::LLVM::LLVMDialect>();
+  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+                  mlir::scf::SCFDialect, mlir::memref::MemRefDialect,
+                  mlir::affine::AffineDialect, mlir::dcont::DContDialect,
+                  mlir::math::MathDialect, mlir::wasmssa::WasmSSADialect,
+                  mlir::wami::WAMIDialect, mlir::wasmstack::WasmStackDialect,
+                  mlir::LLVM::LLVMDialect>();
   // Add the following to include *all* MLIR Core dialects, or selectively
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated

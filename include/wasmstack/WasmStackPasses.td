@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 //
 // This file defines passes for the WasmStack dialect, including the
-// stackification pass that converts SsaWasm+WAMI to WasmStack.
+// stackification pass that converts WasmSSA+WAMI to WasmStack.
 //
 //===----------------------------------------------------------------------===//
 
