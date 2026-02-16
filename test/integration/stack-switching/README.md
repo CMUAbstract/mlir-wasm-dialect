@@ -54,6 +54,31 @@ Notes:
 - LLVM runtime branch also requires `llvm_wasm_backend` tools
   (`mlir-translate`, `opt`, `llc`, `wasm-ld`).
 
+## Run One Program (WAMI or LLVM)
+
+Use the helper script to run any coro MLIR program through either pipeline:
+
+```bash
+WIZARD_ENGINE_DIR=/path/to/wizard-engine \
+test/integration/stack-switching/run_coro_program.sh \
+  --mode wami \
+  --input test/integration/stack-switching/coro-generator-loop-runtime.mlir \
+  --expect-i32 0
+```
+
+```bash
+WIZARD_ENGINE_DIR=/path/to/wizard-engine \
+test/integration/stack-switching/run_coro_program.sh \
+  --mode llvm \
+  --input test/integration/stack-switching/coro-generator-loop-runtime.mlir \
+  --expect-i32 0
+```
+
+Tips:
+
+- Add `--keep-tmp` to inspect intermediate artifacts.
+- Set `LLVM_BIN_DIR=/path/to/llvm/bin` to override LLVM tool resolution.
+
 ## Printing Debug Values
 
 For runtime trace confidence, examples may import Wizard's `puti` and alias it as
