@@ -6,7 +6,7 @@ module {
 
   wasmssa.func @driver() -> i32 {
     %c = wami.ref.null : !wami.cont<@ct, true>
-    %r = "wami.resume"(%c) <{cont_type = @ct, handlers = []}> : (!wami.cont<@ct, true>) -> i32
+    %r = wami.resume %c() @ct [] : (!wami.cont<@ct, true>) -> i32
     wasmssa.return %r : i32
   }
 }

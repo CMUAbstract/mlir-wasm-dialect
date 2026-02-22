@@ -34,7 +34,7 @@ module {
 // CHECK: wasmssa.global @coro_slot_generator_1_cont !wami.cont<@coro_ct_generator_b0, true> mutable
 // CHECK: wami.tag @coro_tag_generator : (i32) -> i32
 // CHECK-LABEL: wasmssa.func @coro.rt.resume.generator
-// CHECK: "wami.resume"(%{{.*}}, %{{.*}}) <{cont_type = @coro_ct_generator_b0, handlers = [#wami.on_label<tag = @coro_tag_generator, level = 0>]}>
+// CHECK: wami.resume %{{.*}}(%{{.*}}) @coro_ct_generator_b0 [#wami.on_label<tag = @coro_tag_generator, level = 0>]
 // CHECK-LABEL: wasmssa.func @main
 // CHECK: wami.ref.func @coro.impl.generator
 // CHECK: wami.cont.new

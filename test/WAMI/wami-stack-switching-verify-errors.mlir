@@ -12,7 +12,7 @@ module {
   wasmssa.func @payload_mismatch(%x: !wasmssa<local ref to i64>) -> i32 {
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i64>
     // expected-error @+1 {{suspend payload types type mismatch at index 0}}
-    %r = "wami.suspend"(%arg) <{tag = @yield}> : (i64) -> i32
+    %r = wami.suspend @yield(%arg) : (i64) -> i32
     wasmssa.return %r : i32
   }
 }
@@ -29,7 +29,7 @@ module {
     %c = wami.cont.new %f : !wami.funcref<@bad_handler_attr> as @gen_ct -> !wami.cont<@gen_ct>
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
     // expected-error @+1 {{handlers must contain #wami.on_label or #wami.on_switch attributes}}
-    %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [@yield]}> : (!wami.cont<@gen_ct>, i32) -> i32
+    %r = wami.resume %c(%arg) @gen_ct [@yield] : (!wami.cont<@gen_ct>, i32) -> i32
     wasmssa.return %r : i32
   }
 }
@@ -49,7 +49,7 @@ module {
     wasmssa.block : {
     ^bb0:
       // expected-error @+1 {{duplicate handler tag @yield}}
-      %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [#wami.on_label<tag = @yield, level = 0>, #wami.on_switch<tag = @yield>]}> : (!wami.cont<@gen_ct>, i32) -> i32
+      %r = wami.resume %c(%arg) @gen_ct [#wami.on_label<tag = @yield, level = 0>, #wami.on_switch<tag = @yield>] : (!wami.cont<@gen_ct>, i32) -> i32
       wasmssa.return %r : i32
     }> ^on_yield
 
@@ -73,7 +73,7 @@ module {
     wasmssa.block : {
     ^bb0:
       // expected-error @+1 {{on_label level must be non-negative}}
-      %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [#wami.on_label<tag = @yield, level = -1>]}> : (!wami.cont<@gen_ct>, i32) -> i32
+      %r = wami.resume %c(%arg) @gen_ct [#wami.on_label<tag = @yield, level = -1>] : (!wami.cont<@gen_ct>, i32) -> i32
       wasmssa.return %r : i32
     }> ^on_yield
 
@@ -97,7 +97,7 @@ module {
     wasmssa.block : {
     ^bb0:
       // expected-error @+1 {{on_label level 1 exceeds enclosing structured label depth 1}}
-      %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [#wami.on_label<tag = @yield, level = 1>]}> : (!wami.cont<@gen_ct>, i32) -> i32
+      %r = wami.resume %c(%arg) @gen_ct [#wami.on_label<tag = @yield, level = 1>] : (!wami.cont<@gen_ct>, i32) -> i32
       wasmssa.return %r : i32
     }> ^on_yield
 

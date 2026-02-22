@@ -51,7 +51,7 @@ module {
 
     wasmssa.block : {
     ^bb0:
-      %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [#wami.on_label<tag = @yield, level = 0>]}> : (!wami.cont<@gen_ct>, i32) -> i32
+      %r = wami.resume %c(%arg) @gen_ct [#wami.on_label<tag = @yield, level = 0>] : (!wami.cont<@gen_ct>, i32) -> i32
       wasmssa.return %r : i32
     }> ^on_yield
 
@@ -63,7 +63,7 @@ module {
     %f = wami.ref.func @worker : !wami.funcref<@worker>
     %c = wami.cont.new %f : !wami.funcref<@worker> as @gen_ct -> !wami.cont<@gen_ct>
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
-    %r = "wami.resume"(%c, %arg) <{cont_type = @gen_ct, handlers = [#wami.on_switch<tag = @switch_yield>]}> : (!wami.cont<@gen_ct>, i32) -> i32
+    %r = wami.resume %c(%arg) @gen_ct [#wami.on_switch<tag = @switch_yield>] : (!wami.cont<@gen_ct>, i32) -> i32
     wasmssa.return %r : i32
   }
 
@@ -80,7 +80,7 @@ module {
     %bound = wasmssa.const 7 : i32
     %cb = "wami.cont.bind"(%c, %bound) <{src_cont_type = @src_ct, dst_cont_type = @dst_ct}> : (!wami.cont<@src_ct>, i32) -> !wami.cont<@dst_ct>
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
-    %r = "wami.resume"(%cb, %arg) <{cont_type = @dst_ct, handlers = [#wami.on_switch<tag = @switch_yield>]}> : (!wami.cont<@dst_ct>, i32) -> i32
+    %r = wami.resume %cb(%arg) @dst_ct [#wami.on_switch<tag = @switch_yield>] : (!wami.cont<@dst_ct>, i32) -> i32
     wasmssa.return %r : i32
   }
 }

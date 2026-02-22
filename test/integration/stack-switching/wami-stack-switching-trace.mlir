@@ -18,7 +18,7 @@ module {
     wasmssa.call @print_i32(%arg) : (i32) -> ()
 
     %main_arg_2 = wasmssa.const 3 : i32
-    %from_handler = "wami.suspend"(%main_arg_2) <{tag = @yield}> : (i32) -> i32
+    %from_handler = wami.suspend @yield(%main_arg_2) : (i32) -> i32
     wasmssa.call @print_i32(%from_handler) : (i32) -> ()
     wasmssa.return %from_handler : i32
   }
@@ -33,7 +33,7 @@ module {
 
     wasmssa.block : {
     ^bb0:
-      %r = "wami.resume"(%c, %worker_arg) <{cont_type = @worker_ct, handlers = [#wami.on_label<tag = @yield, level = 0>]}> : (!wami.cont<@worker_ct>, i32) -> i32
+      %r = wami.resume %c(%worker_arg) @worker_ct [#wami.on_label<tag = @yield, level = 0>] : (!wami.cont<@worker_ct>, i32) -> i32
       wasmssa.return %r : i32
     }> ^on_yield
 

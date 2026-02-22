@@ -27,7 +27,7 @@ module {
     %c1 = wami.cont.new %f1 : !wami.funcref<@worker_alt> as @ct -> !wami.cont<@ct>
 
     %c = wami.select %cond, %c0, %c1 : !wami.cont<@ct>
-    %r = "wami.resume"(%c) <{cont_type = @ct, handlers = []}> : (!wami.cont<@ct>) -> i32
+    %r = wami.resume %c() @ct [] : (!wami.cont<@ct>) -> i32
     wasmssa.return %r : i32
   }
 }

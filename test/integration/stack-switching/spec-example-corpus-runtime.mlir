@@ -27,7 +27,7 @@ module {
     wasmssa.call @print_i32(%m2101) : (i32) -> ()
 
     %payload = wasmssa.const 100 : i32
-    %from_handler = "wami.suspend"(%payload) <{tag = @gen}> : (i32) -> i32
+    %from_handler = wami.suspend @gen(%payload) : (i32) -> i32
 
     wasmssa.call @print_i32(%from_handler) : (i32) -> ()
     wasmssa.return %from_handler : i32
@@ -37,7 +37,7 @@ module {
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
     wasmssa.call @print_i32(%arg) : (i32) -> ()
 
-    %from_handler = "wami.suspend"(%arg) <{tag = @yield}> : (i32) -> i32
+    %from_handler = wami.suspend @yield(%arg) : (i32) -> i32
     wasmssa.call @print_i32(%from_handler) : (i32) -> ()
     wasmssa.return %from_handler : i32
   }
@@ -51,7 +51,7 @@ module {
 
     wasmssa.block : {
     ^bb0:
-      %gen_result = "wami.resume"(%gen_c) <{cont_type = @gen_ct, handlers = [#wami.on_label<tag = @gen, level = 0>]}> : (!wami.cont<@gen_ct>) -> i32
+      %gen_result = wami.resume %gen_c() @gen_ct [#wami.on_label<tag = @gen, level = 0>] : (!wami.cont<@gen_ct>) -> i32
       wasmssa.return %gen_result : i32
     }> ^on_gen
 
@@ -70,7 +70,7 @@ module {
 
     wasmssa.block : {
     ^bb0:
-      %arg_result = "wami.resume"(%arg_c, %in42) <{cont_type = @arg_ct, handlers = [#wami.on_label<tag = @yield, level = 0>]}> : (!wami.cont<@arg_ct>, i32) -> i32
+      %arg_result = wami.resume %arg_c(%in42) @arg_ct [#wami.on_label<tag = @yield, level = 0>] : (!wami.cont<@arg_ct>, i32) -> i32
       wasmssa.return %arg_result : i32
     }> ^on_yield
 

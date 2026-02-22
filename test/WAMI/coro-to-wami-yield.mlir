@@ -22,4 +22,4 @@ module {
 
 // CHECK: wami.tag @coro_tag_yielder : (i32) -> i32
 // CHECK-LABEL: wasmssa.func @coro.impl.yielder
-// CHECK: "wami.suspend"
+// CHECK: wami.suspend @coro_tag_yielder

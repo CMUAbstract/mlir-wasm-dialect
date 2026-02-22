@@ -17,7 +17,7 @@ module {
     %c = wami.cont.new %f : !wami.funcref<@worker> as @ct -> !wami.cont<@ct>
     %arg = wasmssa.local_get %x : !wasmssa<local ref to i32>
     // expected-error @+1 {{on_switch handler tag must have empty inputs}}
-    %r = "wami.resume"(%c, %arg) <{cont_type = @ct, handlers = [#wami.on_switch<tag = @bad_switch>]}> : (!wami.cont<@ct>, i32) -> i32
+    %r = wami.resume %c(%arg) @ct [#wami.on_switch<tag = @bad_switch>] : (!wami.cont<@ct>, i32) -> i32
     wasmssa.return %r : i32
   }
 

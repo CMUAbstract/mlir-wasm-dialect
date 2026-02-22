@@ -224,6 +224,7 @@ def WAMI_SuspendOp : WAMI_Op<"suspend"> {
     Variadic<AnyType>:$payload
   );
   let results = (outs Variadic<AnyType>:$results);
+  let assemblyFormat = "$tag `(` $payload `)` attr-dict `:` functional-type(operands, results)";
   let hasVerifier = 1;
 }
 
@@ -236,6 +237,7 @@ def WAMI_ResumeOp : WAMI_Op<"resume"> {
     ArrayAttr:$handlers
   );
   let results = (outs Variadic<AnyType>:$results);
+  let assemblyFormat = "$cont `(` $args `)` $cont_type $handlers attr-dict `:` functional-type(operands, results)";
   let hasVerifier = 1;
 }
 
