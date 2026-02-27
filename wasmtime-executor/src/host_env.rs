@@ -135,7 +135,7 @@ fn ensure_capacity(
     }
 
     let needed_bytes = needed_end - current;
-    let pages = (needed_bytes + WASM_PAGE_SIZE - 1) / WASM_PAGE_SIZE;
+    let pages = needed_bytes.div_ceil(WASM_PAGE_SIZE);
     memory.grow(&mut *caller, pages)?;
     Ok(())
 }

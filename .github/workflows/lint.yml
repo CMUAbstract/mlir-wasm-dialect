@@ -39,3 +39,19 @@ jobs:
           find lib include wasm-opt wasm-emit \
             -name '*.cpp' -o -name '*.h' -o -name '*.c' \
             | xargs clang-format-19 --dry-run --Werror --style=file
+
+  rust-lint:
+    name: Rust format + clippy
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: wasmtime-executor
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings

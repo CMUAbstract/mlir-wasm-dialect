@@ -35,3 +35,12 @@ repos:
     hooks:
       - id: cmake-format
         additional_dependencies: ['cmakelang']
+
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: rustfmt
+        entry: cargo fmt --manifest-path wasmtime-executor/Cargo.toml
+        language: system
+        types: [rust]
+        pass_filenames: false

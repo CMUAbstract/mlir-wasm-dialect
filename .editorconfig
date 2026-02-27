@@ -40,6 +40,11 @@ indent_size = 4
 indent_style = space
 indent_size = 4
 
+# Rust: standard convention
+[*.rs]
+indent_style = space
+indent_size = 4
+
 # YAML
 [*.{yml,yaml}]
 indent_style = space
