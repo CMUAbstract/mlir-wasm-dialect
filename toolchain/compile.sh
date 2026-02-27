@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Default values for input, output, and flags
 ADD_DEBUG_FUNCTIONS=false
 BINARYEN_OPT_FLAGS=""
@@ -87,7 +90,7 @@ OUTPUT_BEFOREOPT_WASM=""
 
 # Build the project
 echo "Building the project..."
-cmake --build build
+cmake --build "$REPO_ROOT/build"
 echo "Building the project... done"
 
 if [[ "$COMPILER" == "wami" ]]; then
@@ -101,7 +104,7 @@ if [[ "$COMPILER" == "wami" ]]; then
 
     # Lower standard MLIR to WasmStack using the active pipeline.
     echo "Converting $INPUT_MLIR to WasmStack..."
-    build/bin/wasm-opt \
+    "$REPO_ROOT/build/bin/wasm-opt" \
     --lower-affine \
     --wami-convert-all \
     --reconcile-unrealized-casts \
@@ -112,7 +115,7 @@ if [[ "$COMPILER" == "wami" ]]; then
 
     # Emit WebAssembly binary from WasmStack MLIR.
     echo "Emitting WebAssembly binary from $OUTPUT_WASMSTACK_MLIR..."
-    build/bin/wasm-emit "$OUTPUT_WASMSTACK_MLIR" --mlir-to-wasm -o "$OUTPUT_BEFOREOPT_WASM"
+    "$REPO_ROOT/build/bin/wasm-emit" "$OUTPUT_WASMSTACK_MLIR" --mlir-to-wasm -o "$OUTPUT_BEFOREOPT_WASM"
 
     # Keep a WAT dump for debugging parity with the old script flow.
     wasm2wat "$OUTPUT_BEFOREOPT_WASM" -o "$OUTPUT_BEFOREOPT_WAT"

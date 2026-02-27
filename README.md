@@ -34,7 +34,7 @@ Preferred lowering path for new development:
 - `wasm-opt`: driver for passes
 - `wasm-emit`: MLIR-to-Wasm binary tool
 - `polybench`: benchmark scripts
-- `local-executor`, `mcu-wasm-executor`, `wasmtime-executor`: runtime harnesses
+- `toolchain/local-executor`, `toolchain/mcu-wasm-executor`, `toolchain/wasmtime-executor`: runtime harnesses
 
 ## Build
 
@@ -149,12 +149,12 @@ build/bin/wasm-emit out.wasmstack.mlir --mlir-to-wasm -o out.wasm
 
 ### Existing Scripted Flow
 
-`compile.sh` and `run.sh` are used by existing benchmark/runtime scripts:
+`toolchain/compile.sh` and `toolchain/run.sh` are used by existing benchmark/runtime scripts:
 
 ```sh
-./compile.sh -i test/conv2d.mlir -o conv2d-wami --compiler=wami
-./compile.sh -i test/conv2d.mlir -o conv2d-llvm --compiler=llvm
-./run.sh benchmark/polybench/small/2mm.mlir --compiler=wami --use-aot=false
+./toolchain/compile.sh -i test/conv2d.mlir -o conv2d-wami --compiler=wami
+./toolchain/compile.sh -i test/conv2d.mlir -o conv2d-llvm --compiler=llvm
+./toolchain/run.sh benchmark/polybench/small/2mm.mlir --compiler=wami --use-aot=false
 ```
 
 `compile.sh --compiler=wami` follows the same `wami -> wasmstack -> wasm-emit`

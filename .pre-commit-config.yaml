@@ -15,7 +15,7 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c, c++]
-        exclude: '^(build/|wasmtime-executor/|local-executor/src/|mcu-wasm-executor/src/|benchmark/polybench/src/)'
+        exclude: '^(build/|toolchain/wasmtime-executor/|toolchain/local-executor/src/|toolchain/mcu-wasm-executor/src/|benchmark/polybench/src/)'
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.4
@@ -40,7 +40,7 @@ repos:
     hooks:
       - id: rustfmt
         name: rustfmt
-        entry: cargo fmt --manifest-path wasmtime-executor/Cargo.toml
+        entry: cargo fmt --manifest-path toolchain/wasmtime-executor/Cargo.toml
         language: system
         types: [rust]
         pass_filenames: false

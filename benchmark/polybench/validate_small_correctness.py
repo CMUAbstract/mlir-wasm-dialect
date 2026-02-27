@@ -24,8 +24,8 @@ from typing import Dict, List, Sequence
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SMALL_DIR = ROOT_DIR / "benchmark" / "polybench" / "small"
-COMPILE_SCRIPT = ROOT_DIR / "compile.sh"
-EXECUTOR_DIR = ROOT_DIR / "wasmtime-executor"
+COMPILE_SCRIPT = ROOT_DIR / "toolchain" / "compile.sh"
+EXECUTOR_DIR = ROOT_DIR / "toolchain" / "wasmtime-executor"
 EXECUTOR_BIN = EXECUTOR_DIR / "target" / "release" / "run_wasm_bin"
 DEFAULT_HASH_SEED = 14695981039346656037
 

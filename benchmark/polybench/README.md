@@ -5,7 +5,7 @@ PolyBench benchmark suite on the Apollo4 Blue Plus device. It allows
 configuration of compilers, optimization levels, and evaluation setups.
 
 ## Key Features
-- Supports `--compiler=wami` and `--compiler=llvm` through `../run.sh`
+- Supports `--compiler=wami` and `--compiler=llvm` through `../../toolchain/run.sh`
 - Configurable LLVM optimization levels (`-O0`, `-O1`, ...)
 - Configurable Binaryen optimization levels (`-O0`, `-O1`, ...)
 - Configurable AOT optimization levels (`0`, `1`, `2`, `3`)

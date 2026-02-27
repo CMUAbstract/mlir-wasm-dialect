@@ -61,7 +61,7 @@ def cmd(
 
     if device == "mcu":
         cmd_parts = [
-            'echo "cd ../.. && ./run.sh',
+            'echo "cd ../.. && ./toolchain/run.sh',
             f"--device={device}",
             f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
@@ -74,7 +74,7 @@ def cmd(
         ]
     elif device == "local_wamr":
         cmd_parts = [
-            "cd ../.. && ./run.sh",
+            "cd ../.. && ./toolchain/run.sh",
             f"--device={device}",
             f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
@@ -85,7 +85,7 @@ def cmd(
         ]
     elif device == "local_wasmtime":
         cmd_parts = [
-            "cd ../.. && ./run.sh",
+            "cd ../.. && ./toolchain/run.sh",
             f"--device={device}",
             f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Requires ZEPHYRPROJECT to be set (e.g. in .envrc)
 ZEPHYRPROJECT="${ZEPHYRPROJECT:?Error: ZEPHYRPROJECT environment variable is not set.}"
 
@@ -85,7 +87,7 @@ echo "Temporary directory created: $TEMP_DIR"
 echo $CMDARGS > $TEMP_DIR/cmdargs
 
 # Step 2: Compile input file to Wasm (depending on the type)
-COMPILE_CMD="./compile.sh -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-flags=\"$LLVM_OPT_FLAGS\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
+COMPILE_CMD="\"$SCRIPT_DIR/compile.sh\" -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-flags=\"$LLVM_OPT_FLAGS\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
 
 echo "Compiling $COMPILER to Wasm with command: $COMPILE_CMD"
 eval "$COMPILE_CMD"
@@ -98,7 +100,7 @@ fi
 
 # Step 3: Conditionally compile Wasm to AOT based on --use-aot
 if [ "$USE_AOT" = true ] && [ "$DEVICE" = "mcu" -o "$DEVICE" = "local_wamr" ]; then
-    AOT_COMPILE_CMD="./aot-compiler/compile_aot.sh -i $TEMP_DIR/$BASENAME.wasm -o $TEMP_DIR/$BASENAME.aot -- $AOT_FLAGS"
+    AOT_COMPILE_CMD="\"$SCRIPT_DIR/aot-compiler/compile_aot.sh\" -i $TEMP_DIR/$BASENAME.wasm -o $TEMP_DIR/$BASENAME.aot -- $AOT_FLAGS"
 
     echo "Compiling Wasm to AOT with command: $AOT_COMPILE_CMD"
     eval "$AOT_COMPILE_CMD"
@@ -123,12 +125,12 @@ run_local_wasmtime() {
 
     if [ "$USE_AOT" = true ]; then
         COMMAND_GROUP='
-            cd wasmtime-executor && \
+            cd "$SCRIPT_DIR/wasmtime-executor" && \
             cargo +nightly run --release -- --use-aot --input "../$file"
         '
     else
         COMMAND_GROUP='
-            cd wasmtime-executor && \
+            cd "$SCRIPT_DIR/wasmtime-executor" && \
             cargo +nightly run --release -- --input "../$file"
         '
     fi
@@ -149,7 +151,7 @@ run_local_wamr() {
     echo "Running on mac using $file..."
 
     COMMAND_GROUP='
-        cd local-executor && \
+        cd "$SCRIPT_DIR/local-executor" && \
         xxd -i -n wasm_file "../$file" src/wasm.h && \
         cmake --build build && \
         ./build/app
@@ -177,7 +179,7 @@ run_on_device() {
     # Move to the MCU Wasm Executor directory and prepare to run the binary
     # Define your command group
     COMMAND_GROUP='
-        cd mcu-wasm-executor && \
+        cd "$SCRIPT_DIR/mcu-wasm-executor" && \
         xxd -i -n wasm_file "../$file" src/wasm.h && \
         west build . -b apollo4p_blue_kxr_evb -p && \
         west flash

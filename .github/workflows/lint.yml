@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-24.04
     defaults:
       run:
-        working-directory: wasmtime-executor
+        working-directory: toolchain/wasmtime-executor
     steps:
       - uses: actions/checkout@v4
 

@@ -114,7 +114,7 @@ cargo = shutil.which("cargo")
 if run_wasmtime_bench and cargo:
     config.available_features.add("wasmtime_exec")
     run_wasm_manifest = os.path.join(
-        config.wasm_src_root, "wasmtime-executor", "Cargo.toml"
+        config.wasm_src_root, "toolchain", "wasmtime-executor", "Cargo.toml"
     )
     run_wasm_cmd = (
         f"{cargo} run --quiet --manifest-path {run_wasm_manifest} --bin run_wasm_bin --"
