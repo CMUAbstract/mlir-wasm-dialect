@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "Coro/CoroPasses.h"
-#include "DCont/DContDialect.h"
 #include "WAMI/WAMIDialect.h"
 #include "WAMI/WAMIPasses.h"
 #include "wasmstack/WasmStackDialect.h"
@@ -37,10 +36,9 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                   mlir::scf::SCFDialect, mlir::memref::MemRefDialect,
-                  mlir::affine::AffineDialect, mlir::dcont::DContDialect,
-                  mlir::math::MathDialect, mlir::wasmssa::WasmSSADialect,
-                  mlir::wami::WAMIDialect, mlir::wasmstack::WasmStackDialect,
-                  mlir::LLVM::LLVMDialect>();
+                  mlir::affine::AffineDialect, mlir::math::MathDialect,
+                  mlir::wasmssa::WasmSSADialect, mlir::wami::WAMIDialect,
+                  mlir::wasmstack::WasmStackDialect, mlir::LLVM::LLVMDialect>();
   // Add the following to include *all* MLIR Core dialects, or selectively
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated
