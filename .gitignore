@@ -4,6 +4,9 @@ tmp_*
 .vscode
 .envrc
 CLAUDE.md
+AGENTS.md
+.omc/
+.omx/
 
 # Tool artifacts
 compile_commands.json
