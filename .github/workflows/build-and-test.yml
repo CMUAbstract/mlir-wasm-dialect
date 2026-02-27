@@ -27,7 +27,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.LLVM_INSTALL_DIR }}
-          key: llvm-${{ env.LLVM_COMMIT }}-ubuntu-24.04-release
+          key: llvm-${{ env.LLVM_COMMIT }}-ubuntu-24.04-release-v2
 
       - name: Checkout LLVM
         if: steps.cache-llvm.outputs.cache-hit != 'true'
