@@ -61,9 +61,9 @@ def cmd(
 
     if device == "mcu":
         cmd_parts = [
-            'echo "cd .. && ./run.sh',
+            'echo "cd ../.. && ./run.sh',
             f"--device={device}",
-            f"polybench/{size}/{file_name}",
+            f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
@@ -74,9 +74,9 @@ def cmd(
         ]
     elif device == "local_wamr":
         cmd_parts = [
-            "cd .. && ./run.sh",
+            "cd ../.. && ./run.sh",
             f"--device={device}",
-            f"polybench/{size}/{file_name}",
+            f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
@@ -85,9 +85,9 @@ def cmd(
         ]
     elif device == "local_wasmtime":
         cmd_parts = [
-            "cd .. && ./run.sh",
+            "cd ../.. && ./run.sh",
             f"--device={device}",
-            f"polybench/{size}/{file_name}",
+            f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",

@@ -19,7 +19,7 @@ def getGitRoot():
 def main():
     flash_command = sys.stdin.read().strip()
     git_root = getGitRoot()
-    export_filepath = f"{git_root}/polybench/result"
+    export_filepath = f"{git_root}/benchmark/polybench/result"
 
     # Connect to the running Logic 2 Application
     with automation.Manager.connect(port=10430) as manager:

@@ -154,7 +154,7 @@ build/bin/wasm-emit out.wasmstack.mlir --mlir-to-wasm -o out.wasm
 ```sh
 ./compile.sh -i test/conv2d.mlir -o conv2d-wami --compiler=wami
 ./compile.sh -i test/conv2d.mlir -o conv2d-llvm --compiler=llvm
-./run.sh polybench/small/2mm.mlir --compiler=wami --use-aot=false
+./run.sh benchmark/polybench/small/2mm.mlir --compiler=wami --use-aot=false
 ```
 
 `compile.sh --compiler=wami` follows the same `wami -> wasmstack -> wasm-emit`

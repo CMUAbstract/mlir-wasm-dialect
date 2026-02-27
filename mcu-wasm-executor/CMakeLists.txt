@@ -39,11 +39,11 @@ include(
 zephyr_library_include_directories(${ZEPHYR_BASE}/../modules/hal/ambiq)
 
 # Add the new include directory for the moved headers
-target_include_directories(app PRIVATE ../polybench/src)
+target_include_directories(app PRIVATE ../benchmark/polybench/src)
 
 target_sources(app PRIVATE ${WAMR_RUNTIME_LIB_SOURCE} src/main.c)
 
-target_sources(app PRIVATE ../polybench/src/polybench.h)
+target_sources(app PRIVATE ../benchmark/polybench/src/polybench.h)
 
 target_compile_options(app PRIVATE -static -mthumb -mcpu=cortex-m4
                                    -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O3)

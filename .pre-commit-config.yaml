@@ -15,7 +15,7 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c, c++]
-        exclude: '^(build/|wasmtime-executor/|local-executor/src/|mcu-wasm-executor/src/|polybench/src/)'
+        exclude: '^(build/|wasmtime-executor/|local-executor/src/|mcu-wasm-executor/src/|benchmark/polybench/src/)'
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.4
