@@ -18,7 +18,7 @@ configuration of compilers, optimization levels, and evaluation setups.
 
 ## Running the Benchmarks
 1. Setup virtualenv
-   - It is recommended to install pipenv and run `pipenv install; pipenv shell` in this directory.
+   - It is recommended to install [uv](https://docs.astral.sh/uv/) and run `uv sync` in this directory. Then prefix commands with `uv run`, or activate the venv with `source .venv/bin/activate`.
 2. Execute the command below to view generated benchmark commands:
 ```sh
 ./gencmds.py
