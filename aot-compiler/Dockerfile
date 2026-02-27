@@ -156,7 +156,7 @@ RUN git clone https://github.com/bytecodealliance/wasm-micro-runtime.git
 # will fail
 RUN cd wasm-micro-runtime/wamr-compiler \
     && /usr/bin/env python3 -m pip install --user -r ../build-scripts/requirements.txt --break-system-packages \
-    && /usr/bin/env python3 ../build-scripts/build_llvm.py "$@" 
+    && /usr/bin/env python3 ../build-scripts/build_llvm.py "$@"
 
 RUN cd wasm-micro-runtime/wamr-compiler \
     && mkdir build \

@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 
-import sys, signal, socket, time, threading, subprocess, multiprocessing, os, json
+import sys
+import signal
+import socket
+import time
+import threading
+import subprocess
+import multiprocessing
+import os
+import json
 from datetime import datetime
 
 NCPU = multiprocessing.cpu_count()

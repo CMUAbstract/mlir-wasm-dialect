@@ -34,15 +34,15 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --compiler=*)
             COMPILER="${1#*=}"
-            shift 
+            shift
             ;;
         --binaryen-opt-flags=*)
             BINARYEN_OPT_FLAGS="${1#*=}"
-            shift 
+            shift
             ;;
         --llvm-opt-flags=*)
             LLVM_OPT_FLAGS="${1#*=}"
-            shift 
+            shift
             ;;
         --add-debug-functions)
             ADD_DEBUG_FUNCTIONS=true
@@ -80,14 +80,14 @@ if [[ "$COMPILER" == "llvm" && -z "$WASI_SDK_PATH" ]]; then
     exit 1
 fi
 
-# Final output file 
-OUTPUT_WASM="${OUTPUT_BASE}.wasm" 
+# Final output file
+OUTPUT_WASM="${OUTPUT_BASE}.wasm"
 
 OUTPUT_BEFOREOPT_WASM=""
 
 # Build the project
 echo "Building the project..."
-cmake --build build 
+cmake --build build
 echo "Building the project... done"
 
 if [[ "$COMPILER" == "wami" ]]; then
@@ -121,7 +121,7 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     OUTPUT_LLVM_MLIR="${OUTPUT_BASE}-llvm-1.mlir" # MLIR LLVM IR dialect
     OUTPUT_LL="${OUTPUT_BASE}-2.ll" # LLVM IR
     OUTPUT_OBJ="${OUTPUT_BASE}-3.o" # object file
-    OUTPUT_WAT="${OUTPUT_BASE}-obj-4.wat" 
+    OUTPUT_WAT="${OUTPUT_BASE}-obj-4.wat"
     OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-5.wasm"
     OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-6.wat"
 

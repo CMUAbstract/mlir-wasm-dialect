@@ -1,12 +1,9 @@
+# ruff: noqa: F821
 # -*- Python -*-
 
 import os
-import platform
-import re
 import shutil
-import subprocess
 import sys
-import tempfile
 
 import lit.formats
 import lit.util
@@ -35,17 +32,19 @@ config.substitutions.append(("%PATH%", config.environment["PATH"]))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%wasm_src_root", config.wasm_src_root))
 
-llvm_config.with_system_environment([
-    "HOME",
-    "INCLUDE",
-    "LIB",
-    "TMP",
-    "TEMP",
-    "RUN_WIZARD_STACK_SWITCHING",
-    "WIZARD_ENGINE_DIR",
-    "WIZARD_WIZENG_BIN",
-    "WIZARD_WIZENG_OPTS",
-])
+llvm_config.with_system_environment(
+    [
+        "HOME",
+        "INCLUDE",
+        "LIB",
+        "TMP",
+        "TEMP",
+        "RUN_WIZARD_STACK_SWITCHING",
+        "WIZARD_ENGINE_DIR",
+        "WIZARD_WIZENG_BIN",
+        "WIZARD_WIZENG_OPTS",
+    ]
+)
 
 llvm_config.use_default_substitutions()
 
@@ -75,10 +74,8 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 # Optional wabt tools used by integration tests.
 wabt_tools = [
-    ToolSubst("wasm-validate", command=FindTool("wasm-validate"),
-              unresolved="ignore"),
-    ToolSubst("wasm-objdump", command=FindTool("wasm-objdump"),
-              unresolved="ignore"),
+    ToolSubst("wasm-validate", command=FindTool("wasm-validate"), unresolved="ignore"),
+    ToolSubst("wasm-objdump", command=FindTool("wasm-objdump"), unresolved="ignore"),
 ]
 llvm_config.add_tool_substitutions(
     wabt_tools, tool_dirs + [config.environment.get("PATH", "")]
@@ -88,9 +85,7 @@ if all(tool.was_resolved for tool in wabt_tools):
     config.available_features.add("wabt")
 
 # Optional wasm-ld used by relocatable/linking tests.
-wasm_ld_tool = ToolSubst(
-    "wasm-ld", command=FindTool("wasm-ld"), unresolved="ignore"
-)
+wasm_ld_tool = ToolSubst("wasm-ld", command=FindTool("wasm-ld"), unresolved="ignore")
 llvm_config.add_tool_substitutions(
     [wasm_ld_tool], tool_dirs + [config.environment.get("PATH", "")]
 )
@@ -100,16 +95,16 @@ if wasm_ld_tool.was_resolved:
 # Optional LLVM-backend tools used by pure LLVM -> Wasm integration tests.
 # (Includes explicit LLVM coroutine optimization pipeline via `opt`.)
 llvm_backend_tools = [
-    ToolSubst("mlir-translate", command=FindTool("mlir-translate"),
-              unresolved="ignore"),
+    ToolSubst(
+        "mlir-translate", command=FindTool("mlir-translate"), unresolved="ignore"
+    ),
     ToolSubst("opt", command=FindTool("opt"), unresolved="ignore"),
     ToolSubst("llc", command=FindTool("llc"), unresolved="ignore"),
 ]
 llvm_config.add_tool_substitutions(
     llvm_backend_tools, tool_dirs + [config.environment.get("PATH", "")]
 )
-if (all(tool.was_resolved for tool in llvm_backend_tools) and
-        wasm_ld_tool.was_resolved):
+if all(tool.was_resolved for tool in llvm_backend_tools) and wasm_ld_tool.was_resolved:
     config.available_features.add("llvm_wasm_backend")
 
 # Optional wasmtime execution integration tests (opt-in).
@@ -122,8 +117,7 @@ if run_wasmtime_bench and cargo:
         config.wasm_src_root, "wasmtime-executor", "Cargo.toml"
     )
     run_wasm_cmd = (
-        f"{cargo} run --quiet --manifest-path {run_wasm_manifest} "
-        "--bin run_wasm_bin --"
+        f"{cargo} run --quiet --manifest-path {run_wasm_manifest} --bin run_wasm_bin --"
     )
     config.substitutions.append(("%run_wasm_bin", run_wasm_cmd))
 
@@ -132,12 +126,14 @@ if run_wasmtime_bench and cargo:
 run_wizard_stack = os.environ.get("RUN_WIZARD_STACK_SWITCHING", "") == "1"
 wizard_engine_dir = os.environ.get("WIZARD_ENGINE_DIR", "")
 wizard_runner = os.path.join(
-    config.wasm_src_root, "test", "integration", "stack-switching",
-    "run_wizard_bin.py"
+    config.wasm_src_root, "test", "integration", "stack-switching", "run_wizard_bin.py"
 )
-if (run_wizard_stack and wizard_engine_dir and
-        os.path.isdir(wizard_engine_dir) and
-        os.path.isfile(wizard_runner)):
+if (
+    run_wizard_stack
+    and wizard_engine_dir
+    and os.path.isdir(wizard_engine_dir)
+    and os.path.isfile(wizard_runner)
+):
     config.available_features.add("wizard_exec")
     config.substitutions.append(
         ("%run_wizard_bin", f"{sys.executable} {wizard_runner}")

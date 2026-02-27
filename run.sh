@@ -139,8 +139,8 @@ run_local_wasmtime() {
         (eval "$COMMAND_GROUP")
     fi
 
-    
-    
+
+
 }
 
 run_local_wamr() {
@@ -161,8 +161,8 @@ run_local_wamr() {
         (eval "$COMMAND_GROUP")
     fi
 
-    
-    
+
+
 }
 
 # Step 4: Function to run the compiled file on the device

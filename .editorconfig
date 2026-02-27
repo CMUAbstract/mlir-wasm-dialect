@@ -1,0 +1,46 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+
+# LLVM convention: 2-space indent for C++/headers
+[*.{cpp,h,c}]
+indent_style = space
+indent_size = 2
+
+# TableGen follows LLVM convention
+[*.td]
+indent_style = space
+indent_size = 2
+
+# MLIR test files
+[*.mlir]
+indent_style = space
+indent_size = 2
+
+# CMake follows LLVM convention
+[CMakeLists.txt]
+indent_style = space
+indent_size = 2
+
+[*.cmake]
+indent_style = space
+indent_size = 2
+
+# Python: PEP 8
+[*.py]
+indent_style = space
+indent_size = 4
+
+# Shell scripts
+[*.sh]
+indent_style = space
+indent_size = 4
+
+# YAML
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2

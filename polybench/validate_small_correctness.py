@@ -61,7 +61,9 @@ def run_cmd(cmd: Sequence[str], cwd: Path) -> CommandResult:
         text=True,
     )
     if completed.returncode != 0:
-        raise CommandError(cmd, completed.returncode, completed.stdout, completed.stderr)
+        raise CommandError(
+            cmd, completed.returncode, completed.stdout, completed.stderr
+        )
     return CommandResult(stdout=completed.stdout, stderr=completed.stderr)
 
 
@@ -183,7 +185,9 @@ def main() -> int:
         print(f"error: compile script not found: {COMPILE_SCRIPT}", file=sys.stderr)
         return 2
     if not SMALL_DIR.is_dir():
-        print(f"error: small benchmark directory not found: {SMALL_DIR}", file=sys.stderr)
+        print(
+            f"error: small benchmark directory not found: {SMALL_DIR}", file=sys.stderr
+        )
         return 2
     if "WASI_SDK_PATH" not in os.environ or not os.environ["WASI_SDK_PATH"]:
         print("error: WASI_SDK_PATH must be set for llvm compilation.", file=sys.stderr)

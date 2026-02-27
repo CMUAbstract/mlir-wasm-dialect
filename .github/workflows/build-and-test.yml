@@ -1,0 +1,145 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1' # Weekly Monday 6am UTC
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LLVM_COMMIT: 67772838e389c548f68c5513a0d417c0534ac9c7
+  LLVM_INSTALL_DIR: /home/runner/llvm-install
+
+jobs:
+  build-llvm:
+    name: Build LLVM/MLIR (cached)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Cache LLVM install
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LLVM_INSTALL_DIR }}
+          key: llvm-${{ env.LLVM_COMMIT }}-ubuntu-24.04-release
+
+      - name: Checkout LLVM
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: byeongjee/llvm-project
+          ref: ${{ env.LLVM_COMMIT }}
+          path: llvm-project
+
+      - name: Build LLVM/MLIR
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        run: |
+          cmake -G Ninja -S llvm-project/llvm -B llvm-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${{ env.LLVM_INSTALL_DIR }} \
+            -DLLVM_ENABLE_PROJECTS=mlir \
+            -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly \
+            -DLLVM_TARGETS_TO_BUILD=host \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_ENABLE_ZLIB=OFF \
+            -DLLVM_ENABLE_ZSTD=OFF \
+            -DLLVM_ENABLE_TERMINFO=OFF \
+            -DLLVM_BUILD_EXAMPLES=OFF \
+            -DLLVM_BUILD_TESTS=OFF \
+            -DMLIR_BUILD_TESTS=OFF
+          cmake --build llvm-build --target install
+
+      - name: Upload LLVM install
+        uses: actions/upload-artifact@v4
+        with:
+          name: llvm-install
+          path: ${{ env.LLVM_INSTALL_DIR }}
+          retention-days: 7
+
+  build-and-test:
+    name: Build WAMI and run tests
+    needs: build-llvm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download LLVM install
+        uses: actions/download-artifact@v4
+        with:
+          name: llvm-install
+          path: ${{ env.LLVM_INSTALL_DIR }}
+
+      - name: Fix LLVM permissions
+        run: chmod -R +x ${{ env.LLVM_INSTALL_DIR }}/bin/
+
+      - name: Install WABT
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wabt
+
+      - name: Configure WAMI
+        run: |
+          cmake -G Ninja -S . -B build \
+            -DMLIR_DIR=${{ env.LLVM_INSTALL_DIR }}/lib/cmake/mlir \
+            -DLLVM_EXTERNAL_LIT=${{ env.LLVM_INSTALL_DIR }}/bin/llvm-lit \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build WAMI
+        run: cmake --build build
+
+      - name: Run tests
+        run: cmake --build build --target check-wasm
+
+      - name: Upload compile_commands.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-commands
+          path: build/compile_commands.json
+          retention-days: 1
+
+  clang-tidy:
+    name: clang-tidy (advisory)
+    needs: build-and-test
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download LLVM install
+        uses: actions/download-artifact@v4
+        with:
+          name: llvm-install
+          path: ${{ env.LLVM_INSTALL_DIR }}
+
+      - name: Download compile_commands.json
+        uses: actions/download-artifact@v4
+        with:
+          name: compile-commands
+          path: build/
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-19
+
+      - name: Run clang-tidy
+        run: |
+          find lib include wasm-opt wasm-emit \
+            -name '*.cpp' -o -name '*.h' \
+            | xargs clang-tidy-19 -p build/ \
+            2>&1 | tee clang-tidy-results.txt
+
+      - name: Upload clang-tidy results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-results
+          path: clang-tidy-results.txt
+          retention-days: 30

@@ -1,7 +1,8 @@
+# ruff: noqa: F403,F405
 # RUN: %python %s | FileCheck %s
 
 from mlir_wasm.ir import *
-from mlir_wasm.dialects import builtin as builtin_d, wasm as wasm_d
+from mlir_wasm.dialects import wasm as wasm_d
 
 with Context():
     wasm_d.register_dialect()

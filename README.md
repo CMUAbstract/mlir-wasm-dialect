@@ -86,6 +86,34 @@ WIZARD_ENGINE_DIR=/path/to/wizard-engine \
 llvm-lit build/test/integration/stack-switching
 ```
 
+## Development Setup
+
+Install [pre-commit](https://pre-commit.com) to enable formatting and linting
+hooks:
+
+```sh
+pip install pre-commit
+pre-commit install
+```
+
+This runs clang-format, ruff, shellcheck, and cmake-format automatically on
+each commit. To check all files manually:
+
+```sh
+pre-commit run --all-files
+```
+
+To run clang-tidy locally (requires a build with `compile_commands.json`):
+
+```sh
+cmake -G Ninja -S . -B build \
+  -DMLIR_DIR=$PREFIX/lib/cmake/mlir \
+  -DLLVM_EXTERNAL_LIT=$BUILD_DIR/bin/llvm-lit \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+find lib include wasm-opt wasm-emit -name '*.cpp' -o -name '*.h' \
+  | xargs clang-tidy -p build/
+```
+
 ## Tool Prerequisites
 
 - [WABT](https://github.com/WebAssembly/wabt) (`wasm-validate`, `wasm-objdump`,

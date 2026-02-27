@@ -1,7 +1,7 @@
 # PolyBench Benchmark Suite on Apollo4 Blue Plus
 
 This directory provides instructions for testing an MLIR-based port of the
-PolyBench benchmark suite on the Apollo4 Blue Plus device. It allows 
+PolyBench benchmark suite on the Apollo4 Blue Plus device. It allows
 configuration of compilers, optimization levels, and evaluation setups.
 
 ## Key Features

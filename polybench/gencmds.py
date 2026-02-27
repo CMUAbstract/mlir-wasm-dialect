@@ -67,7 +67,7 @@ def cmd(
             f"--compiler={compiler}",
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
-            f'--use-aot={"true" if use_aot else "false"}',
+            f"--use-aot={'true' if use_aot else 'false'}",
             "--silent",
             aot_str if use_aot else "",
             '" | pipenv run ./measure.py',
@@ -80,7 +80,7 @@ def cmd(
             f"--compiler={compiler}",
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
-            f'--use-aot={"true" if use_aot else "false"}',
+            f"--use-aot={'true' if use_aot else 'false'}",
             aot_str if use_aot else "",
         ]
     elif device == "local_wasmtime":
@@ -91,7 +91,7 @@ def cmd(
             f"--compiler={compiler}",
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
-            f'--use-aot={"true" if use_aot else "false"}',
+            f"--use-aot={'true' if use_aot else 'false'}",
         ]
     else:
         raise ValueError(f"Invalid device: {device}")

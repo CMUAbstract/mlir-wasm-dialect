@@ -8,7 +8,10 @@ set(WAMR_ROOT_DIR $ENV{WAMR_ROOT_DIR})
 
 # Check if WAMR_ROOT_DIR was set
 if(NOT WAMR_ROOT_DIR)
-    message(FATAL_ERROR "Environment variable 'WAMR_ROOT_DIR' is not defined. Please set it before configuring.")
+  message(
+    FATAL_ERROR
+      "Environment variable 'WAMR_ROOT_DIR' is not defined. Please set it before configuring."
+  )
 endif()
 
 project(wamr)
@@ -30,17 +33,17 @@ set(WAMR_BUILD_GLOBAL_HEAP_POOL 1)
 set(WAMR_BUILD_GLOBAL_HEAP_SIZE 1638912)
 
 include(${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
-include(${WAMR_ROOT_DIR}/core/shared/platform/common/math/platform_api_math.cmake)
+include(
+  ${WAMR_ROOT_DIR}/core/shared/platform/common/math/platform_api_math.cmake)
 
 zephyr_library_include_directories(${ZEPHYR_BASE}/../modules/hal/ambiq)
 
 # Add the new include directory for the moved headers
 target_include_directories(app PRIVATE ../polybench/src)
 
-target_sources(app PRIVATE
-               ${WAMR_RUNTIME_LIB_SOURCE}
-               src/main.c)
+target_sources(app PRIVATE ${WAMR_RUNTIME_LIB_SOURCE} src/main.c)
 
 target_sources(app PRIVATE ../polybench/src/polybench.h)
 
-target_compile_options(app PRIVATE -static -mthumb -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O3)
+target_compile_options(app PRIVATE -static -mthumb -mcpu=cortex-m4
+                                   -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O3)

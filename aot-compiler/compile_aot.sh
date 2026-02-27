@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DOCKER_IMAGE="byeongjeecmu/wamr:latest" 
+DOCKER_IMAGE="byeongjeecmu/wamr:latest"
 
 INPUT_FILE=""
 OUTPUT_FILE=""
@@ -65,4 +65,3 @@ if [ -f "$OUTPUT_FILE" ]; then
 else
     echo "Computation failed or result not found."
 fi
-

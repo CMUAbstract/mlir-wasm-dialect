@@ -1,13 +1,12 @@
-add_mlir_dialect_library(MLIRCoro
+add_mlir_dialect_library(
+  MLIRCoro
   CoroPasses.cpp
-
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/Coro
-
   DEPENDS
   MLIRCoroPassesIncGen
-
-  LINK_LIBS PUBLIC
+  LINK_LIBS
+  PUBLIC
   MLIRIR
   MLIRArithDialect
   MLIRFuncDialect
@@ -15,5 +14,4 @@ add_mlir_dialect_library(MLIRCoro
   MLIRTransforms
   MLIRWAMI
   MLIRWasmSSADialect
-  MLIRLLVMDialect
-)
+  MLIRLLVMDialect)

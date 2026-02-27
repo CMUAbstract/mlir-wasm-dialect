@@ -1,7 +1,9 @@
 # Generate attribute declarations
 set(LLVM_TARGET_DEFINITIONS WasmStackAttrs.td)
-mlir_tablegen(WasmStackAttrs.h.inc -gen-attrdef-decls -attrdefs-dialect=wasmstack)
-mlir_tablegen(WasmStackAttrs.cpp.inc -gen-attrdef-defs -attrdefs-dialect=wasmstack)
+mlir_tablegen(WasmStackAttrs.h.inc -gen-attrdef-decls
+              -attrdefs-dialect=wasmstack)
+mlir_tablegen(WasmStackAttrs.cpp.inc -gen-attrdef-defs
+              -attrdefs-dialect=wasmstack)
 add_public_tablegen_target(MLIRWasmStackAttrsIncGen)
 add_dependencies(mlir-headers MLIRWasmStackAttrsIncGen)
 
@@ -16,8 +18,10 @@ add_dependencies(mlir-headers MLIRWasmStackOpsIncGen)
 
 # Generate type declarations
 set(LLVM_TARGET_DEFINITIONS WasmStackTypes.td)
-mlir_tablegen(WasmStackTypes.h.inc -gen-typedef-decls -typedefs-dialect=wasmstack)
-mlir_tablegen(WasmStackTypes.cpp.inc -gen-typedef-defs -typedefs-dialect=wasmstack)
+mlir_tablegen(WasmStackTypes.h.inc -gen-typedef-decls
+              -typedefs-dialect=wasmstack)
+mlir_tablegen(WasmStackTypes.cpp.inc -gen-typedef-defs
+              -typedefs-dialect=wasmstack)
 add_public_tablegen_target(MLIRWasmStackTypesIncGen)
 add_dependencies(mlir-headers MLIRWasmStackTypesIncGen)
 
@@ -31,8 +35,10 @@ add_dependencies(mlir-headers MLIRWasmStackInterfacesIncGen)
 # Generate pass declarations
 set(LLVM_TARGET_DEFINITIONS WasmStackPasses.td)
 mlir_tablegen(WasmStackPasses.h.inc -gen-pass-decls -name WasmStack)
-mlir_tablegen(WasmStackPasses.capi.h.inc -gen-pass-capi-header --prefix WasmStack)
-mlir_tablegen(WasmStackPasses.capi.cpp.inc -gen-pass-capi-impl --prefix WasmStack)
+mlir_tablegen(WasmStackPasses.capi.h.inc -gen-pass-capi-header --prefix
+              WasmStack)
+mlir_tablegen(WasmStackPasses.capi.cpp.inc -gen-pass-capi-impl --prefix
+              WasmStack)
 add_public_tablegen_target(MLIRWasmStackPassesIncGen)
 add_dependencies(mlir-headers MLIRWasmStackPassesIncGen)
 

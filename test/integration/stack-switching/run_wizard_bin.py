@@ -176,7 +176,9 @@ def main() -> int:
     parser.add_argument("--input", required=True, help="input wasm file")
     parser.add_argument("--expect-i32", type=int, help="expected i32 result")
     parser.add_argument("--invoke", default="main", help="entrypoint function name")
-    parser.add_argument("--quiet", action="store_true", help="suppress non-error output")
+    parser.add_argument(
+        "--quiet", action="store_true", help="suppress non-error output"
+    )
     parser.add_argument("program_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
@@ -196,13 +198,15 @@ def main() -> int:
     if extra_opts:
         cmd.extend(shlex.split(extra_opts))
 
-    cmd.extend([
-        "--ext:all",
-        "--expose=wizeng",
-        f"--invoke={args.invoke}",
-        "--print-result",
-        str(runtime_input),
-    ])
+    cmd.extend(
+        [
+            "--ext:all",
+            "--expose=wizeng",
+            f"--invoke={args.invoke}",
+            "--print-result",
+            str(runtime_input),
+        ]
+    )
 
     if args.program_args:
         cmd.append("--")
@@ -247,9 +251,7 @@ def main() -> int:
                 print(proc.stderr, end="", file=sys.stderr)
             if observed is None:
                 return fail("could not parse i32 result from wizard output")
-            return fail(
-                f"result mismatch: expected {args.expect_i32}, got {observed}"
-            )
+            return fail(f"result mismatch: expected {args.expect_i32}, got {observed}")
     else:
         if proc.returncode != 0:
             if proc.stdout:

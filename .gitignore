@@ -4,3 +4,11 @@ tmp_*
 .vscode
 .envrc
 CLAUDE.md
+
+# Tool artifacts
+compile_commands.json
+.pre-commit-config.yaml.bak
+.cache/
+*.swp
+*.swo
+*~
