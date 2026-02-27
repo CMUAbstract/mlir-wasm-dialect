@@ -1,0 +1,19 @@
+add_mlir_dialect_library(MLIRCoro
+  CoroPasses.cpp
+
+  ADDITIONAL_HEADER_DIRS
+  ${PROJECT_SOURCE_DIR}/include/Coro
+
+  DEPENDS
+  MLIRCoroPassesIncGen
+
+  LINK_LIBS PUBLIC
+  MLIRIR
+  MLIRArithDialect
+  MLIRFuncDialect
+  MLIRPass
+  MLIRTransforms
+  MLIRWAMI
+  MLIRWasmSSADialect
+  MLIRLLVMDialect
+)

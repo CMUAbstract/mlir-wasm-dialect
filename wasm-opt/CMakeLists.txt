@@ -6,6 +6,7 @@ set(LIBS
         MLIRArithDialect
         MLIROptLib
         MLIRRegisterAllPasses
+        MLIRCoro
         MLIRWAMI
         MLIRWasmStack
         )
