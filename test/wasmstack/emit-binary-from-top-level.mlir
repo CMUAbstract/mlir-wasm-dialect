@@ -1,6 +1,6 @@
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack | wasm-emit --mlir-to-wasm -o %t.wasm
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack | wasm-emit --mlir-to-wasm -o %t.wasm
 // RUN: test -s %t.wasm
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack | wasm-emit --mlir-to-wasm --relocatable -o %t.o
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack | wasm-emit --mlir-to-wasm --relocatable -o %t.o
 // RUN: test -s %t.o
 
 // This test validates that wasm-emit accepts the top-level WasmStack form

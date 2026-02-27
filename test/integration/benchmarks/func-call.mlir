@@ -1,5 +1,5 @@
 // REQUIRES: wasmtime_exec
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack --verify-wasmstack | wasm-emit --mlir-to-wasm -o %t.wasm
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack --verify-wasmstack | wasm-emit --mlir-to-wasm -o %t.wasm
 // RUN: %run_wasm_bin --input %t.wasm --expect-i32 42 --quiet
 
 func.func @add3(%x: i32) -> i32 {

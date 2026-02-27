@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack --verify-wasmstack 2>&1 | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack --verify-wasmstack 2>&1 | FileCheck %s
 
 // Regression test: stackification must not drop side-effecting or trap-capable
 // ops just because their SSA results are unused.

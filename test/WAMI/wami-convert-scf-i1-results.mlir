@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-all | FileCheck %s
 
 // Regression coverage for SCF boundary values that originate as i1.
 // CHECK-NOT: unrealized_conversion_cast

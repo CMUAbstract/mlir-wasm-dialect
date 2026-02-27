@@ -1,5 +1,5 @@
 // REQUIRES: wizard_exec, llvm_wasm_backend
-// RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize --wami-convert-all --reconcile-unrealized-casts --coro-to-wami --convert-to-wasmstack --verify-wasmstack | wasm-emit --mlir-to-wasm -o %t.wami.wasm
+// RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize --wami-convert-all --coro-to-wami --convert-to-wasmstack --verify-wasmstack | wasm-emit --mlir-to-wasm -o %t.wami.wasm
 // RUN: %run_wizard_bin --input %t.wami.wasm --expect-i32 39 --quiet
 // RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize -o %t.norm.mlir
 // RUN: mlir-opt %t.norm.mlir --lower-affine --convert-scf-to-cf --convert-arith-to-llvm="index-bitwidth=32" --convert-func-to-llvm="index-bitwidth=32" --memref-expand --expand-strided-metadata --finalize-memref-to-llvm="index-bitwidth=32" --convert-cf-to-llvm="index-bitwidth=32" --convert-to-llvm --reconcile-unrealized-casts -o %t.prellvm.mlir

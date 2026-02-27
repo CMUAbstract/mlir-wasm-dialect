@@ -1,5 +1,5 @@
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts | FileCheck %s
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack -verify-wasmstack 2>&1 | FileCheck %s --check-prefix=VERIFY
+// RUN: wasm-opt %s --wami-convert-all | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack -verify-wasmstack 2>&1 | FileCheck %s --check-prefix=VERIFY
 
 // Comprehensive tests for memref dialect conversion through the full pipeline
 // Tests memory operations, global arrays, and interactions with control flow

@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack 2>&1 | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack 2>&1 | FileCheck %s
 
 // Regression test: convert-to-wasmstack should fully lower module-level
 // declarations, not leave wami/wasmssa top-level ops behind.

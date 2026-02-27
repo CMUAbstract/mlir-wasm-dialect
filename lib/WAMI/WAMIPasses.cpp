@@ -276,6 +276,20 @@ public:
 
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       signalPassFailure();
+      return;
+    }
+
+    // Reconcile unrealized conversion casts left over from type conversion.
+    SmallVector<UnrealizedConversionCastOp> castOps;
+    module->walk(
+        [&](UnrealizedConversionCastOp castOp) { castOps.push_back(castOp); });
+    SmallVector<UnrealizedConversionCastOp> remainingCasts;
+    reconcileUnrealizedCasts(castOps, &remainingCasts);
+    if (!remainingCasts.empty()) {
+      emitError(module.getLoc())
+          << remainingCasts.size()
+          << " unrealized conversion cast(s) could not be reconciled";
+      signalPassFailure();
     }
   }
 };

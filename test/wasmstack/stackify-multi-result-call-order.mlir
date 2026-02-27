@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack --verify-wasmstack 2>&1 | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack --verify-wasmstack 2>&1 | FileCheck %s
 
 // Regression test: multi-result call materialization must store results in
 // stack-pop order, so SSA result ordering remains correct.

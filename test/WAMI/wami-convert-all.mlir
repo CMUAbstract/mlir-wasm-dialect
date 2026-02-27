@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts | FileCheck %s
+// RUN: wasm-opt %s --wami-convert-all | FileCheck %s
 
 // This test verifies that the unified conversion pass correctly handles
 // interleaved operations from different dialects, specifically scf.for

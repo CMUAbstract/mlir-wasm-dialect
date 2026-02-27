@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize --wami-convert-all --reconcile-unrealized-casts --coro-to-wami | FileCheck %s
+// RUN: wasm-opt %s --coro-verify-intrinsics --coro-normalize --wami-convert-all --coro-to-wami | FileCheck %s
 
 module {
   func.func private @coro.spawn.yielder() -> i64

@@ -1,8 +1,8 @@
 // REQUIRES: wabt
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack | wasm-emit --mlir-to-wasm -o %t.wasm
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack | wasm-emit --mlir-to-wasm -o %t.wasm
 // RUN: wasm-validate %t.wasm
 // RUN: wasm-objdump -x %t.wasm | FileCheck %s --check-prefix=NONRELOC
-// RUN: wasm-opt %s --wami-convert-all --reconcile-unrealized-casts --convert-to-wasmstack | wasm-emit --mlir-to-wasm --relocatable -o %t.o
+// RUN: wasm-opt %s --wami-convert-all --convert-to-wasmstack | wasm-emit --mlir-to-wasm --relocatable -o %t.o
 // RUN: wasm-validate %t.o
 // RUN: wasm-objdump -x %t.o | FileCheck %s --check-prefix=RELOC
 
