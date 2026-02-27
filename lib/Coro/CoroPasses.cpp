@@ -1544,31 +1544,31 @@ struct CoroLLVMKindInfo {
 };
 
 static Value createLLVMConstI1(OpBuilder &b, Location loc, bool value) {
-  return b.create<LLVM::ConstantOp>(loc, b.getI1Type(), b.getBoolAttr(value));
+  return LLVM::ConstantOp::create(b, loc, b.getI1Type(), b.getBoolAttr(value));
 }
 
 static Value createLLVMConstI32(OpBuilder &b, Location loc, int32_t value) {
-  return b.create<LLVM::ConstantOp>(loc, b.getI32Type(),
-                                    b.getI32IntegerAttr(value));
+  return LLVM::ConstantOp::create(b, loc, b.getI32Type(),
+                                  b.getI32IntegerAttr(value));
 }
 
 static Value createLLVMConstU64(OpBuilder &b, Location loc, uint64_t value) {
-  return b.create<LLVM::ConstantOp>(
-      loc, b.getI64Type(),
+  return LLVM::ConstantOp::create(
+      b, loc, b.getI64Type(),
       b.getIntegerAttr(b.getI64Type(), APInt(/*numBits=*/64, value)));
 }
 
 static Value createLLVMNullPtr(OpBuilder &b, Location loc) {
-  return b.create<LLVM::ZeroOp>(loc,
-                                LLVM::LLVMPointerType::get(b.getContext()));
+  return LLVM::ZeroOp::create(b, loc,
+                              LLVM::LLVMPointerType::get(b.getContext()));
 }
 
 static Value createRuntimeFieldPtr(OpBuilder &b, Location loc, Value rtPtr,
                                    LLVM::LLVMStructType runtimeTy,
                                    unsigned fieldIndex) {
   auto ptrTy = LLVM::LLVMPointerType::get(b.getContext());
-  return b.create<LLVM::GEPOp>(
-      loc, ptrTy, runtimeTy, rtPtr,
+  return LLVM::GEPOp::create(
+      b, loc, ptrTy, runtimeTy, rtPtr,
       ArrayRef<LLVM::GEPArg>{0, static_cast<int32_t>(fieldIndex)});
 }
 
@@ -1576,14 +1576,14 @@ static Value loadRuntimeField(OpBuilder &b, Location loc, Value rtPtr,
                               LLVM::LLVMStructType runtimeTy, Type fieldTy,
                               unsigned fieldIndex) {
   Value fieldPtr = createRuntimeFieldPtr(b, loc, rtPtr, runtimeTy, fieldIndex);
-  return b.create<LLVM::LoadOp>(loc, fieldTy, fieldPtr);
+  return LLVM::LoadOp::create(b, loc, fieldTy, fieldPtr);
 }
 
 static void storeRuntimeField(OpBuilder &b, Location loc, Value rtPtr,
                               LLVM::LLVMStructType runtimeTy, unsigned fieldIdx,
                               Value value) {
   Value fieldPtr = createRuntimeFieldPtr(b, loc, rtPtr, runtimeTy, fieldIdx);
-  b.create<LLVM::StoreOp>(loc, value, fieldPtr);
+  LLVM::StoreOp::create(b, loc, value, fieldPtr);
 }
 
 static Type getPackedLLVMTypeForValues(MLIRContext *ctx,
@@ -1602,9 +1602,9 @@ static Value packLLVMValues(OpBuilder &b, Location loc, Type packedType,
   if (values.size() == 1)
     return values.front();
 
-  Value packed = b.create<LLVM::UndefOp>(loc, packedType);
+  Value packed = LLVM::UndefOp::create(b, loc, packedType);
   for (auto [idx, v] : llvm::enumerate(values))
-    packed = b.create<LLVM::InsertValueOp>(loc, packed, v, idx);
+    packed = LLVM::InsertValueOp::create(b, loc, packed, v, idx);
   return packed;
 }
 
@@ -1620,7 +1620,7 @@ static SmallVector<Value> unpackLLVMValues(OpBuilder &b, Location loc,
   }
   out.reserve(unpackedTypes.size());
   for (auto [idx, ty] : llvm::enumerate(unpackedTypes))
-    out.push_back(b.create<LLVM::ExtractValueOp>(loc, ty, packed, idx));
+    out.push_back(LLVM::ExtractValueOp::create(b, loc, ty, packed, idx));
   return out;
 }
 
@@ -1631,11 +1631,15 @@ static Value buildResumeTupleValue(OpBuilder &b, Location loc, Type tupleTy,
   if (!structTy)
     return Value();
 
-  Value tuple = b.create<LLVM::UndefOp>(loc, tupleTy);
-  tuple = b.create<LLVM::InsertValueOp>(loc, tuple, handle, /*position=*/0);
-  tuple = b.create<LLVM::InsertValueOp>(loc, tuple, done, /*position=*/1);
+  Value tuple = LLVM::UndefOp::create(b, loc, tupleTy);
+  tuple =
+      LLVM::InsertValueOp::create(b, loc, tuple, handle, ArrayRef<int64_t>{0});
+  tuple =
+      LLVM::InsertValueOp::create(b, loc, tuple, done, ArrayRef<int64_t>{1});
   for (auto [idx, payload] : llvm::enumerate(payloads))
-    tuple = b.create<LLVM::InsertValueOp>(loc, tuple, payload, idx + 2);
+    tuple = LLVM::InsertValueOp::create(
+        b, loc, tuple, payload,
+        ArrayRef<int64_t>{static_cast<int64_t>(idx) + 2});
   return tuple;
 }
 
@@ -1651,7 +1655,7 @@ ensureLLVMFunctionDecl(ModuleOp module, Operation *diagOp, StringRef symName,
   }
 
   auto fn =
-      moduleBuilder.create<LLVM::LLVMFuncOp>(diagOp->getLoc(), symName, type);
+      LLVM::LLVMFuncOp::create(moduleBuilder, diagOp->getLoc(), symName, type);
   if (isExternal)
     fn.setLinkage(LLVM::Linkage::External);
   if (makePrivate)
@@ -1735,8 +1739,8 @@ ensureCoroLLVMRuntimeDecls(ModuleOp module, Operation *diagOp,
   LLVM::GlobalOp heapGlobal =
       module.lookupSymbol<LLVM::GlobalOp>(heapGlobalSym);
   if (!heapGlobal) {
-    heapGlobal = moduleBuilder.create<LLVM::GlobalOp>(
-        diagOp->getLoc(), i32Ty,
+    heapGlobal = LLVM::GlobalOp::create(
+        moduleBuilder, diagOp->getLoc(), i32Ty,
         /*isConstant=*/false, LLVM::Linkage::Internal, heapGlobalSym,
         moduleBuilder.getI32IntegerAttr(70000), /*alignment=*/0,
         /*addr_space=*/0);
@@ -1750,32 +1754,32 @@ ensureCoroLLVMRuntimeDecls(ModuleOp module, Operation *diagOp,
     OpBuilder allocBuilder(ctx);
     Block *entry = (*mallocFn).addEntryBlock(allocBuilder);
     allocBuilder.setInsertionPointToStart(entry);
-    Value heapAddr = allocBuilder.create<LLVM::AddressOfOp>(
-        diagOp->getLoc(), ptrTy, heapGlobal.getSymName());
+    Value heapAddr = LLVM::AddressOfOp::create(allocBuilder, diagOp->getLoc(),
+                                               ptrTy, heapGlobal.getSymName());
     Value cur =
-        allocBuilder.create<LLVM::LoadOp>(diagOp->getLoc(), i32Ty, heapAddr);
+        LLVM::LoadOp::create(allocBuilder, diagOp->getLoc(), i32Ty, heapAddr);
     Value c7 = createLLVMConstI32(allocBuilder, diagOp->getLoc(), 7);
     Value cNeg8 = createLLVMConstI32(allocBuilder, diagOp->getLoc(), -8);
-    Value curAligned = allocBuilder.create<LLVM::AndOp>(
-        diagOp->getLoc(),
-        allocBuilder.create<LLVM::AddOp>(diagOp->getLoc(), cur, c7), cNeg8);
+    Value curAligned = LLVM::AndOp::create(
+        allocBuilder, diagOp->getLoc(),
+        LLVM::AddOp::create(allocBuilder, diagOp->getLoc(), cur, c7), cNeg8);
     Value size = entry->getArgument(0);
-    Value sizeAligned = allocBuilder.create<LLVM::AndOp>(
-        diagOp->getLoc(),
-        allocBuilder.create<LLVM::AddOp>(diagOp->getLoc(), size, c7), cNeg8);
-    Value next = allocBuilder.create<LLVM::AddOp>(diagOp->getLoc(), curAligned,
-                                                  sizeAligned);
-    allocBuilder.create<LLVM::StoreOp>(diagOp->getLoc(), next, heapAddr);
-    Value ptr = allocBuilder.create<LLVM::IntToPtrOp>(diagOp->getLoc(), ptrTy,
-                                                      curAligned);
-    allocBuilder.create<LLVM::ReturnOp>(diagOp->getLoc(), ptr);
+    Value sizeAligned = LLVM::AndOp::create(
+        allocBuilder, diagOp->getLoc(),
+        LLVM::AddOp::create(allocBuilder, diagOp->getLoc(), size, c7), cNeg8);
+    Value next = LLVM::AddOp::create(allocBuilder, diagOp->getLoc(), curAligned,
+                                     sizeAligned);
+    LLVM::StoreOp::create(allocBuilder, diagOp->getLoc(), next, heapAddr);
+    Value ptr = LLVM::IntToPtrOp::create(allocBuilder, diagOp->getLoc(), ptrTy,
+                                         curAligned);
+    LLVM::ReturnOp::create(allocBuilder, diagOp->getLoc(), ptr);
   }
 
   if ((*freeFn).empty()) {
     OpBuilder freeBuilder(ctx);
     Block *entry = (*freeFn).addEntryBlock(freeBuilder);
     freeBuilder.setInsertionPointToStart(entry);
-    freeBuilder.create<LLVM::ReturnOp>(diagOp->getLoc(), ValueRange());
+    LLVM::ReturnOp::create(freeBuilder, diagOp->getLoc(), ValueRange());
   }
 
   decls.mallocFn = *mallocFn;
@@ -1821,9 +1825,9 @@ decodeResumeSignature(Operation *diagOp, LLVM::LLVMFuncOp resumeDecl,
 static void appendTrapBlock(LLVM::LLVMFuncOp helperFunc, Block *trapBlock,
                             const CoroLLVMRuntimeDecls &decls, Location loc) {
   OpBuilder tb = OpBuilder::atBlockBegin(trapBlock);
-  tb.create<LLVM::CallOp>(loc, TypeRange(), SymbolRefAttr::get(decls.trapFn),
-                          ValueRange());
-  tb.create<LLVM::UnreachableOp>(loc);
+  LLVM::CallOp::create(tb, loc, TypeRange(), SymbolRefAttr::get(decls.trapFn),
+                       ValueRange());
+  LLVM::UnreachableOp::create(tb, loc);
 }
 
 class CoroToLLVM : public impl::CoroToLLVMBase<CoroToLLVM> {
@@ -2076,26 +2080,26 @@ public:
         Value zeroI32 = createLLVMConstI32(eb, implFn.getLoc(), 0);
         Value nullPtr = createLLVMNullPtr(eb, implFn.getLoc());
         coroId =
-            eb.create<LLVM::CallOp>(
-                  implFn.getLoc(), TypeRange{LLVM::LLVMTokenType::get(ctx)},
-                  SymbolRefAttr::get(runtimeDecls->coroIdFn),
-                  ValueRange{zeroI32, nullPtr, nullPtr, nullPtr})
+            LLVM::CallOp::create(eb, implFn.getLoc(),
+                                 TypeRange{LLVM::LLVMTokenType::get(ctx)},
+                                 SymbolRefAttr::get(runtimeDecls->coroIdFn),
+                                 ValueRange{zeroI32, nullPtr, nullPtr, nullPtr})
                 .getResult();
         Value frameSizeI32 =
-            eb.create<LLVM::CallOp>(
-                  implFn.getLoc(), TypeRange{eb.getI32Type()},
-                  SymbolRefAttr::get(runtimeDecls->coroSizeFn), ValueRange())
+            LLVM::CallOp::create(
+                eb, implFn.getLoc(), TypeRange{eb.getI32Type()},
+                SymbolRefAttr::get(runtimeDecls->coroSizeFn), ValueRange())
                 .getResult();
         Value frameMem =
-            eb.create<LLVM::CallOp>(implFn.getLoc(), TypeRange{ptrTy},
-                                    SymbolRefAttr::get(runtimeDecls->mallocFn),
-                                    frameSizeI32)
+            LLVM::CallOp::create(eb, implFn.getLoc(), TypeRange{ptrTy},
+                                 SymbolRefAttr::get(runtimeDecls->mallocFn),
+                                 frameSizeI32)
                 .getResult();
-        coroHdl = eb.create<LLVM::CallOp>(
-                        implFn.getLoc(), TypeRange{ptrTy},
-                        SymbolRefAttr::get(runtimeDecls->coroBeginFn),
-                        ValueRange{coroId, frameMem})
-                      .getResult();
+        coroHdl =
+            LLVM::CallOp::create(eb, implFn.getLoc(), TypeRange{ptrTy},
+                                 SymbolRefAttr::get(runtimeDecls->coroBeginFn),
+                                 ValueRange{coroId, frameMem})
+                .getResult();
         storeRuntimeField(eb, implFn.getLoc(), rtArg, info->runtimeType,
                           info->frameField, coroHdl);
 
@@ -2105,16 +2109,16 @@ public:
         commonSuspendBlock = new Block();
         r.push_back(commonSuspendBlock);
         OpBuilder sb = OpBuilder::atBlockBegin(commonSuspendBlock);
-        Value noneToken = sb.create<LLVM::NoneTokenOp>(implFn.getLoc());
+        Value noneToken = LLVM::NoneTokenOp::create(sb, implFn.getLoc());
         Value unwind = createLLVMConstI1(sb, implFn.getLoc(), false);
-        sb.create<LLVM::CallOp>(implFn.getLoc(), TypeRange(),
-                                SymbolRefAttr::get(runtimeDecls->coroEndFn),
-                                ValueRange{coroHdl, unwind, noneToken});
+        LLVM::CallOp::create(sb, implFn.getLoc(), TypeRange(),
+                             SymbolRefAttr::get(runtimeDecls->coroEndFn),
+                             ValueRange{coroHdl, unwind, noneToken});
         SmallVector<Value> rets;
         if (!isa<LLVM::LLVMVoidType>(info->implPayloadPackedType))
-          rets.push_back(sb.create<LLVM::UndefOp>(implFn.getLoc(),
-                                                  info->implPayloadPackedType));
-        sb.create<LLVM::ReturnOp>(implFn.getLoc(), rets);
+          rets.push_back(LLVM::UndefOp::create(sb, implFn.getLoc(),
+                                               info->implPayloadPackedType));
+        LLVM::ReturnOp::create(sb, implFn.getLoc(), rets);
       }
 
       // Rewrite each yield to real suspend/resume machinery.
@@ -2154,25 +2158,25 @@ public:
                           createLLVMConstI1(pb, yieldCall.getLoc(), false));
 
         Value saveTok =
-            pb.create<LLVM::CallOp>(
-                  yieldCall.getLoc(), TypeRange{LLVM::LLVMTokenType::get(ctx)},
-                  SymbolRefAttr::get(runtimeDecls->coroSaveFn),
-                  ValueRange{coroHdl})
+            LLVM::CallOp::create(pb, yieldCall.getLoc(),
+                                 TypeRange{LLVM::LLVMTokenType::get(ctx)},
+                                 SymbolRefAttr::get(runtimeDecls->coroSaveFn),
+                                 ValueRange{coroHdl})
                 .getResult();
         Value isFinal = createLLVMConstI1(pb, yieldCall.getLoc(), false);
         Value suspendCode =
-            pb.create<LLVM::CallOp>(
-                  yieldCall.getLoc(), TypeRange{pb.getI8Type()},
-                  SymbolRefAttr::get(runtimeDecls->coroSuspendFn),
-                  ValueRange{saveTok, isFinal})
+            LLVM::CallOp::create(
+                pb, yieldCall.getLoc(), TypeRange{pb.getI8Type()},
+                SymbolRefAttr::get(runtimeDecls->coroSuspendFn),
+                ValueRange{saveTok, isFinal})
                 .getResult();
-        Value suspendCodeI32 = pb.create<LLVM::SExtOp>(
-            yieldCall.getLoc(), pb.getI32Type(), suspendCode);
+        Value suspendCodeI32 = LLVM::SExtOp::create(
+            pb, yieldCall.getLoc(), pb.getI32Type(), suspendCode);
 
         SmallVector<int32_t, 2> caseVals = {0, 1};
         SmallVector<Block *, 2> caseDests = {resumeBlock, cleanupBlock};
-        pb.create<LLVM::SwitchOp>(
-            yieldCall.getLoc(), suspendCodeI32,
+        LLVM::SwitchOp::create(
+            pb, yieldCall.getLoc(), suspendCodeI32,
             /*defaultDestination=*/commonSuspendBlock,
             /*defaultOperands=*/ValueRange(),
             /*caseValues=*/caseVals,
@@ -2195,26 +2199,26 @@ public:
               rb, implFn.getLoc(), info->yieldResumePackedType, resumeValues);
           brArgs.push_back(packed);
         }
-        rb.create<LLVM::BrOp>(implFn.getLoc(), brArgs, contBlock);
+        LLVM::BrOp::create(rb, implFn.getLoc(), brArgs, contBlock);
 
         // Cleanup block: free frame (destroy path), set state, then go suspend.
         OpBuilder cb = OpBuilder::atBlockBegin(cleanupBlock);
-        Value frameMem = cb.create<LLVM::CallOp>(
-                               implFn.getLoc(), TypeRange{ptrTy},
-                               SymbolRefAttr::get(runtimeDecls->coroFreeFn),
-                               ValueRange{coroId, coroHdl})
-                             .getResult();
-        cb.create<LLVM::CallOp>(implFn.getLoc(), TypeRange(),
-                                SymbolRefAttr::get(runtimeDecls->freeFn),
-                                frameMem);
+        Value frameMem =
+            LLVM::CallOp::create(cb, implFn.getLoc(), TypeRange{ptrTy},
+                                 SymbolRefAttr::get(runtimeDecls->coroFreeFn),
+                                 ValueRange{coroId, coroHdl})
+                .getResult();
+        LLVM::CallOp::create(cb, implFn.getLoc(), TypeRange(),
+                             SymbolRefAttr::get(runtimeDecls->freeFn),
+                             frameMem);
         storeRuntimeField(cb, implFn.getLoc(), rtArg, info->runtimeType,
                           info->frameField,
                           createLLVMNullPtr(cb, implFn.getLoc()));
         storeRuntimeField(cb, implFn.getLoc(), rtArg, info->runtimeType,
                           info->doneField,
                           createLLVMConstI1(cb, implFn.getLoc(), true));
-        cb.create<LLVM::BrOp>(implFn.getLoc(), ValueRange(),
-                              commonSuspendBlock);
+        LLVM::BrOp::create(cb, implFn.getLoc(), ValueRange(),
+                           commonSuspendBlock);
       }
 
       // Rewrite original returns to publish done/payload.
@@ -2258,20 +2262,19 @@ public:
         r.push_back(trapBlock);
         r.push_back(cleanupBlock);
 
-        Value noneToken = rb.create<LLVM::NoneTokenOp>(retOp.getLoc());
+        Value noneToken = LLVM::NoneTokenOp::create(rb, retOp.getLoc());
         Value isFinal = createLLVMConstI1(rb, retOp.getLoc(), true);
-        Value suspendCode =
-            rb.create<LLVM::CallOp>(
-                  retOp.getLoc(), TypeRange{rb.getI8Type()},
-                  SymbolRefAttr::get(runtimeDecls->coroSuspendFn),
-                  ValueRange{noneToken, isFinal})
-                .getResult();
-        Value suspendCodeI32 = rb.create<LLVM::SExtOp>(
-            retOp.getLoc(), rb.getI32Type(), suspendCode);
+        Value suspendCode = LLVM::CallOp::create(
+                                rb, retOp.getLoc(), TypeRange{rb.getI8Type()},
+                                SymbolRefAttr::get(runtimeDecls->coroSuspendFn),
+                                ValueRange{noneToken, isFinal})
+                                .getResult();
+        Value suspendCodeI32 = LLVM::SExtOp::create(
+            rb, retOp.getLoc(), rb.getI32Type(), suspendCode);
         SmallVector<int32_t, 2> caseVals = {0, 1};
         SmallVector<Block *, 2> caseDests = {trapBlock, cleanupBlock};
-        rb.create<LLVM::SwitchOp>(
-            retOp.getLoc(), suspendCodeI32,
+        LLVM::SwitchOp::create(
+            rb, retOp.getLoc(), suspendCodeI32,
             /*defaultDestination=*/commonSuspendBlock,
             /*defaultOperands=*/ValueRange(),
             /*caseValues=*/caseVals,
@@ -2283,19 +2286,19 @@ public:
         appendTrapBlock(implFn, trapBlock, *runtimeDecls, implFn.getLoc());
 
         OpBuilder cb = OpBuilder::atBlockBegin(cleanupBlock);
-        Value frameMem = cb.create<LLVM::CallOp>(
-                               implFn.getLoc(), TypeRange{ptrTy},
-                               SymbolRefAttr::get(runtimeDecls->coroFreeFn),
-                               ValueRange{coroId, coroHdl})
-                             .getResult();
-        cb.create<LLVM::CallOp>(implFn.getLoc(), TypeRange(),
-                                SymbolRefAttr::get(runtimeDecls->freeFn),
-                                frameMem);
+        Value frameMem =
+            LLVM::CallOp::create(cb, implFn.getLoc(), TypeRange{ptrTy},
+                                 SymbolRefAttr::get(runtimeDecls->coroFreeFn),
+                                 ValueRange{coroId, coroHdl})
+                .getResult();
+        LLVM::CallOp::create(cb, implFn.getLoc(), TypeRange(),
+                             SymbolRefAttr::get(runtimeDecls->freeFn),
+                             frameMem);
         storeRuntimeField(cb, implFn.getLoc(), rtArg, info->runtimeType,
                           info->frameField,
                           createLLVMNullPtr(cb, implFn.getLoc()));
-        cb.create<LLVM::BrOp>(implFn.getLoc(), ValueRange(),
-                              commonSuspendBlock);
+        LLVM::BrOp::create(cb, implFn.getLoc(), ValueRange(),
+                           commonSuspendBlock);
       }
       if (passFailed)
         break;
@@ -2350,14 +2353,14 @@ public:
         sb.setInsertionPointToStart(entryBlock);
 
         Value nullPtr = createLLVMNullPtr(sb, spawnHelper->getLoc());
-        Value sizePtr = sb.create<LLVM::GEPOp>(spawnHelper->getLoc(), ptrTy,
-                                               info->runtimeType, nullPtr,
-                                               ArrayRef<LLVM::GEPArg>{1});
-        Value sizeI32 = sb.create<LLVM::PtrToIntOp>(spawnHelper->getLoc(),
-                                                    sb.getI32Type(), sizePtr);
-        Value rtPtr = sb.create<LLVM::CallOp>(
-                            spawnHelper->getLoc(), TypeRange{ptrTy},
-                            SymbolRefAttr::get(runtimeDecls->mallocFn), sizeI32)
+        Value sizePtr = LLVM::GEPOp::create(sb, spawnHelper->getLoc(), ptrTy,
+                                            info->runtimeType, nullPtr,
+                                            ArrayRef<LLVM::GEPArg>{1});
+        Value sizeI32 = LLVM::PtrToIntOp::create(sb, spawnHelper->getLoc(),
+                                                 sb.getI32Type(), sizePtr);
+        Value rtPtr = LLVM::CallOp::create(
+                          sb, spawnHelper->getLoc(), TypeRange{ptrTy},
+                          SymbolRefAttr::get(runtimeDecls->mallocFn), sizeI32)
                           .getResult();
 
         storeRuntimeField(
@@ -2376,9 +2379,9 @@ public:
                             info->spawnBase + idx, arg);
         }
 
-        Value handle = sb.create<LLVM::PtrToIntOp>(spawnHelper->getLoc(),
-                                                   sb.getI64Type(), rtPtr);
-        sb.create<LLVM::ReturnOp>(spawnHelper->getLoc(), handle);
+        Value handle = LLVM::PtrToIntOp::create(sb, spawnHelper->getLoc(),
+                                                sb.getI64Type(), rtPtr);
+        LLVM::ReturnOp::create(sb, spawnHelper->getLoc(), handle);
       }
 
       // Build resume helper body.
@@ -2405,23 +2408,24 @@ public:
         rb.setInsertionPointToStart(entryBlock);
         Value handle = entryBlock->getArgument(0);
         Value rtPtr =
-            rb.create<LLVM::IntToPtrOp>(resumeHelper->getLoc(), ptrTy, handle);
+            LLVM::IntToPtrOp::create(rb, resumeHelper->getLoc(), ptrTy, handle);
         Value nullPtr = createLLVMNullPtr(rb, resumeHelper->getLoc());
-        Value isNull = rb.create<LLVM::ICmpOp>(
-            resumeHelper->getLoc(), LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
-        rb.create<LLVM::CondBrOp>(resumeHelper->getLoc(), isNull, trapBlock,
-                                  ValueRange(), checkDoneBlock, ValueRange());
+        Value isNull =
+            LLVM::ICmpOp::create(rb, resumeHelper->getLoc(),
+                                 LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
+        LLVM::CondBrOp::create(rb, resumeHelper->getLoc(), isNull, trapBlock,
+                               ValueRange(), checkDoneBlock, ValueRange());
 
         // check magic / done
         OpBuilder cb = OpBuilder::atBlockBegin(checkDoneBlock);
         Value magic = loadRuntimeField(cb, resumeHelper->getLoc(), rtPtr,
                                        info->runtimeType, cb.getI64Type(),
                                        info->magicField);
-        Value magicOk = cb.create<LLVM::ICmpOp>(
-            resumeHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
+        Value magicOk = LLVM::ICmpOp::create(
+            cb, resumeHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
             createLLVMConstU64(cb, resumeHelper->getLoc(), info->magic));
-        cb.create<LLVM::CondBrOp>(resumeHelper->getLoc(), magicOk, runBlock,
-                                  ValueRange(), trapBlock, ValueRange());
+        LLVM::CondBrOp::create(cb, resumeHelper->getLoc(), magicOk, runBlock,
+                               ValueRange(), trapBlock, ValueRange());
 
         OpBuilder runb = OpBuilder::atBlockBegin(runBlock);
         Value doneNow = loadRuntimeField(runb, resumeHelper->getLoc(), rtPtr,
@@ -2429,9 +2433,9 @@ public:
                                          info->doneField);
         Block *doneFastBlock = new Block();
         r.push_back(doneFastBlock);
-        runb.create<LLVM::CondBrOp>(resumeHelper->getLoc(), doneNow,
-                                    doneFastBlock, ValueRange(), startBlock,
-                                    ValueRange());
+        LLVM::CondBrOp::create(runb, resumeHelper->getLoc(), doneNow,
+                               doneFastBlock, ValueRange(), startBlock,
+                               ValueRange());
 
         // done fast path: return current payload, done=true
         OpBuilder doneb = OpBuilder::atBlockBegin(doneFastBlock);
@@ -2444,7 +2448,7 @@ public:
         Value doneTuple = buildResumeTupleValue(doneb, resumeHelper->getLoc(),
                                                 resumeHelperTy.getReturnType(),
                                                 handle, doneNow, donePayloads);
-        doneb.create<LLVM::ReturnOp>(resumeHelper->getLoc(), doneTuple);
+        LLVM::ReturnOp::create(doneb, resumeHelper->getLoc(), doneTuple);
 
         // start block: store new resume args, dispatch first-start vs resume.
         OpBuilder startb = OpBuilder::atBlockBegin(startBlock);
@@ -2456,11 +2460,12 @@ public:
         Value frame =
             loadRuntimeField(startb, resumeHelper->getLoc(), rtPtr,
                              info->runtimeType, ptrTy, info->frameField);
-        Value frameNull = startb.create<LLVM::ICmpOp>(
-            resumeHelper->getLoc(), LLVM::ICmpPredicate::eq, frame, nullPtr);
-        startb.create<LLVM::CondBrOp>(resumeHelper->getLoc(), frameNull,
-                                      firstStartBlock, ValueRange(),
-                                      resumeExistingBlock, ValueRange());
+        Value frameNull =
+            LLVM::ICmpOp::create(startb, resumeHelper->getLoc(),
+                                 LLVM::ICmpPredicate::eq, frame, nullPtr);
+        LLVM::CondBrOp::create(startb, resumeHelper->getLoc(), frameNull,
+                               firstStartBlock, ValueRange(),
+                               resumeExistingBlock, ValueRange());
 
         // first start path
         OpBuilder firstb = OpBuilder::atBlockBegin(firstStartBlock);
@@ -2475,22 +2480,22 @@ public:
         for (unsigned i = 0; i < info->resumeArgTypes.size(); ++i)
           callArgs.push_back(entryBlock->getArgument(i + 1));
         callArgs.push_back(rtPtr);
-        firstb.create<LLVM::CallOp>(
-            resumeHelper->getLoc(), TypeRange{info->implPayloadPackedType},
-            SymbolRefAttr::get(info->implFunc), callArgs);
-        firstb.create<LLVM::BrOp>(resumeHelper->getLoc(), ValueRange(),
-                                  collectBlock);
+        LLVM::CallOp::create(firstb, resumeHelper->getLoc(),
+                             TypeRange{info->implPayloadPackedType},
+                             SymbolRefAttr::get(info->implFunc), callArgs);
+        LLVM::BrOp::create(firstb, resumeHelper->getLoc(), ValueRange(),
+                           collectBlock);
 
         // resume-existing path (frame != null)
         OpBuilder rib = OpBuilder::atBlockBegin(resumeExistingBlock);
         Value frameForResume =
             loadRuntimeField(rib, resumeHelper->getLoc(), rtPtr,
                              info->runtimeType, ptrTy, info->frameField);
-        rib.create<LLVM::CallOp>(resumeHelper->getLoc(), TypeRange(),
-                                 SymbolRefAttr::get(runtimeDecls->coroResumeFn),
-                                 frameForResume);
-        rib.create<LLVM::BrOp>(resumeHelper->getLoc(), ValueRange(),
-                               collectBlock);
+        LLVM::CallOp::create(rib, resumeHelper->getLoc(), TypeRange(),
+                             SymbolRefAttr::get(runtimeDecls->coroResumeFn),
+                             frameForResume);
+        LLVM::BrOp::create(rib, resumeHelper->getLoc(), ValueRange(),
+                           collectBlock);
 
         OpBuilder collb = OpBuilder::atBlockBegin(collectBlock);
         Value doneFinal = loadRuntimeField(collb, resumeHelper->getLoc(), rtPtr,
@@ -2505,7 +2510,7 @@ public:
         Value tuple = buildResumeTupleValue(collb, resumeHelper->getLoc(),
                                             resumeHelperTy.getReturnType(),
                                             handle, doneFinal, payloadVals);
-        collb.create<LLVM::ReturnOp>(resumeHelper->getLoc(), tuple);
+        LLVM::ReturnOp::create(collb, resumeHelper->getLoc(), tuple);
 
         appendTrapBlock(*resumeHelper, trapBlock, *runtimeDecls,
                         resumeHelper->getLoc());
@@ -2524,30 +2529,30 @@ public:
         db.setInsertionPointToStart(entryBlock);
         Value handle = entryBlock->getArgument(0);
         Value rtPtr =
-            db.create<LLVM::IntToPtrOp>(doneHelper->getLoc(), ptrTy, handle);
+            LLVM::IntToPtrOp::create(db, doneHelper->getLoc(), ptrTy, handle);
         Value nullPtr = createLLVMNullPtr(db, doneHelper->getLoc());
-        Value isNull = db.create<LLVM::ICmpOp>(
-            doneHelper->getLoc(), LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
-        db.create<LLVM::CondBrOp>(doneHelper->getLoc(), isNull, trapBlock,
-                                  ValueRange(), okBlock, ValueRange());
+        Value isNull = LLVM::ICmpOp::create(
+            db, doneHelper->getLoc(), LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
+        LLVM::CondBrOp::create(db, doneHelper->getLoc(), isNull, trapBlock,
+                               ValueRange(), okBlock, ValueRange());
 
         OpBuilder okb = OpBuilder::atBlockBegin(okBlock);
         Value magic = loadRuntimeField(okb, doneHelper->getLoc(), rtPtr,
                                        info->runtimeType, okb.getI64Type(),
                                        info->magicField);
-        Value magicOk = okb.create<LLVM::ICmpOp>(
-            doneHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
+        Value magicOk = LLVM::ICmpOp::create(
+            okb, doneHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
             createLLVMConstU64(okb, doneHelper->getLoc(), info->magic));
         Block *retBlock = new Block();
         r.push_back(retBlock);
-        okb.create<LLVM::CondBrOp>(doneHelper->getLoc(), magicOk, retBlock,
-                                   ValueRange(), trapBlock, ValueRange());
+        LLVM::CondBrOp::create(okb, doneHelper->getLoc(), magicOk, retBlock,
+                               ValueRange(), trapBlock, ValueRange());
 
         OpBuilder retb = OpBuilder::atBlockBegin(retBlock);
         Value done = loadRuntimeField(retb, doneHelper->getLoc(), rtPtr,
                                       info->runtimeType, retb.getI1Type(),
                                       info->doneField);
-        retb.create<LLVM::ReturnOp>(doneHelper->getLoc(), done);
+        LLVM::ReturnOp::create(retb, doneHelper->getLoc(), done);
 
         appendTrapBlock(*doneHelper, trapBlock, *runtimeDecls,
                         doneHelper->getLoc());
@@ -2570,47 +2575,48 @@ public:
         cb.setInsertionPointToStart(entryBlock);
         Value handle = entryBlock->getArgument(0);
         Value rtPtr =
-            cb.create<LLVM::IntToPtrOp>(cancelHelper->getLoc(), ptrTy, handle);
+            LLVM::IntToPtrOp::create(cb, cancelHelper->getLoc(), ptrTy, handle);
         Value nullPtr = createLLVMNullPtr(cb, cancelHelper->getLoc());
-        Value isNull = cb.create<LLVM::ICmpOp>(
-            cancelHelper->getLoc(), LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
-        cb.create<LLVM::CondBrOp>(cancelHelper->getLoc(), isNull, trapBlock,
-                                  ValueRange(), okBlock, ValueRange());
+        Value isNull =
+            LLVM::ICmpOp::create(cb, cancelHelper->getLoc(),
+                                 LLVM::ICmpPredicate::eq, rtPtr, nullPtr);
+        LLVM::CondBrOp::create(cb, cancelHelper->getLoc(), isNull, trapBlock,
+                               ValueRange(), okBlock, ValueRange());
 
         OpBuilder okb = OpBuilder::atBlockBegin(okBlock);
         Value magic = loadRuntimeField(okb, cancelHelper->getLoc(), rtPtr,
                                        info->runtimeType, okb.getI64Type(),
                                        info->magicField);
-        Value magicOk = okb.create<LLVM::ICmpOp>(
-            cancelHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
+        Value magicOk = LLVM::ICmpOp::create(
+            okb, cancelHelper->getLoc(), LLVM::ICmpPredicate::eq, magic,
             createLLVMConstU64(okb, cancelHelper->getLoc(), info->magic));
-        okb.create<LLVM::CondBrOp>(cancelHelper->getLoc(), magicOk, freeBlock,
-                                   ValueRange(), trapBlock, ValueRange());
+        LLVM::CondBrOp::create(okb, cancelHelper->getLoc(), magicOk, freeBlock,
+                               ValueRange(), trapBlock, ValueRange());
 
         OpBuilder freeb = OpBuilder::atBlockBegin(freeBlock);
         Value frame =
             loadRuntimeField(freeb, cancelHelper->getLoc(), rtPtr,
                              info->runtimeType, ptrTy, info->frameField);
-        Value frameNull = freeb.create<LLVM::ICmpOp>(
-            cancelHelper->getLoc(), LLVM::ICmpPredicate::eq, frame, nullPtr);
+        Value frameNull =
+            LLVM::ICmpOp::create(freeb, cancelHelper->getLoc(),
+                                 LLVM::ICmpPredicate::eq, frame, nullPtr);
         Block *destroyBlock = new Block();
         r.push_back(destroyBlock);
-        freeb.create<LLVM::CondBrOp>(cancelHelper->getLoc(), frameNull,
-                                     retBlock, ValueRange(), destroyBlock,
-                                     ValueRange());
+        LLVM::CondBrOp::create(freeb, cancelHelper->getLoc(), frameNull,
+                               retBlock, ValueRange(), destroyBlock,
+                               ValueRange());
 
         OpBuilder destrb = OpBuilder::atBlockBegin(destroyBlock);
-        destrb.create<LLVM::CallOp>(
-            cancelHelper->getLoc(), TypeRange(),
-            SymbolRefAttr::get(runtimeDecls->coroDestroyFn), frame);
-        destrb.create<LLVM::BrOp>(cancelHelper->getLoc(), ValueRange(),
-                                  retBlock);
+        LLVM::CallOp::create(destrb, cancelHelper->getLoc(), TypeRange(),
+                             SymbolRefAttr::get(runtimeDecls->coroDestroyFn),
+                             frame);
+        LLVM::BrOp::create(destrb, cancelHelper->getLoc(), ValueRange(),
+                           retBlock);
 
         OpBuilder retb = OpBuilder::atBlockBegin(retBlock);
-        retb.create<LLVM::CallOp>(cancelHelper->getLoc(), TypeRange(),
-                                  SymbolRefAttr::get(runtimeDecls->freeFn),
-                                  rtPtr);
-        retb.create<LLVM::ReturnOp>(cancelHelper->getLoc(), ValueRange());
+        LLVM::CallOp::create(retb, cancelHelper->getLoc(), TypeRange(),
+                             SymbolRefAttr::get(runtimeDecls->freeFn), rtPtr);
+        LLVM::ReturnOp::create(retb, cancelHelper->getLoc(), ValueRange());
 
         appendTrapBlock(*cancelHelper, trapBlock, *runtimeDecls,
                         cancelHelper->getLoc());
@@ -2663,8 +2669,8 @@ public:
       }
 
       OpBuilder b(callOp);
-      auto repl = b.create<LLVM::CallOp>(
-          callOp.getLoc(), callOp.getResultTypes(),
+      auto repl = LLVM::CallOp::create(
+          b, callOp.getLoc(), callOp.getResultTypes(),
           SymbolRefAttr::get(ctx, helperSym), callOp.getOperands());
       if (callOp.getNumResults() == 1)
         callOp.getResult().replaceAllUsesWith(repl.getResult());
