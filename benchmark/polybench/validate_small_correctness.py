@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Differential correctness validation for polybench/small.
+"""Correctness validation for polybench/small.
 
-For each benchmark:
-1) Compile with --compiler=wami
-2) Compile with --compiler=llvm
-3) Run both artifacts with wasmtime-executor in print hash mode
-4) Compare return value + print stream hash + print count
+Modes:
+  default   Differential test: compile with both WAMI and LLVM, run both
+            through wasmtime-executor, and compare return value + print
+            stream hash + print count.
+  --wami-only
+            Compile and run with WAMI only.  Checks that compilation
+            succeeds and execution returns 0.  Does not require
+            WASI_SDK_PATH or an LLVM toolchain.
 """
 
 from __future__ import annotations
@@ -171,6 +174,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional LLVM optimization flags forwarded to compile.sh for --compiler=llvm.",
     )
     parser.add_argument(
+        "--wami-only",
+        action="store_true",
+        help="Only compile and run with WAMI (no LLVM baseline comparison).",
+    )
+    parser.add_argument(
         "--keep-temp",
         action="store_true",
         help="Keep per-benchmark temporary directories.",
@@ -189,9 +197,14 @@ def main() -> int:
             f"error: small benchmark directory not found: {SMALL_DIR}", file=sys.stderr
         )
         return 2
-    if "WASI_SDK_PATH" not in os.environ or not os.environ["WASI_SDK_PATH"]:
-        print("error: WASI_SDK_PATH must be set for llvm compilation.", file=sys.stderr)
-        return 2
+    if not args.wami_only:
+        if "WASI_SDK_PATH" not in os.environ or not os.environ["WASI_SDK_PATH"]:
+            print(
+                "error: WASI_SDK_PATH must be set for llvm compilation "
+                "(or use --wami-only).",
+                file=sys.stderr,
+            )
+            return 2
 
     benchmarks = discover_small_benchmarks(args.filter)
     if not benchmarks:
@@ -200,9 +213,11 @@ def main() -> int:
 
     build_executor()
 
+    wami_only = args.wami_only
+    mode_label = "wami-only" if wami_only else "wami-vs-llvm"
     failures = 0
     preserved_dirs: List[Path] = []
-    print(f"running {len(benchmarks)} small benchmarks")
+    print(f"running {len(benchmarks)} small benchmarks ({mode_label})")
 
     for benchmark in benchmarks:
         tmp_dir = Path(tempfile.mkdtemp(prefix=f"tmp_validate_{benchmark.stem}_"))
@@ -215,31 +230,40 @@ def main() -> int:
                 args.binaryen_opt_flags,
                 args.llvm_opt_flags,
             )
-            llvm_wasm = compile_wasm(
-                benchmark,
-                "llvm",
-                tmp_dir,
-                args.binaryen_opt_flags,
-                args.llvm_opt_flags,
-            )
             wami_report = run_wasm(wami_wasm, args.print_hash_seed)
-            llvm_report = run_wasm(llvm_wasm, args.print_hash_seed)
-            mismatches = compare_reports(wami_report, llvm_report)
 
-            if mismatches:
-                failures += 1
-                keep_dir = True
-                print(f"[FAIL] {benchmark.stem}")
-                for key, (wami_value, llvm_value) in mismatches.items():
-                    print(f"  {key}: wami={wami_value} llvm={llvm_value}")
-                print(f"  temp_dir: {tmp_dir}")
-            else:
+            if wami_only:
                 print(
                     f"[PASS] {benchmark.stem} "
                     f"actual={wami_report['actual']} "
                     f"count={wami_report['print_count']} "
                     f"hash={wami_report['print_hash']}"
                 )
+            else:
+                llvm_wasm = compile_wasm(
+                    benchmark,
+                    "llvm",
+                    tmp_dir,
+                    args.binaryen_opt_flags,
+                    args.llvm_opt_flags,
+                )
+                llvm_report = run_wasm(llvm_wasm, args.print_hash_seed)
+                mismatches = compare_reports(wami_report, llvm_report)
+
+                if mismatches:
+                    failures += 1
+                    keep_dir = True
+                    print(f"[FAIL] {benchmark.stem}")
+                    for key, (wami_value, llvm_value) in mismatches.items():
+                        print(f"  {key}: wami={wami_value} llvm={llvm_value}")
+                    print(f"  temp_dir: {tmp_dir}")
+                else:
+                    print(
+                        f"[PASS] {benchmark.stem} "
+                        f"actual={wami_report['actual']} "
+                        f"count={wami_report['print_count']} "
+                        f"hash={wami_report['print_hash']}"
+                    )
         except (CommandError, RuntimeError, json.JSONDecodeError) as exc:
             failures += 1
             keep_dir = True
