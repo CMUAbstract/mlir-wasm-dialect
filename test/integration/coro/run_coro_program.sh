@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  test/integration/stack-switching/run_coro_program.sh \
+  test/integration/coro/run_coro_program.sh \
     --mode {wami|llvm} \
     --input <program.mlir> \
     [--expect-i32 <n>] \
@@ -126,7 +126,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 WASM_OPT="$(resolve_repo_tool "$REPO_ROOT" wasm-opt)" || die "could not resolve wasm-opt"
 WASM_EMIT="$(resolve_repo_tool "$REPO_ROOT" wasm-emit)" || die "could not resolve wasm-emit"
-RUNNER="${SCRIPT_DIR}/run_wizard_bin.py"
+RUNNER="${REPO_ROOT}/test/integration/stack-switching/run_wizard_bin.py"
 [[ -f "$RUNNER" ]] || die "runner not found: $RUNNER"
 
 if [[ -n "$TMP_ROOT" ]]; then
