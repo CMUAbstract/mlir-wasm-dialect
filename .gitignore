@@ -7,6 +7,7 @@ CLAUDE.md
 AGENTS.md
 .omc/
 .omx/
+__pycache__/
 
 # Tool artifacts
 compile_commands.json
