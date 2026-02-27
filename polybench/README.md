@@ -34,11 +34,9 @@ configuration of compilers, optimization levels, and evaluation setups.
 
 ## Notes on Compiler Modes
 - `--compiler=llvm` is the LLVM-based comparison baseline.
-- `--compiler=wami` follows the repository WAMI compilation path used by
-  `run.sh`/`compile.sh`.
-- If you need strict evaluation of the newest `wami -> wasmstack` pipeline,
-  compile with `wasm-opt ... --convert-to-wasmstack --verify-wasmstack` and
-  `wasm-emit` directly, then run the resulting `.wasm` with the target runtime.
+- `--compiler=wami` uses the WAMI → WasmStack pipeline
+  (`--wami-convert-all --convert-to-wasmstack --verify-wasmstack` + `wasm-emit`)
+  via `compile.sh`.
 
 ## Caution
 Please manually verify that the Wasm files run successfully without errors (for

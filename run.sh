@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Configure this
-ZEPHYRPROJECT="/Users/byeongje/zephyrproject"
+# Requires ZEPHYRPROJECT to be set (e.g. in .envrc)
+ZEPHYRPROJECT="${ZEPHYRPROJECT:?Error: ZEPHYRPROJECT environment variable is not set.}"
 
 CMDARGS="$@"
 

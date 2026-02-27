@@ -70,7 +70,7 @@ def cmd(
             f"--use-aot={'true' if use_aot else 'false'}",
             "--silent",
             aot_str if use_aot else "",
-            '" | pipenv run ./measure.py',
+            '" | uv run ./measure.py',
         ]
     elif device == "local_wamr":
         cmd_parts = [
