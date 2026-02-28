@@ -43,9 +43,11 @@ public:
   }
 
 private:
-  /// Check if v is a cast of forOp's induction variable.
-  static bool isIVCast(Value v, scf::ForOp forOp) {
+  /// Check if v is the induction variable or a cast of it.
+  static bool isIVOrCast(Value v, scf::ForOp forOp) {
     Value iv = forOp.getInductionVar();
+    if (v == iv)
+      return true;
     if (auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>())
       return castOp.getInputs().size() == 1 && castOp.getInputs()[0] == iv;
     if (auto castOp = v.getDefiningOp<arith::IndexCastOp>())
@@ -54,8 +56,11 @@ private:
   }
 
   /// Create a cast of an index value, matching the kind of exampleCast.
+  /// Returns indexVal unchanged if no cast is needed (types already match).
   static Value createIndexCast(OpBuilder &builder, Location loc, Value indexVal,
                                Type targetType, Value exampleCast) {
+    if (indexVal.getType() == targetType)
+      return indexVal;
     if (exampleCast.getDefiningOp<UnrealizedConversionCastOp>())
       return UnrealizedConversionCastOp::create(builder, loc, targetType,
                                                 indexVal)
@@ -79,22 +84,34 @@ private:
 
   void strengthReduceLoop(IRRewriter &rewriter, scf::ForOp forOp) {
     struct Candidate {
-      arith::MulIOp mulOp;
-      Value ivCast;
-      Value factor;
+      Operation *op;            // MulIOp or ShLIOp to replace
+      Value ivOrCast;           // IV or cast of IV
+      Value factor;             // loop-invariant factor (null for shli)
+      int64_t shiftAmount = -1; // for shli: bit count
     };
     SmallVector<Candidate> candidates;
 
     for (auto &op : forOp.getBody()->getOperations()) {
-      auto mulOp = dyn_cast<arith::MulIOp>(&op);
-      if (!mulOp)
+      if (auto mulOp = dyn_cast<arith::MulIOp>(&op)) {
+        Value lhs = mulOp.getLhs();
+        Value rhs = mulOp.getRhs();
+        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs))
+          candidates.push_back({mulOp, lhs, rhs, -1});
+        else if (isIVOrCast(rhs, forOp) && forOp.isDefinedOutsideOfLoop(lhs))
+          candidates.push_back({mulOp, rhs, lhs, -1});
         continue;
-      Value lhs = mulOp.getLhs();
-      Value rhs = mulOp.getRhs();
-      if (isIVCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs))
-        candidates.push_back({mulOp, lhs, rhs});
-      else if (isIVCast(rhs, forOp) && forOp.isDefinedOutsideOfLoop(lhs))
-        candidates.push_back({mulOp, rhs, lhs});
+      }
+      if (auto shlOp = dyn_cast<arith::ShLIOp>(&op)) {
+        Value lhs = shlOp.getLhs();
+        Value rhs = shlOp.getRhs();
+        if (isIVOrCast(lhs, forOp)) {
+          if (auto constOp = rhs.getDefiningOp<arith::ConstantOp>())
+            if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
+              candidates.push_back(
+                  {shlOp, lhs, Value(), intAttr.getValue().getSExtValue()});
+        }
+        continue;
+      }
     }
 
     if (candidates.empty())
@@ -110,7 +127,19 @@ private:
     SmallVector<Value> increments;
 
     for (auto &c : candidates) {
-      Type resultType = c.mulOp.getResult().getType();
+      Type resultType = c.op->getResult(0).getType();
+
+      // Get or materialize the loop-invariant factor.
+      Value factor;
+      if (c.factor) {
+        factor = c.factor;
+      } else {
+        // shli: factor = 1 << shiftAmount
+        int64_t factorVal = 1LL << c.shiftAmount;
+        factor = arith::ConstantOp::create(
+            rewriter, loc, resultType,
+            rewriter.getIntegerAttr(resultType, factorVal));
+      }
 
       // init = cast(lb) * factor  (if lb==0 → just 0)
       Value init;
@@ -118,18 +147,19 @@ private:
         init = arith::ConstantOp::create(rewriter, loc, resultType,
                                          rewriter.getZeroAttr(resultType));
       } else {
-        Value lbCast = createIndexCast(rewriter, loc, lb, resultType, c.ivCast);
-        init = arith::MulIOp::create(rewriter, loc, lbCast, c.factor);
+        Value lbCast =
+            createIndexCast(rewriter, loc, lb, resultType, c.ivOrCast);
+        init = arith::MulIOp::create(rewriter, loc, lbCast, factor);
       }
 
       // increment = cast(step) * factor  (if step==1 → just factor)
       Value increment;
       if (isConstantOne(step)) {
-        increment = c.factor;
+        increment = factor;
       } else {
         Value stepCast =
-            createIndexCast(rewriter, loc, step, resultType, c.ivCast);
-        increment = arith::MulIOp::create(rewriter, loc, stepCast, c.factor);
+            createIndexCast(rewriter, loc, step, resultType, c.ivOrCast);
+        increment = arith::MulIOp::create(rewriter, loc, stepCast, factor);
       }
 
       initValues.push_back(init);
@@ -160,8 +190,8 @@ private:
     // Replace muli uses with accumulator block args and erase dead mulis.
     for (auto [i, c] : llvm::enumerate(candidates)) {
       BlockArgument acc = newForOp.getRegionIterArgs()[numOrigIterArgs + i];
-      rewriter.replaceAllUsesWith(c.mulOp.getResult(), acc);
-      rewriter.eraseOp(c.mulOp);
+      rewriter.replaceAllUsesWith(c.op->getResult(0), acc);
+      rewriter.eraseOp(c.op);
     }
   }
 };

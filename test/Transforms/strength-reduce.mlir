@@ -2,6 +2,7 @@
 
 func.func private @use_i32(i32) -> ()
 func.func private @use_i64(i64) -> ()
+func.func private @use_index(index) -> ()
 
 //===----------------------------------------------------------------------===//
 // Test 1: Basic single multiply (lb=0, step=1)
@@ -222,5 +223,118 @@ func.func @existing_iter_args(%n: index) {
     scf.yield %next : i32
   }
   func.call @use_i32(%result) : (i32) -> ()
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 10: Direct IV multiply (no cast, index type)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @direct_iv_multiply
+// CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : index
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (index)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_index(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C4]] : index
+// CHECK:           scf.yield %[[NEXT]] : index
+func.func @direct_iv_multiply(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  scf.for %i = %c0 to %n step %c1 {
+    %mul = arith.muli %i, %c4 : index
+    func.call @use_index(%mul) : (index) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 11: Direct IV multiply with non-zero lower bound
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @direct_iv_nonzero_lb
+// CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : index
+// CHECK:         %[[INIT:.*]] = arith.muli %{{.*}}, %[[C4]] : index
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %[[INIT]]) -> (index)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_index(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C4]] : index
+// CHECK:           scf.yield %[[NEXT]] : index
+func.func @direct_iv_nonzero_lb(%n: index) {
+  %c5 = arith.constant 5 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  scf.for %i = %c5 to %n step %c1 {
+    %mul = arith.muli %i, %c4 : index
+    func.call @use_index(%mul) : (index) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 12: Basic shift left (lb=0, step=1, shift=2 → factor=4)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @basic_shift_left
+// CHECK-DAG:     %[[C0_I32:.*]] = arith.constant 0 : i32
+// CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : i32
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %[[C0_I32]]) -> (i32)
+// CHECK-NOT:       arith.shli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C4]] : i32
+// CHECK:           scf.yield %[[NEXT]] : i32
+func.func @basic_shift_left(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %cast = arith.index_cast %i : index to i32
+    %shl = arith.shli %cast, %c2 : i32
+    func.call @use_i32(%shl) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 13: Shift left with non-zero lb and non-unit step
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @shift_left_nonzero_lb_step
+// CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : i32
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32)
+// CHECK-NOT:       arith.shli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           arith.addi %[[ACC]]
+// CHECK:           scf.yield
+func.func @shift_left_nonzero_lb_step(%n: index) {
+  %c2_idx = arith.constant 2 : index
+  %c3 = arith.constant 3 : index
+  %c2 = arith.constant 2 : i32
+  scf.for %i = %c2_idx to %n step %c3 {
+    %cast = arith.index_cast %i : index to i32
+    %shl = arith.shli %cast, %c2 : i32
+    func.call @use_i32(%shl) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 14: Negative — shift with non-constant amount (no transformation)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @loop_variant_shift
+// CHECK:         scf.for
+// CHECK-NOT:       iter_args
+// CHECK:           arith.shli
+// CHECK:         }
+func.func @loop_variant_shift(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  scf.for %i = %c0 to %n step %c1 {
+    %cast = arith.index_cast %i : index to i32
+    // Shift amount depends on iv (non-constant)
+    %shl = arith.shli %cast, %cast : i32
+    func.call @use_i32(%shl) : (i32) -> ()
+  }
   return
 }
