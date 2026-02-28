@@ -95,6 +95,20 @@ public:
                 .getResult(0);
           }
         }
+
+        // Case 3: type is MemRefType whose converted form matches innerType
+        // e.g., LocalRefType(i32) -> memref<?x30xf64>, where memref -> i32
+        // This arises in the split pipeline: memref conversion runs before
+        // func conversion, creating memref->i32 casts. When func conversion
+        // later wraps parameters in LocalRefType, the materializer must
+        // produce a reconcilable i32->memref cast (not local_ref->memref).
+        if (isa<MemRefType>(type) &&
+            innerType == IntegerType::get(type.getContext(), 32)) {
+          Value extracted = wasmssa::LocalGetOp::create(builder, loc, input);
+          return UnrealizedConversionCastOp::create(builder, loc, type,
+                                                    extracted)
+              .getResult(0);
+        }
       }
 
       return UnrealizedConversionCastOp::create(builder, loc, type, inputs)
@@ -130,6 +144,15 @@ public:
                                                       extracted)
                 .getResult(0);
           }
+        }
+
+        // Case 3: type is MemRefType whose converted form matches innerType
+        if (isa<MemRefType>(type) &&
+            innerType == IntegerType::get(type.getContext(), 32)) {
+          Value extracted = wasmssa::LocalGetOp::create(builder, loc, input);
+          return UnrealizedConversionCastOp::create(builder, loc, type,
+                                                    extracted)
+              .getResult(0);
         }
       }
 
