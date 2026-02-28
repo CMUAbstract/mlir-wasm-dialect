@@ -43,6 +43,21 @@ namespace mlir::wami {
 #define GEN_PASS_DEF_WAMICONVERTALL
 #include "WAMI/WAMIPasses.h.inc"
 
+/// Mark all source and target dialects as legal. Each split pass then
+/// overrides the dialect it converts as illegal. This ensures that ops
+/// from non-target dialects (which may be cloned or created by patterns)
+/// are accepted by the conversion framework.
+static void markAllDialectsLegal(ConversionTarget &target) {
+  target.addLegalDialect<wasmssa::WasmSSADialect>();
+  target.addLegalDialect<WAMIDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
+  target.addLegalDialect<math::MathDialect>();
+  target.addLegalDialect<func::FuncDialect>();
+  target.addLegalDialect<scf::SCFDialect>();
+  target.addLegalDialect<memref::MemRefDialect>();
+  target.addLegalOp<UnrealizedConversionCastOp>();
+}
+
 //===----------------------------------------------------------------------===//
 // WAMIConvertArith Pass
 //===----------------------------------------------------------------------===//
@@ -57,15 +72,8 @@ public:
     WAMITypeConverter typeConverter(context);
     ConversionTarget target(*context);
 
-    // WasmSSA and WAMI dialect operations are legal
-    target.addLegalDialect<wasmssa::WasmSSADialect>();
-    target.addLegalDialect<WAMIDialect>();
-
-    // Arith dialect operations are illegal (we want to convert them)
+    markAllDialectsLegal(target);
     target.addIllegalDialect<arith::ArithDialect>();
-
-    // Allow unrealized conversion casts for type mismatches
-    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateWAMIConvertArithPatterns(typeConverter, patterns);
@@ -90,15 +98,8 @@ public:
     WAMITypeConverter typeConverter(context);
     ConversionTarget target(*context);
 
-    // WasmSSA and WAMI dialect operations are legal
-    target.addLegalDialect<wasmssa::WasmSSADialect>();
-    target.addLegalDialect<WAMIDialect>();
-
-    // Math dialect operations are illegal (we want to convert them)
+    markAllDialectsLegal(target);
     target.addIllegalDialect<math::MathDialect>();
-
-    // Allow unrealized conversion casts for type mismatches
-    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateWAMIConvertMathPatterns(typeConverter, patterns);
@@ -123,14 +124,8 @@ public:
     WAMITypeConverter typeConverter(context);
     ConversionTarget target(*context);
 
-    // WasmSSA dialect operations are legal
-    target.addLegalDialect<wasmssa::WasmSSADialect>();
-
-    // Func dialect operations are illegal (we want to convert them)
+    markAllDialectsLegal(target);
     target.addIllegalDialect<func::FuncDialect>();
-
-    // Allow unrealized conversion casts for type mismatches
-    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateWAMIConvertFuncPatterns(typeConverter, patterns);
@@ -155,18 +150,8 @@ public:
     WAMITypeConverter typeConverter(context);
     ConversionTarget target(*context);
 
-    // WasmSSA dialect operations are legal
-    target.addLegalDialect<wasmssa::WasmSSADialect>();
-
-    // SCF dialect operations are illegal (we want to convert them)
+    markAllDialectsLegal(target);
     target.addIllegalDialect<scf::SCFDialect>();
-
-    // Arith and Func dialects are legal (may be used in loop bodies)
-    target.addLegalDialect<arith::ArithDialect>();
-    target.addLegalDialect<func::FuncDialect>();
-
-    // Allow unrealized conversion casts for type mismatches
-    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateWAMIConvertScfPatterns(typeConverter, patterns);
@@ -195,18 +180,8 @@ public:
     // Analyze module to assign base addresses to globals
     WAMIBaseAddressAnalysis baseAddressAnalysis(module);
 
-    // WasmSSA and WAMI dialect operations are legal
-    target.addLegalDialect<wasmssa::WasmSSADialect>();
-    target.addLegalDialect<WAMIDialect>();
-
-    // MemRef dialect operations are illegal (we want to convert them)
+    markAllDialectsLegal(target);
     target.addIllegalDialect<memref::MemRefDialect>();
-
-    // Arith dialect is legal (used for address computation)
-    target.addLegalDialect<arith::ArithDialect>();
-
-    // Allow unrealized conversion casts for type mismatches
-    target.addLegalOp<UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(context);
     populateWAMIConvertMemrefPatterns(typeConverter, patterns,
