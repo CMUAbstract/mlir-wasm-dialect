@@ -1,5 +1,5 @@
 build/
-tmp_*
+tmp/
 .DS_Store
 .vscode
 .envrc

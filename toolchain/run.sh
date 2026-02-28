@@ -79,7 +79,7 @@ BASENAME=$(basename "$MLIR_FILE" .mlir)
 
 # Step 1: Create a temporary directory with a random hash
 RANDOM_HASH=$(openssl rand -hex 4)  # generates 8-character random hex string
-TEMP_DIR="./tmp_${BASENAME}_${RANDOM_HASH}"
+TEMP_DIR="./tmp/tmp_${BASENAME}_${RANDOM_HASH}"
 mkdir -p "$TEMP_DIR"
 
 echo "Temporary directory created: $TEMP_DIR"
