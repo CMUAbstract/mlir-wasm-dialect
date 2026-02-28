@@ -20,10 +20,9 @@ Preferred lowering path for new development:
 1. Standard MLIR (`arith`, `math`, `func`, `scf`, `memref`)
 2. `--wami-convert-all` (or explicit `--wami-convert-*` passes, including
    `--wami-convert-math`)
-3. `--reconcile-unrealized-casts`
-4. `--convert-to-wasmstack`
-5. `--verify-wasmstack`
-6. `wasm-emit --mlir-to-wasm`
+3. `--convert-to-wasmstack`
+4. `--verify-wasmstack`
+5. `wasm-emit --mlir-to-wasm`
 
 ## Project Layout
 
@@ -33,7 +32,8 @@ Preferred lowering path for new development:
 - `include/Target/WasmStack`, `lib/Target/WasmStack`: WebAssembly binary emitter
 - `wasm-opt`: driver for passes
 - `wasm-emit`: MLIR-to-Wasm binary tool
-- `polybench`: benchmark scripts
+- `include/Coro`, `lib/Coro`: coroutine intrinsics and passes
+- `benchmark/polybench`: benchmark scripts
 - `toolchain/local-executor`, `toolchain/mcu-wasm-executor`, `toolchain/wasmtime-executor`: runtime harnesses
 
 ## Build
@@ -120,8 +120,9 @@ find lib include wasm-opt wasm-emit -name '*.cpp' -o -name '*.h' \
   `wat2wasm`)
 - [WASI-SDK](https://github.com/WebAssembly/wasi-sdk) for LLVM backend script
   flow (`WASI_SDK_PATH`)
-- [Zephyr](https://docs.zephyrproject.org/latest/index.html) and
-  [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime) for MCU runs
+- [WAMR](https://github.com/bytecodealliance/wasm-micro-runtime) for MCU runs
+- [Zephyr](https://docs.zephyrproject.org/latest/index.html) (optional, only
+  needed for testing on microcontrollers)
 
 Example environment variables:
 
@@ -139,7 +140,6 @@ export WIZARD_ENGINE_DIR=/path/to/wizard-engine
 ```sh
 build/bin/wasm-opt input.mlir \
   --wami-convert-all \
-  --reconcile-unrealized-casts \
   --convert-to-wasmstack \
   --verify-wasmstack \
   -o out.wasmstack.mlir
