@@ -133,7 +133,7 @@ run_local_wasmtime() {
 
     COMMAND_GROUP='
         cd "$SCRIPT_DIR/wasmtime-executor" && \
-        cargo run --release -- --mode '"$MODE"' --input "'"$abs_file"'"
+        cargo run --release -- --mode '"$MODE"' --quiet --input "'"$abs_file"'"
     '
 
     if [ "$SILENT" = true ]; then

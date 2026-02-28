@@ -17,8 +17,8 @@ fn main() {
                 println!("{}", report.to_json());
             } else if !quiet {
                 println!("{}", report.to_text());
-                println!("[execution time] {:.3} miliseconds", report.avg_ms);
             }
+            println!("[execution time] {:.3} miliseconds", report.avg_ms);
             std::process::exit(0);
         }
         Err(err) => {
