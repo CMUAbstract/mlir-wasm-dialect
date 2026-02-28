@@ -84,21 +84,46 @@ static LogicalResult emitTypeSection(BinaryWriter &output,
 }
 
 /// Emit the import section (section 2).
+/// In relocatable mode, defined memories become imports so that wasm-ld can
+/// manage the linear memory layout.
 static LogicalResult emitImportSection(BinaryWriter &output,
                                        IndexSpace &indexSpace,
-                                       Operation *moduleOp) {
-  SmallVector<FuncImportOp> imports;
+                                       Operation *moduleOp, bool relocatable) {
+  SmallVector<FuncImportOp> funcImports;
   for (Operation &op : moduleOp->getRegion(0).front()) {
     if (auto importOp = dyn_cast<FuncImportOp>(op))
-      imports.push_back(importOp);
+      funcImports.push_back(importOp);
   }
 
-  if (imports.empty())
+  // In relocatable mode, defined memories become imports so that wasm-ld
+  // manages the unified linear memory.
+  SmallVector<MemoryOp> memoryOps;
+  if (relocatable) {
+    for (Operation &op : moduleOp->getRegion(0).front()) {
+      if (auto memOp = dyn_cast<MemoryOp>(op))
+        memoryOps.push_back(memOp);
+    }
+  }
+
+  uint32_t totalImports = funcImports.size() + memoryOps.size();
+  if (totalImports == 0)
     return success();
 
   BinaryWriter section;
-  section.writeULEB128(imports.size());
-  for (auto importOp : imports) {
+  section.writeULEB128(totalImports);
+
+  // Emit memory imports first (matching LLVM object file convention).
+  for (auto memOp : memoryOps) {
+    (void)memOp;
+    section.writeString("env");
+    section.writeString("__linear_memory");
+    section.writeByte(static_cast<uint8_t>(wc::ImportKind::Memory));
+    section.writeByte(static_cast<uint8_t>(wc::LimitKind::Min));
+    section.writeULEB128(0); // min pages = 0 (linker decides)
+  }
+
+  // Emit function imports.
+  for (auto importOp : funcImports) {
     section.writeString(importOp.getModuleName());
     section.writeString(importOp.getImportName());
     section.writeByte(static_cast<uint8_t>(wc::ImportKind::Func));
@@ -607,12 +632,25 @@ static void emitRelocSection(BinaryWriter &output, llvm::StringRef name,
   output.writeCustomSection(name, section);
 }
 
-/// Emit the "target_features" custom section declaring mutable-globals.
+/// Emit the "target_features" custom section.
+/// Declares features matching wasi-sdk libc so that wasm-ld can link
+/// the relocatable object with libc without feature-mismatch errors.
 static void emitTargetFeaturesSection(BinaryWriter &output) {
+  // Features must be sorted alphabetically (wasm convention).
+  static const char *features[] = {
+      "bulk-memory",
+      "mutable-globals",
+      "nontrapping-fptoint",
+      "sign-ext",
+  };
+  constexpr uint32_t featureCount = sizeof(features) / sizeof(features[0]);
+
   BinaryWriter section;
-  section.writeULEB128(1); // feature count
-  section.writeByte(0x2B); // '+' prefix = feature used
-  section.writeString("mutable-globals");
+  section.writeULEB128(featureCount);
+  for (uint32_t i = 0; i < featureCount; ++i) {
+    section.writeByte(0x2B); // '+' prefix = feature used
+    section.writeString(features[i]);
+  }
   output.writeCustomSection("target_features", section);
 }
 
@@ -684,7 +722,8 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
   noteSectionEmission(beforeSize);
 
   beforeSize = writer.size();
-  if (failed(emitImportSection(writer, indexSpace, wasmModule.getOperation())))
+  if (failed(emitImportSection(writer, indexSpace, wasmModule.getOperation(),
+                               relocatable)))
     return failure();
   noteSectionEmission(beforeSize);
 
@@ -698,9 +737,12 @@ LogicalResult mlir::wasmstack::emitWasmBinary(Operation *op,
   emitTableSection(writer, emitSyntheticTable);
   noteSectionEmission(beforeSize);
 
-  beforeSize = writer.size();
-  emitMemorySection(writer, wasmModule.getOperation());
-  noteSectionEmission(beforeSize);
+  // In relocatable mode, memory is emitted as an import (handled above).
+  if (!relocatable) {
+    beforeSize = writer.size();
+    emitMemorySection(writer, wasmModule.getOperation());
+    noteSectionEmission(beforeSize);
+  }
 
   beforeSize = writer.size();
   if (failed(emitTagSection(writer, indexSpace, wasmModule.getOperation())))

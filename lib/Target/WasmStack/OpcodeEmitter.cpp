@@ -66,7 +66,16 @@ bool OpcodeEmitter::emitBlockType(Operation *op, ArrayAttr paramTypes,
                       "encoding");
       return false;
     }
-    writer.writeSLEB128(static_cast<int32_t>(*typeIdx));
+    if (tracker) {
+      // In relocatable mode, use fixed-width encoding with a type index
+      // relocation so wasm-ld can patch the index after merging type sections.
+      tracker->addCodeRelocation(
+          static_cast<uint8_t>(wc::RelocType::R_WASM_TYPE_INDEX_LEB),
+          sectionOffset + writer.offset(), *typeIdx);
+      writer.writeFixedSLEB128(static_cast<int32_t>(*typeIdx));
+    } else {
+      writer.writeSLEB128(static_cast<int32_t>(*typeIdx));
+    }
     return true;
   }
 }

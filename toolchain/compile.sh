@@ -76,10 +76,10 @@ elif [[ "$COMPILER" != "wami" && "$COMPILER" != "llvm" ]]; then
     usage
 fi
 
-# Check if WASI_SDK_PATH environment variable is set for LLVM flow
-if [[ "$COMPILER" == "llvm" && -z "$WASI_SDK_PATH" ]]; then
+# Check if WASI_SDK_PATH environment variable is set (needed for linking libc)
+if [[ -z "$WASI_SDK_PATH" ]]; then
     echo "Error: Environment variable 'WASI_SDK_PATH' is not defined."
-    echo "Please set it before running with --compiler=llvm."
+    echo "Please set it before running."
     exit 1
 fi
 
@@ -95,8 +95,10 @@ echo "Building the project... done"
 
 if [[ "$COMPILER" == "wami" ]]; then
     OUTPUT_WASMSTACK_MLIR="${OUTPUT_BASE}-wasmstack-1.mlir"
-    OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-2.wasm"
-    OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-3.wat"
+    OUTPUT_OBJ="${OUTPUT_BASE}-2.o" # relocatable object file
+    OUTPUT_WAT="${OUTPUT_BASE}-obj-3.wat"
+    OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-4.wasm"
+    OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-5.wat"
 
     if $ADD_DEBUG_FUNCTIONS; then
         echo "Warning: --add-debug-functions is not supported in the new wami->wasmstack pipeline. Ignoring."
@@ -121,11 +123,30 @@ if [[ "$COMPILER" == "wami" ]]; then
         "$INPUT_MLIR" \
         -o "${OUTPUT_WASMSTACK_MLIR}"
 
-    # Emit WebAssembly binary from WasmStack MLIR.
-    echo "Emitting WebAssembly binary from $OUTPUT_WASMSTACK_MLIR..."
-    "$REPO_ROOT/build/bin/wasm-emit" "$OUTPUT_WASMSTACK_MLIR" --mlir-to-wasm -o "$OUTPUT_BEFOREOPT_WASM"
+    # Emit relocatable object file from WasmStack MLIR.
+    echo "Emitting relocatable object from $OUTPUT_WASMSTACK_MLIR..."
+    "$REPO_ROOT/build/bin/wasm-emit" "$OUTPUT_WASMSTACK_MLIR" --mlir-to-wasm --relocatable -o "$OUTPUT_OBJ"
 
-    # Keep a WAT dump for debugging parity with the old script flow.
+    echo "Converting $OUTPUT_OBJ to WAT format..."
+    wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_WAT"
+
+    # Link with libc to resolve malloc/free.
+    echo "Linking the object file with stdlib using wasm-ld..."
+    WASM_LD_BIN="${WASM_LD_BIN:-}"
+    if [[ -z "$WASM_LD_BIN" ]]; then
+        if command -v wasm-ld > /dev/null 2>&1; then
+            WASM_LD_BIN="$(command -v wasm-ld)"
+        else
+            WASM_LD_BIN="$WASI_SDK_PATH/bin/wasm-ld"
+        fi
+    fi
+    echo "Using wasm-ld binary: $WASM_LD_BIN"
+    "$WASM_LD_BIN" --no-entry --allow-undefined \
+    --export-memory --export=main --export=malloc --export=free \
+    --export=__heap_end \
+    -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
+    -o "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_OBJ"
+
     wasm2wat "$OUTPUT_BEFOREOPT_WASM" -o "$OUTPUT_BEFOREOPT_WAT"
 
 elif [[ "$COMPILER" == "llvm" ]]; then
@@ -213,8 +234,8 @@ fi
 echo "Produced files:"
 if [[ "$COMPILER" == "wami" ]]; then
     echo "  - $OUTPUT_WASMSTACK_MLIR (WasmStack MLIR)"
-    echo "  - $OUTPUT_BEFOREOPT_WASM (Unoptimized WebAssembly)"
-    echo "  - $OUTPUT_BEFOREOPT_WAT (Unoptimized WAT format)"
+    echo "  - $OUTPUT_OBJ (Relocatable object file)"
+    echo "  - $OUTPUT_WAT (WAT format)"
 elif [[ "$COMPILER" == "llvm" ]]; then
     echo "  - $OUTPUT_LLVM_MLIR (LLVM dialect MLIR)"
     echo "  - $OUTPUT_LL (LLVM IR)"

@@ -5,7 +5,8 @@
 
 // TDD target: memref.alloc should lower to a call that is represented as a
 // WebAssembly import from env.malloc.
-// CHECK: Import[2]:
+// CHECK: Import[3]:
+// CHECK-DAG: <- env.__linear_memory
 // CHECK-DAG: <malloc>
 // CHECK-DAG: <- env.malloc
 // CHECK-DAG: <free>
