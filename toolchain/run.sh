@@ -22,6 +22,8 @@ BINARYEN_OPT_FLAGS=""
 USE_AOT=false  # Default is to use interpreter
 AOT_FLAGS=""
 SILENT=false
+ITERATIONS=1
+WARMUP=0
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -44,6 +46,14 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --use-aot=*)
             USE_AOT="${1#*=}"
+            shift
+            ;;
+        --iterations=*)
+            ITERATIONS="${1#*=}"
+            shift
+            ;;
+        --warmup=*)
+            WARMUP="${1#*=}"
             shift
             ;;
         --silent)
@@ -133,7 +143,7 @@ run_local_wasmtime() {
 
     COMMAND_GROUP='
         cd "$SCRIPT_DIR/wasmtime-executor" && \
-        cargo run --release -- --mode '"$MODE"' --quiet --input "'"$abs_file"'"
+        cargo run --release -- --mode '"$MODE"' --quiet --iterations '"$ITERATIONS"' --warmup '"$WARMUP"' --input "'"$abs_file"'"
     '
 
     if [ "$SILENT" = true ]; then

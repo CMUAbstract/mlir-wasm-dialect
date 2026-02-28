@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import json
 
 FILENAME = {
@@ -44,6 +45,8 @@ def cmd(
     llvm_opt_level: int,
     binaryen_opt_level: int,
     aot_opt_level: int = -1,
+    iterations: int = 1,
+    warmup: int = 0,
 ) -> str:
     llvm_opt_flags = f"-O{llvm_opt_level}"
     binaryen_opt_flags = f"-O{binaryen_opt_level}"
@@ -92,6 +95,8 @@ def cmd(
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f"--use-aot={'true' if use_aot else 'false'}",
+            f"--iterations={iterations}" if iterations != 1 else "",
+            f"--warmup={warmup}" if warmup != 0 else "",
         ]
     else:
         raise ValueError(f"Invalid device: {device}")
@@ -110,6 +115,8 @@ def make_row(
     llvm_opt_level: int,
     binaryen_opt_level: int,
     aot_opt_level=-1,
+    iterations: int = 1,
+    warmup: int = 0,
 ) -> dict:
     row = {
         "device": device,
@@ -124,6 +131,8 @@ def make_row(
             llvm_opt_level=llvm_opt_level,
             binaryen_opt_level=binaryen_opt_level,
             aot_opt_level=aot_opt_level,
+            iterations=iterations,
+            warmup=warmup,
         ),
         "compiler": compiler,
         "use_aot": use_aot,
@@ -149,6 +158,11 @@ def filter_unique(row):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--iterations", type=int, default=1)
+    parser.add_argument("--warmup", type=int, default=0)
+    args = parser.parse_args()
+
     tags = [
         "2mm",
         "3mm",
@@ -196,6 +210,8 @@ if __name__ == "__main__":
                 llvm_opt_level=llvm_opt_level,
                 binaryen_opt_level=binaryen_opt_level,
                 aot_opt_level=aot_opt_level,
+                iterations=args.iterations,
+                warmup=args.warmup,
             )
         )
         for device in devices
