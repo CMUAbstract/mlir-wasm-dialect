@@ -145,7 +145,7 @@ if [[ "$COMPILER" == "wami" ]]; then
     --export-memory --export=main --export=malloc --export=free \
     --export=__heap_end \
     -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
-    -o "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_OBJ"
+    -O3 --lto-CGO3 --lto-O3 -o "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_OBJ"
 
     wasm2wat "$OUTPUT_BEFOREOPT_WASM" -o "$OUTPUT_BEFOREOPT_WAT"
 
