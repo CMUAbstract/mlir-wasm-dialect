@@ -104,7 +104,11 @@ if [[ "$COMPILER" == "wami" ]]; then
         echo "Warning: --add-debug-functions is not supported in the new wami->wasmstack pipeline. Ignoring."
     fi
 
-    # Lower standard MLIR to WasmStack using the active pipeline.
+    # Lower standard MLIR to WasmStack using the split pipeline.
+    # Phase 1: Affine lowering + standard optimizations
+    # Phase 2: Lower memref (address math emitted as arith ops)
+    # Phase 3: Optimize address computations (CSE, LICM)
+    # Phase 4: Lower remaining dialects (scf, arith, math, func)
     echo "Converting $INPUT_MLIR to WasmStack..."
     "$REPO_ROOT/build/bin/wasm-opt" \
     --affine-loop-invariant-code-motion \
@@ -116,7 +120,17 @@ if [[ "$COMPILER" == "wami" ]]; then
     --loop-invariant-subset-hoisting \
     --cse \
     --control-flow-sink \
-    --wami-convert-all \
+    --wami-convert-memref \
+    --canonicalize \
+    --sccp \
+    --loop-invariant-code-motion \
+    --loop-invariant-subset-hoisting \
+    --cse \
+    --control-flow-sink \
+    --wami-convert-scf \
+    --wami-convert-arith \
+    --wami-convert-math \
+    --wami-convert-func \
     --reconcile-unrealized-casts \
     --convert-to-wasmstack \
     --verify-wasmstack \

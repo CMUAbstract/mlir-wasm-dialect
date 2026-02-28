@@ -15,6 +15,7 @@
 #include "WAMI/ConversionPatterns/WAMIConvertMemref.h"
 
 #include "WAMI/WAMIOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/SymbolTable.h"
@@ -140,14 +141,16 @@ std::pair<LogicalResult, Value> generatePointerComputation(
   // Add the base offset if non-zero
   // Address = base + offset * elementSize + sum(indices[i] * strides[i] *
   // elementSize)
+  //
+  // Address arithmetic uses arith ops (not wasmssa ops) so that MLIR's
+  // standard CSE and LICM passes can optimize them before final lowering.
   if (!ShapedType::isDynamic(offset) && offset != 0) {
     Type memRefElementType = memRefType.getElementType();
     int64_t elementSize = memRefElementType.getIntOrFloatBitWidth() / 8;
     int64_t byteOffset = offset * elementSize;
-    Value offsetConst = wasmssa::ConstOp::create(
+    Value offsetConst = arith::ConstantOp::create(
         rewriter, loc, rewriter.getI32IntegerAttr(byteOffset));
-    result = wasmssa::AddOp::create(rewriter, loc, rewriter.getI32Type(),
-                                    result, offsetConst);
+    result = arith::AddIOp::create(rewriter, loc, result, offsetConst);
   } else if (ShapedType::isDynamic(offset)) {
     return std::make_pair(
         rewriter.notifyMatchFailure(
@@ -170,7 +173,7 @@ std::pair<LogicalResult, Value> generatePointerComputation(
 
     // Create constants for stride and element size multiplication
     auto strideXSize = strides[i] * elementSize;
-    Value strideConst = wasmssa::ConstOp::create(
+    Value strideConst = arith::ConstantOp::create(
         rewriter, loc, rewriter.getI32IntegerAttr(strideXSize));
 
     // Multiply index by (stride * elementSize)
@@ -178,15 +181,14 @@ std::pair<LogicalResult, Value> generatePointerComputation(
     // Ensure index is i32
     if (!index.getType().isInteger(32)) {
       index =
-          wasmssa::WrapOp::create(rewriter, loc, rewriter.getI32Type(), index);
+          arith::TruncIOp::create(rewriter, loc, rewriter.getI32Type(), index);
     }
 
-    Value indexOffset = wasmssa::MulOp::create(
-        rewriter, loc, rewriter.getI32Type(), index, strideConst);
+    Value indexOffset =
+        arith::MulIOp::create(rewriter, loc, index, strideConst);
 
     // Add to running total
-    result = wasmssa::AddOp::create(rewriter, loc, rewriter.getI32Type(),
-                                    result, indexOffset);
+    result = arith::AddIOp::create(rewriter, loc, result, indexOffset);
   }
 
   return std::make_pair(success(), result);
