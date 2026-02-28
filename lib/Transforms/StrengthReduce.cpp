@@ -98,7 +98,145 @@ private:
     return false;
   }
 
+  /// Unwrap cast chains (index_cast, extsi, extui, unrealized_conversion_cast)
+  /// to find the innermost non-cast value.
+  static Value unwrapCasts(Value v) {
+    while (true) {
+      if (auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>()) {
+        if (castOp.getInputs().size() == 1) {
+          v = castOp.getInputs()[0];
+          continue;
+        }
+      }
+      if (auto castOp = v.getDefiningOp<arith::IndexCastOp>()) {
+        v = castOp.getIn();
+        continue;
+      }
+      if (auto extOp = v.getDefiningOp<arith::ExtSIOp>()) {
+        v = extOp.getIn();
+        continue;
+      }
+      if (auto extOp = v.getDefiningOp<arith::ExtUIOp>()) {
+        v = extOp.getIn();
+        continue;
+      }
+      return v;
+    }
+  }
+
+  /// Phase 0: Distribute multiply/shift over IV addition/subtraction.
+  ///
+  /// Rewrites:
+  ///   muli(castChain(addi(iv, k)), factor)
+  ///     → addi(muli(castChain(iv), factor), muli(castChain(k), factor))
+  ///
+  /// After this, the inner muli becomes a Phase 1 candidate and the
+  /// wrapping addi becomes a Phase 2 candidate.
+  void distributeMultiplyOverIVAdd(IRRewriter &rewriter, scf::ForOp forOp) {
+    SmallVector<Operation *> mulOps;
+    for (auto &op : forOp.getBody()->getOperations())
+      if (isa<arith::MulIOp, arith::ShLIOp>(&op))
+        mulOps.push_back(&op);
+
+    for (auto *op : mulOps) {
+      Value ivSide, factorSide;
+      bool isShift = false;
+
+      if (auto mulOp = dyn_cast<arith::MulIOp>(op)) {
+        Value lhs = mulOp.getLhs(), rhs = mulOp.getRhs();
+        if (forOp.isDefinedOutsideOfLoop(rhs)) {
+          ivSide = lhs;
+          factorSide = rhs;
+        } else if (forOp.isDefinedOutsideOfLoop(lhs)) {
+          ivSide = rhs;
+          factorSide = lhs;
+        } else {
+          continue;
+        }
+      } else if (auto shlOp = dyn_cast<arith::ShLIOp>(op)) {
+        Value rhs = shlOp.getRhs();
+        if (!rhs.getDefiningOp<arith::ConstantOp>() ||
+            !forOp.isDefinedOutsideOfLoop(rhs))
+          continue;
+        ivSide = shlOp.getLhs();
+        factorSide = rhs;
+        isShift = true;
+      } else {
+        continue;
+      }
+
+      // Skip if Phase 1 already handles this (direct iv * factor).
+      if (isIVOrCast(ivSide, forOp))
+        continue;
+
+      // Unwrap cast chain to find inner addi/subi.
+      Value inner = unwrapCasts(ivSide);
+      Value ivPart, kPart;
+      bool isSub = false;
+
+      if (auto addOp = inner.getDefiningOp<arith::AddIOp>()) {
+        Value lhs = addOp.getLhs(), rhs = addOp.getRhs();
+        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs)) {
+          ivPart = lhs;
+          kPart = rhs;
+        } else if (isIVOrCast(rhs, forOp) &&
+                   forOp.isDefinedOutsideOfLoop(lhs)) {
+          ivPart = rhs;
+          kPart = lhs;
+        } else {
+          continue;
+        }
+      } else if (auto subOp = inner.getDefiningOp<arith::SubIOp>()) {
+        Value lhs = subOp.getLhs(), rhs = subOp.getRhs();
+        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs)) {
+          ivPart = lhs;
+          kPart = rhs;
+          isSub = true;
+        } else {
+          continue;
+        }
+      } else {
+        continue;
+      }
+
+      Location loc = op->getLoc();
+      Type mulType = ivSide.getType();
+
+      // Compute k * factor before the loop (loop-invariant).
+      rewriter.setInsertionPoint(forOp);
+      Value kCasted = createIndexCast(rewriter, loc, kPart, mulType, ivSide);
+      Value kProduct;
+      if (isShift)
+        kProduct = arith::ShLIOp::create(rewriter, loc, kCasted, factorSide);
+      else
+        kProduct = arith::MulIOp::create(rewriter, loc, kCasted, factorSide);
+
+      if (isSub) {
+        Value zero =
+            arith::ConstantOp::create(rewriter, loc, kProduct.getType(),
+                                      rewriter.getZeroAttr(kProduct.getType()));
+        kProduct = arith::SubIOp::create(rewriter, loc, zero, kProduct);
+      }
+
+      // Create iv * factor + k_product in the loop body.
+      rewriter.setInsertionPoint(op);
+      Value ivCasted = createIndexCast(rewriter, loc, ivPart, mulType, ivSide);
+      Value ivProduct;
+      if (isShift)
+        ivProduct = arith::ShLIOp::create(rewriter, loc, ivCasted, factorSide);
+      else
+        ivProduct = arith::MulIOp::create(rewriter, loc, ivCasted, factorSide);
+
+      Value result = arith::AddIOp::create(rewriter, loc, ivProduct, kProduct);
+
+      rewriter.replaceAllUsesWith(op->getResult(0), result);
+      rewriter.eraseOp(op);
+    }
+  }
+
   void strengthReduceLoop(IRRewriter &rewriter, scf::ForOp forOp) {
+    distributeMultiplyOverIVAdd(rewriter, forOp);
+
     struct Candidate {
       Operation *op;            // MulIOp, ShLIOp, or AddIOp to replace
       Value ivOrCast;           // IV or cast of IV

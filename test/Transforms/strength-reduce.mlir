@@ -689,3 +689,191 @@ func.func @addi_both_iv_dependent(%n: index) {
   }
   return
 }
+
+//===----------------------------------------------------------------------===//
+// Test 28: Phase 0 — muli(index_cast(addi(iv, k)), factor)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_cast_addi_mul
+// CHECK-DAG:     %[[C8:.*]] = arith.constant 8 : i32
+// CHECK:         %[[INIT:.*]] = arith.muli %{{.*}}, %[[C8]] : i32
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %[[INIT]]) -> (i32)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C8]] : i32
+// CHECK:           scf.yield %[[NEXT]] : i32
+func.func @distribute_cast_addi_mul(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %ip1 = arith.addi %i, %c1 : index
+    %cast = arith.index_cast %ip1 : index to i32
+    %mul = arith.muli %cast, %c8 : i32
+    func.call @use_i32(%mul) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 29: Phase 0 — shli(index_cast(addi(iv, k)), n)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_cast_addi_shli
+// CHECK:         arith.shli %{{.*}} : i32
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32)
+// CHECK-NOT:       arith.shli
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           arith.addi %[[ACC]]
+// CHECK:           scf.yield
+func.func @distribute_cast_addi_shli(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c3 = arith.constant 3 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %ip1 = arith.addi %i, %c1 : index
+    %cast = arith.index_cast %ip1 : index to i32
+    %shl = arith.shli %cast, %c3 : i32
+    func.call @use_i32(%shl) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 30: Phase 0 — muli(index_cast(subi(iv, k)), factor)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_subi
+// CHECK:         arith.subi %{{.*}} : i32
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           arith.addi %[[ACC]]
+// CHECK:           scf.yield
+func.func @distribute_subi(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %im1 = arith.subi %i, %c1 : index
+    %cast = arith.index_cast %im1 : index to i32
+    %mul = arith.muli %cast, %c8 : i32
+    func.call @use_i32(%mul) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 31: Phase 0 — extsi chain: muli(extsi(index_cast(addi(iv, k))), factor)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_extsi_chain
+// CHECK-DAG:     %[[C8:.*]] = arith.constant 8 : i64
+// CHECK:         arith.index_cast
+// CHECK:         arith.extsi
+// CHECK:         %[[INIT:.*]] = arith.muli %{{.*}}, %[[C8]] : i64
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %[[INIT]]) -> (i64)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i64(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C8]] : i64
+// CHECK:           scf.yield %[[NEXT]] : i64
+func.func @distribute_extsi_chain(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i64
+  scf.for %i = %c0 to %n step %c1 {
+    %ip1 = arith.addi %i, %c1 : index
+    %i32 = arith.index_cast %ip1 : index to i32
+    %i64 = arith.extsi %i32 : i32 to i64
+    %mul = arith.muli %i64, %c8 : i64
+    func.call @use_i64(%mul) : (i64) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 32: Phase 0 — jacobi-1d pattern: A[i-1], A[i], A[i+1]
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_jacobi
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args({{.*}}) -> (i32, i32, i32)
+// CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.shli
+// CHECK:           call @use_i32
+// CHECK:           call @use_i32
+// CHECK:           call @use_i32
+// CHECK:           scf.yield
+func.func @distribute_jacobi(%n: index, %base: i32) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    // (i-1) * 8 + base
+    %im1 = arith.subi %i, %c1 : index
+    %cast_im1 = arith.index_cast %im1 : index to i32
+    %off_im1 = arith.muli %cast_im1, %c8 : i32
+    %addr_im1 = arith.addi %off_im1, %base : i32
+    func.call @use_i32(%addr_im1) : (i32) -> ()
+    // i * 8 + base
+    %cast_i = arith.index_cast %i : index to i32
+    %off_i = arith.muli %cast_i, %c8 : i32
+    %addr_i = arith.addi %off_i, %base : i32
+    func.call @use_i32(%addr_i) : (i32) -> ()
+    // (i+1) * 8 + base
+    %ip1 = arith.addi %i, %c1 : index
+    %cast_ip1 = arith.index_cast %ip1 : index to i32
+    %off_ip1 = arith.muli %cast_ip1, %c8 : i32
+    %addr_ip1 = arith.addi %off_ip1, %base : i32
+    func.call @use_i32(%addr_ip1) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 33: Phase 0 — (iv+k)*factor + base (outer addi preserved)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_with_outer_addi
+// CHECK:         scf.for {{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32)
+// CHECK-NOT:       arith.muli
+// CHECK:           %[[ADDR:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
+// CHECK:           call @use_i32(%[[ADDR]])
+// CHECK:           arith.addi %[[ACC]]
+// CHECK:           scf.yield
+func.func @distribute_with_outer_addi(%n: index, %base: i32) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %ip1 = arith.addi %i, %c1 : index
+    %cast = arith.index_cast %ip1 : index to i32
+    %mul = arith.muli %cast, %c8 : i32
+    %addr = arith.addi %mul, %base : i32
+    func.call @use_i32(%addr) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 34: Negative — (iv + loop_variant) * factor (no distribution)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_negative_variant
+// CHECK:         scf.for
+// CHECK-NOT:       iter_args
+// CHECK:           arith.muli
+// CHECK:         }
+func.func @distribute_negative_variant(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %cast = arith.index_cast %i : index to i32
+    // Addend is loop-variant (depends on iv)
+    %variant = arith.addi %cast, %cast : i32
+    %mul = arith.muli %variant, %c8 : i32
+    func.call @use_i32(%mul) : (i32) -> ()
+  }
+  return
+}
