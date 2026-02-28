@@ -10,6 +10,7 @@ pub struct RunReport {
     pub avg_ms: f64,
     pub min_ms: f64,
     pub max_ms: f64,
+    pub stddev_ms: f64,
     pub print_count: u64,
     pub print_hash: u64,
 }

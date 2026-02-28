@@ -154,13 +154,13 @@ def prepare_plot_data(data, bar_spacing=0.6):
     geo_mean_speedup = (
         np.prod(np.array(all_speedups) + epsilon) ** (1.0 / len(all_speedups)) - epsilon
     )
-    mlir_wins = len([s for s in all_speedups if s > 1])
+    wami_wins = len([s for s in all_speedups if s > 1])
     llvm_wins = len([s for s in all_speedups if s < 1])
 
     benchmark_positions = []
     benchmark_labels = []
     llvm_times = []
-    mlir_times = []
+    wami_times = []
     speedups = []
     group_positions = []
     category_labels = []
@@ -178,7 +178,7 @@ def prepare_plot_data(data, bar_spacing=0.6):
             benchmark_positions.append(position)
             benchmark_labels.append(benchmark)
             llvm_times.append(categorized_data[category][benchmark]["llvm"])
-            mlir_times.append(categorized_data[category][benchmark]["wami"])
+            wami_times.append(categorized_data[category][benchmark]["wami"])
             speedups.append(categorized_data[category][benchmark]["speedup"])
             position += bar_spacing
 
@@ -195,14 +195,14 @@ def prepare_plot_data(data, bar_spacing=0.6):
         "benchmark_positions": benchmark_positions,
         "benchmark_labels": benchmark_labels,
         "llvm_times": llvm_times,
-        "mlir_times": mlir_times,
+        "wami_times": wami_times,
         "speedups": speedups,
         "group_positions": group_positions,
         "category_labels": category_labels,
         "category_start_end": category_start_end,
         "statistics": {
             "geo_mean_speedup": geo_mean_speedup,
-            "mlir_wins": mlir_wins,
+            "wami_wins": wami_wins,
             "llvm_wins": llvm_wins,
             "total_benchmarks": len(all_speedups),
         },
@@ -324,7 +324,7 @@ def plot_speedup(data, use_aot, binaryen_opt_level, output_file=None, title=None
     stats = plot_data["statistics"]
     summary_text = (
         f"Geometric Mean Speedup (LLVM/WAMI): {stats['geo_mean_speedup']:.3f}\n"
-        f"Benchmarks where WAMI outperforms LLVM: {stats['mlir_wins']} out of {stats['total_benchmarks']}\n"
+        f"Benchmarks where WAMI outperforms LLVM: {stats['wami_wins']} out of {stats['total_benchmarks']}\n"
         f"Benchmarks where LLVM outperforms WAMI: {stats['llvm_wins']} out of {stats['total_benchmarks']}"
     )
     print("\nSummary Statistics:")

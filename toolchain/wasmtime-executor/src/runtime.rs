@@ -115,7 +115,7 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
         }
     }
 
-    let (avg_ms, min_ms, max_ms) = summarize_ms(&durations);
+    let (avg_ms, min_ms, max_ms, stddev_ms) = summarize_ms(&durations);
     Ok(RunReport {
         expected: cli.expect_i32,
         return_val: measured_return_val,
@@ -128,6 +128,7 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
         avg_ms,
         min_ms,
         max_ms,
+        stddev_ms,
         print_count: measured_print_count,
         print_hash: measured_print_hash,
     })
@@ -181,9 +182,9 @@ fn run_once(engine: &Engine, module: &Module, cli: &Cli) -> Result<IterationResu
     })
 }
 
-fn summarize_ms(samples: &[Duration]) -> (f64, f64, f64) {
+fn summarize_ms(samples: &[Duration]) -> (f64, f64, f64, f64) {
     if samples.is_empty() {
-        return (0.0, 0.0, 0.0);
+        return (0.0, 0.0, 0.0, 0.0);
     }
 
     let mut min = samples[0];
@@ -201,5 +202,19 @@ fn summarize_ms(samples: &[Duration]) -> (f64, f64, f64) {
     }
 
     let avg = total.as_secs_f64() * 1000.0 / samples.len() as f64;
-    (avg, min.as_secs_f64() * 1000.0, max.as_secs_f64() * 1000.0)
+    let variance = samples
+        .iter()
+        .map(|s| {
+            let ms = s.as_secs_f64() * 1000.0;
+            (ms - avg) * (ms - avg)
+        })
+        .sum::<f64>()
+        / samples.len() as f64;
+    let stddev = variance.sqrt();
+    (
+        avg,
+        min.as_secs_f64() * 1000.0,
+        max.as_secs_f64() * 1000.0,
+        stddev,
+    )
 }

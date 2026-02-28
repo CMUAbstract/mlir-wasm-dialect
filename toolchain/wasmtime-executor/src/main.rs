@@ -19,6 +19,11 @@ fn main() {
                 println!("{}", report.to_text());
             }
             println!("[execution time] {:.3} miliseconds", report.avg_ms);
+            println!("[iterations] {}", report.iterations);
+            println!("[warmup] {}", report.warmup);
+            println!("[min] {:.3} miliseconds", report.min_ms);
+            println!("[max] {:.3} miliseconds", report.max_ms);
+            println!("[stddev] {:.3} miliseconds", report.stddev_ms);
             std::process::exit(0);
         }
         Err(err) => {

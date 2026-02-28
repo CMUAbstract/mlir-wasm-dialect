@@ -109,7 +109,7 @@ def filter_and_prepare_data(data, use_aot, binaryen_opt_level):
         execution_time = entry["execution_time"]
 
         if benchmark not in result:
-            result[benchmark] = {"llvm": None, "mlir": None}
+            result[benchmark] = {"llvm": None, "wami": None}
 
         result[benchmark][compiler] = execution_time
 
@@ -117,13 +117,13 @@ def filter_and_prepare_data(data, use_aot, binaryen_opt_level):
     result = {
         k: v
         for k, v in result.items()
-        if v["llvm"] is not None and v["mlir"] is not None
+        if v["llvm"] is not None and v["wami"] is not None
     }
 
     # Calculate speedup for each benchmark
     for benchmark, values in result.items():
         values["speedup"] = (
-            (values["llvm"] / values["mlir"]) if values["mlir"] > 0.001 else 0.0
+            (values["llvm"] / values["wami"]) if values["wami"] > 0.001 else 0.0
         )
 
     return result
@@ -162,7 +162,7 @@ def prepare_plot_data_transposed(data):
     geo_mean_speedup = (
         np.prod(np.array(all_speedups) + epsilon) ** (1.0 / len(all_speedups)) - epsilon
     )
-    mlir_wins = len([s for s in all_speedups if s > 1])
+    wami_wins = len([s for s in all_speedups if s > 1])
     llvm_wins = len([s for s in all_speedups if s < 1])
 
     # Collect all data for plotting
@@ -247,7 +247,7 @@ def prepare_plot_data_transposed(data):
         "categories": categories,
         "statistics": {
             "geo_mean_speedup": geo_mean_speedup,
-            "mlir_wins": mlir_wins,
+            "wami_wins": wami_wins,
             "llvm_wins": llvm_wins,
             "total_benchmarks": len(data),
         },
@@ -386,7 +386,7 @@ def plot_speedup_transposed(
     stats = plot_data["statistics"]
     summary_text = (
         f"Geometric Mean Speedup (LLVM/WAMI): {stats['geo_mean_speedup']:.3f}\n"
-        f"Benchmarks where WAMI outperforms LLVM: {stats['mlir_wins']} out of {stats['total_benchmarks']}\n"
+        f"Benchmarks where WAMI outperforms LLVM: {stats['wami_wins']} out of {stats['total_benchmarks']}\n"
         f"Benchmarks where LLVM outperforms WAMI: {stats['llvm_wins']} out of {stats['total_benchmarks']}"
     )
     print("\nSummary Statistics:")
@@ -505,13 +505,13 @@ def plot_speedup_side_by_side(data, binaryen_opt_level, output_file=None, title=
 
     int_summary = (
         f"Geo Mean: {int_stats['geo_mean_speedup']:.3f}\n"
-        f"WAMI wins: {int_stats['mlir_wins']}/{int_stats['total_benchmarks']}\n"
+        f"WAMI wins: {int_stats['wami_wins']}/{int_stats['total_benchmarks']}\n"
         f"LLVM wins: {int_stats['llvm_wins']}/{int_stats['total_benchmarks']}"
     )
 
     aot_summary = (
         f"Geo Mean: {aot_stats['geo_mean_speedup']:.3f}\n"
-        f"WAMI wins: {aot_stats['mlir_wins']}/{aot_stats['total_benchmarks']}\n"
+        f"WAMI wins: {aot_stats['wami_wins']}/{aot_stats['total_benchmarks']}\n"
         f"LLVM wins: {aot_stats['llvm_wins']}/{aot_stats['total_benchmarks']}"
     )
 
