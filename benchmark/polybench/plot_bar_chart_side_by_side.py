@@ -644,9 +644,8 @@ def main():
     parser.add_argument(
         "--binaryen-opt-level",
         type=int,
-        choices=[0, 2, 4],
         default=0,
-        help="Binaryen optimization level (0, 2, or 4, default: 0)",
+        help="Binaryen optimization level",
     )
     parser.add_argument(
         "--normalize",
