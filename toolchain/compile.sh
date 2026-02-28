@@ -105,7 +105,15 @@ if [[ "$COMPILER" == "wami" ]]; then
     # Lower standard MLIR to WasmStack using the active pipeline.
     echo "Converting $INPUT_MLIR to WasmStack..."
     "$REPO_ROOT/build/bin/wasm-opt" \
+    --affine-loop-invariant-code-motion \
+    --affine-loop-normalize \
     --lower-affine \
+    --canonicalize \
+    --sccp \
+    --loop-invariant-code-motion \
+    --loop-invariant-subset-hoisting \
+    --cse \
+    --control-flow-sink \
     --wami-convert-all \
     --reconcile-unrealized-casts \
     --convert-to-wasmstack \
@@ -130,7 +138,6 @@ elif [[ "$COMPILER" == "llvm" ]]; then
 
     echo "Converting $INPUT_MLIR to LLVM dialect..."
     mlir-opt "$INPUT_MLIR" \
-    --affine-loop-coalescing \
     --affine-loop-invariant-code-motion \
     --affine-loop-normalize \
     --lower-affine \
