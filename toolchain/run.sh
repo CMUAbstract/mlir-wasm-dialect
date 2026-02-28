@@ -120,20 +120,21 @@ fi
 
 run_local_wasmtime() {
     local file=$1
+    local abs_file
+    abs_file="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
 
     echo "Running on mac using $file..."
 
     if [ "$USE_AOT" = true ]; then
-        COMMAND_GROUP='
-            cd "$SCRIPT_DIR/wasmtime-executor" && \
-            cargo +nightly run --release -- --use-aot --input "../$file"
-        '
+        local MODE="aot"
     else
-        COMMAND_GROUP='
-            cd "$SCRIPT_DIR/wasmtime-executor" && \
-            cargo +nightly run --release -- --input "../$file"
-        '
+        local MODE="interpreter"
     fi
+
+    COMMAND_GROUP='
+        cd "$SCRIPT_DIR/wasmtime-executor" && \
+        cargo +nightly run --release -- --mode '"$MODE"' --input "'"$abs_file"'"
+    '
 
     if [ "$SILENT" = true ]; then
         (eval "$COMMAND_GROUP") > /dev/null 2>&1

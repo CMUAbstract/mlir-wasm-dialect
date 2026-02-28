@@ -60,4 +60,11 @@ pub struct Cli {
 
     #[structopt(long, default_value = "14695981039346656037")]
     pub print_hash_seed: u64,
+
+    #[structopt(
+        long,
+        default_value = "aot",
+        possible_values = &["aot", "interpreter"]
+    )]
+    pub mode: String,
 }
