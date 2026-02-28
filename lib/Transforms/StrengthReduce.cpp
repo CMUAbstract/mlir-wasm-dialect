@@ -43,24 +43,40 @@ public:
   }
 
 private:
-  /// Check if v is the induction variable or a cast of it.
+  /// Check if v is the induction variable or a (chain of) cast(s) of it.
   static bool isIVOrCast(Value v, scf::ForOp forOp) {
     Value iv = forOp.getInductionVar();
     if (v == iv)
       return true;
     if (auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>())
-      return castOp.getInputs().size() == 1 && castOp.getInputs()[0] == iv;
+      return castOp.getInputs().size() == 1 &&
+             isIVOrCast(castOp.getInputs()[0], forOp);
     if (auto castOp = v.getDefiningOp<arith::IndexCastOp>())
-      return castOp.getIn() == iv;
+      return isIVOrCast(castOp.getIn(), forOp);
+    if (auto extOp = v.getDefiningOp<arith::ExtSIOp>())
+      return isIVOrCast(extOp.getIn(), forOp);
+    if (auto extOp = v.getDefiningOp<arith::ExtUIOp>())
+      return isIVOrCast(extOp.getIn(), forOp);
     return false;
   }
 
-  /// Create a cast of an index value, matching the kind of exampleCast.
+  /// Recreate the cast chain from exampleCast, applied to indexVal.
   /// Returns indexVal unchanged if no cast is needed (types already match).
   static Value createIndexCast(OpBuilder &builder, Location loc, Value indexVal,
                                Type targetType, Value exampleCast) {
     if (indexVal.getType() == targetType)
       return indexVal;
+    // Handle extension ops by recursively creating the inner cast first.
+    if (auto extOp = exampleCast.getDefiningOp<arith::ExtSIOp>()) {
+      Value inner = createIndexCast(builder, loc, indexVal,
+                                    extOp.getIn().getType(), extOp.getIn());
+      return arith::ExtSIOp::create(builder, loc, targetType, inner);
+    }
+    if (auto extOp = exampleCast.getDefiningOp<arith::ExtUIOp>()) {
+      Value inner = createIndexCast(builder, loc, indexVal,
+                                    extOp.getIn().getType(), extOp.getIn());
+      return arith::ExtUIOp::create(builder, loc, targetType, inner);
+    }
     if (exampleCast.getDefiningOp<UnrealizedConversionCastOp>())
       return UnrealizedConversionCastOp::create(builder, loc, targetType,
                                                 indexVal)

@@ -338,3 +338,80 @@ func.func @loop_variant_shift(%n: index) {
   }
   return
 }
+
+//===----------------------------------------------------------------------===//
+// Test 15: ExtSI chain (index_cast → extsi → muli)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @extsi_chain
+// CHECK-DAG:     %[[C0_I64:.*]] = arith.constant 0 : i64
+// CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : i64
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %[[C0_I64]]) -> (i64)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i64(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C4]] : i64
+// CHECK:           scf.yield %[[NEXT]] : i64
+func.func @extsi_chain(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : i64
+  scf.for %i = %c0 to %n step %c1 {
+    %i32 = arith.index_cast %i : index to i32
+    %i64 = arith.extsi %i32 : i32 to i64
+    %mul = arith.muli %i64, %c4 : i64
+    func.call @use_i64(%mul) : (i64) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 16: ExtUI chain (index_cast → extui → muli)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @extui_chain
+// CHECK-DAG:     %[[C0_I64:.*]] = arith.constant 0 : i64
+// CHECK-DAG:     %[[C8:.*]] = arith.constant 8 : i64
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %[[C0_I64]]) -> (i64)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i64(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C8]] : i64
+// CHECK:           scf.yield %[[NEXT]] : i64
+func.func @extui_chain(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i64
+  scf.for %i = %c0 to %n step %c1 {
+    %i32 = arith.index_cast %i : index to i32
+    %i64 = arith.extui %i32 : i32 to i64
+    %mul = arith.muli %i64, %c8 : i64
+    func.call @use_i64(%mul) : (i64) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 17: ExtSI chain with non-zero lower bound (tests cast chain recreation)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @extsi_nonzero_lb
+// CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : i64
+// CHECK:         arith.index_cast
+// CHECK:         arith.extsi
+// CHECK:         %[[INIT:.*]] = arith.muli %{{.*}}, %[[C4]] : i64
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %[[INIT]]) -> (i64)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i64(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C4]] : i64
+// CHECK:           scf.yield %[[NEXT]] : i64
+func.func @extsi_nonzero_lb(%n: index) {
+  %c5 = arith.constant 5 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : i64
+  scf.for %i = %c5 to %n step %c1 {
+    %i32 = arith.index_cast %i : index to i32
+    %i64 = arith.extsi %i32 : i32 to i64
+    %mul = arith.muli %i64, %c4 : i64
+    func.call @use_i64(%mul) : (i64) -> ()
+  }
+  return
+}
