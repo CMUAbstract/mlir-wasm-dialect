@@ -4,26 +4,6 @@ WAMI is an MLIR-based compilation pipeline for WebAssembly. It is the artifact
 of [WAMI: Compilation to WebAssembly through MLIR without Losing
 Abstraction](https://arxiv.org/abs/2506.16048).
 
-## Branch Status
-
-This branch is under active reimplementation.
-
-- Active dialect/passes:
-  - `wasmssa` (upstream MLIR dialect)
-  - `wami` (`include/WAMI/`, `lib/WAMI/`)
-  - `wasmstack` (`include/wasmstack/`, `lib/wasmstack/`)
-- Removed legacy dialects/passes:
-  - `ssawasm`, `wasm`, `intermittent`
-
-Preferred lowering path for new development:
-
-1. Standard MLIR (`arith`, `math`, `func`, `scf`, `memref`)
-2. `--wami-convert-all` (or explicit `--wami-convert-*` passes, including
-   `--wami-convert-math`)
-3. `--convert-to-wasmstack`
-4. `--verify-wasmstack`
-5. `wasm-emit --mlir-to-wasm`
-
 ## Project Layout
 
 - `include/WAMI`, `lib/WAMI`: WAMI dialect + conversion passes
