@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Coro/CoroPasses.h"
+#include "Transforms/TransformsPasses.h"
 #include "WAMI/WAMIDialect.h"
 #include "WAMI/WAMIPasses.h"
 #include "wasmstack/WasmStackDialect.h"
@@ -30,6 +31,7 @@
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
   mlir::coro::registerPasses();
+  mlir::transforms::registerPasses();
   mlir::wami::registerPasses();
   mlir::wasmstack::registerPasses();
 

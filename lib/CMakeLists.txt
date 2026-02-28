@@ -1,4 +1,5 @@
 add_subdirectory(Coro)
+add_subdirectory(Transforms)
 add_subdirectory(WAMI)
 add_subdirectory(wasmstack)
 add_subdirectory(Target)

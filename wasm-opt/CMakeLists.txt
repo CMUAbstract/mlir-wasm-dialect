@@ -7,6 +7,7 @@ set(LIBS
     MLIROptLib
     MLIRRegisterAllPasses
     MLIRCoro
+    MLIRLocalTransforms
     MLIRWAMI
     MLIRWasmStack)
 add_llvm_executable(wasm-opt wasm-opt.cpp)

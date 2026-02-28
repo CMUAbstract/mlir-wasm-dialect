@@ -1,0 +1,13 @@
+add_mlir_dialect_library(
+  MLIRLocalTransforms
+  StrengthReduce.cpp
+  ADDITIONAL_HEADER_DIRS
+  ${PROJECT_SOURCE_DIR}/include/Transforms
+  DEPENDS
+  MLIRTransformsPassesIncGen
+  LINK_LIBS
+  PUBLIC
+  MLIRIR
+  MLIRArithDialect
+  MLIRSCFDialect
+  MLIRPass)
