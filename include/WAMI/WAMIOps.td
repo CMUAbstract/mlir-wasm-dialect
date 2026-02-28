@@ -47,7 +47,7 @@ def WAMI_SelectOp : WAMI_Op<"select", [
 // Memory Operations
 //===----------------------------------------------------------------------===//
 
-def WAMI_LoadOp : WAMI_Op<"load", [Pure]> {
+def WAMI_LoadOp : WAMI_Op<"load", [MemoryEffects<[MemRead]>]> {
   let summary = "Load value from linear memory";
   let description = [{
     Load a value from WebAssembly linear memory at the given address.
