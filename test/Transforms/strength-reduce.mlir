@@ -797,12 +797,13 @@ func.func @distribute_extsi_chain(%n: index) {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @distribute_jacobi
-// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args({{.*}}) -> (i32, i32, i32)
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[A1:.*]] = %{{.*}}, %[[A2:.*]] = %{{.*}}, %[[A3:.*]] = %{{.*}}) -> (i32, i32, i32)
 // CHECK-NOT:       arith.muli
 // CHECK-NOT:       arith.shli
-// CHECK:           call @use_i32
-// CHECK:           call @use_i32
-// CHECK:           call @use_i32
+// CHECK-NOT:       arith.addi
+// CHECK:           call @use_i32(%[[A1]])
+// CHECK:           call @use_i32(%[[A2]])
+// CHECK:           call @use_i32(%[[A3]])
 // CHECK:           scf.yield
 func.func @distribute_jacobi(%n: index, %base: i32) {
   %c0 = arith.constant 0 : index
@@ -831,16 +832,17 @@ func.func @distribute_jacobi(%n: index, %base: i32) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test 33: Phase 0 — (iv+k)*factor + base (outer addi preserved)
+// Test 33: Phase 0 — (iv+k)*factor + base (outer addi folded into init)
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @distribute_with_outer_addi
-// CHECK:         scf.for {{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32)
+// CHECK-DAG:     %[[C8:.*]] = arith.constant 8 : i32
+// CHECK:         %[[INIT:.*]] = arith.addi %{{.*}}, %{{.*}} : i32
+// CHECK:         scf.for {{.*}} iter_args(%[[ACC:.*]] = %[[INIT]]) -> (i32)
 // CHECK-NOT:       arith.muli
-// CHECK:           %[[ADDR:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
-// CHECK:           call @use_i32(%[[ADDR]])
-// CHECK:           arith.addi %[[ACC]]
-// CHECK:           scf.yield
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           %[[NEXT:.*]] = arith.addi %[[ACC]], %[[C8]] : i32
+// CHECK:           scf.yield %[[NEXT]] : i32
 func.func @distribute_with_outer_addi(%n: index, %base: i32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index

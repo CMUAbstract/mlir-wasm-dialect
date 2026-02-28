@@ -234,8 +234,80 @@ private:
     }
   }
 
+  /// Fold chains of addi with loop-invariant operands.
+  ///
+  /// Rewrites:
+  ///   addi(addi(variant, inv1), inv2) → addi(variant, addi(inv1, inv2))
+  ///
+  /// The combined invariant is hoisted before the loop, so Phase 2 sees
+  /// a single addi(muli_result, combined_offset) and absorbs it into
+  /// the accumulator init.
+  void foldInvariantAddiChains(IRRewriter &rewriter, scf::ForOp forOp) {
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      for (auto &op : forOp.getBody()->getOperations()) {
+        auto addOp = dyn_cast<arith::AddIOp>(&op);
+        if (!addOp)
+          continue;
+
+        Value lhs = addOp.getLhs(), rhs = addOp.getRhs();
+
+        // One side must be loop-invariant.
+        Value outerInv, addiResult;
+        if (forOp.isDefinedOutsideOfLoop(rhs)) {
+          outerInv = rhs;
+          addiResult = lhs;
+        } else if (forOp.isDefinedOutsideOfLoop(lhs)) {
+          outerInv = lhs;
+          addiResult = rhs;
+        } else {
+          continue;
+        }
+
+        // The other side must be an addi with one loop-invariant operand.
+        auto innerAdd = addiResult.getDefiningOp<arith::AddIOp>();
+        if (!innerAdd)
+          continue;
+
+        Value iLhs = innerAdd.getLhs(), iRhs = innerAdd.getRhs();
+        Value innerInv, variant;
+        if (forOp.isDefinedOutsideOfLoop(iRhs) &&
+            !forOp.isDefinedOutsideOfLoop(iLhs)) {
+          innerInv = iRhs;
+          variant = iLhs;
+        } else if (forOp.isDefinedOutsideOfLoop(iLhs) &&
+                   !forOp.isDefinedOutsideOfLoop(iRhs)) {
+          innerInv = iLhs;
+          variant = iRhs;
+        } else {
+          continue;
+        }
+
+        // Hoist: combined = addi(innerInv, outerInv)
+        Location loc = addOp.getLoc();
+        rewriter.setInsertionPoint(forOp);
+        Value combined =
+            arith::AddIOp::create(rewriter, loc, innerInv, outerInv);
+
+        // Replace: addi(addi(variant, inv1), inv2) → addi(variant, combined)
+        rewriter.setInsertionPoint(addOp);
+        Value newAdd = arith::AddIOp::create(rewriter, loc, variant, combined);
+        rewriter.replaceAllUsesWith(addOp.getResult(), newAdd);
+        rewriter.eraseOp(addOp);
+
+        if (innerAdd->use_empty())
+          rewriter.eraseOp(innerAdd);
+
+        changed = true;
+        break;
+      }
+    }
+  }
+
   void strengthReduceLoop(IRRewriter &rewriter, scf::ForOp forOp) {
     distributeMultiplyOverIVAdd(rewriter, forOp);
+    foldInvariantAddiChains(rewriter, forOp);
 
     struct Candidate {
       Operation *op;            // MulIOp, ShLIOp, or AddIOp to replace
