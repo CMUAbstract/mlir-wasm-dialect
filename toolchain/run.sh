@@ -2,9 +2,6 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Requires ZEPHYRPROJECT to be set (e.g. in .envrc)
-ZEPHYRPROJECT="${ZEPHYRPROJECT:?Error: ZEPHYRPROJECT environment variable is not set.}"
-
 CMDARGS="$@"
 
 # Check if the minimum number of arguments is provided
@@ -181,6 +178,11 @@ run_local_wamr() {
 # Step 4: Function to run the compiled file on the device
 run_on_device() {
     local file=$1
+
+    if [ -z "$ZEPHYRPROJECT" ]; then
+        echo "Error: ZEPHYRPROJECT environment variable is not set (required for --device=mcu)."
+        exit 1
+    fi
 
     echo "Running on device using $file..."
 
