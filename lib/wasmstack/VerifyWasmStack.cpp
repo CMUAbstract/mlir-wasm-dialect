@@ -94,7 +94,6 @@ private:
   LogicalResult popValue(Type expected);
   LogicalResult popAnyValue(Type &actual);
   LogicalResult popValues(ArrayRef<Type> expected);
-  LogicalResult checkStackHeight(size_t expected, StringRef context);
   bool isSubtype(Type actual, Type expected) const;
   Type getNullableContRefType(FlatSymbolRefAttr ref) const;
   Type getNonNullContRefType(FlatSymbolRefAttr ref) const;
@@ -207,22 +206,6 @@ LogicalResult StackVerifier::popValues(ArrayRef<Type> expected) {
   return success();
 }
 
-LogicalResult StackVerifier::checkStackHeight(size_t expected,
-                                              StringRef context) {
-  if (unreachable)
-    return success();
-
-  size_t frameBase = controlStack.back().stackHeightAtEntry;
-  size_t actualHeight = valueStack.size() - frameBase;
-
-  if (actualHeight != expected) {
-    return emitError("stack height mismatch at ")
-           << context << ": expected " << expected << " values but got "
-           << actualHeight;
-  }
-  return success();
-}
-
 bool StackVerifier::isSubtype(Type actual, Type expected) const {
   if (actual == expected)
     return true;
@@ -313,7 +296,8 @@ InFlightDiagnostic StackVerifier::emitError(StringRef message) {
   return mlir::emitError(UnknownLoc::get(ctx), message);
 }
 
-std::string StackVerifier::formatTypeList(ArrayRef<Type> types) {
+[[maybe_unused]] std::string
+StackVerifier::formatTypeList(ArrayRef<Type> types) {
   std::string result = "[";
   llvm::interleave(
       types,
@@ -326,7 +310,9 @@ std::string StackVerifier::formatTypeList(ArrayRef<Type> types) {
   return result;
 }
 
-std::string StackVerifier::formatStack() { return formatTypeList(valueStack); }
+[[maybe_unused]] std::string StackVerifier::formatStack() {
+  return formatTypeList(valueStack);
+}
 
 FailureOr<FunctionType> StackVerifier::resolveTypeFunc(Operation *op,
                                                        FlatSymbolRefAttr ref,
