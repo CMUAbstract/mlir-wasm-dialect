@@ -100,21 +100,29 @@ private:
 
   void strengthReduceLoop(IRRewriter &rewriter, scf::ForOp forOp) {
     struct Candidate {
-      Operation *op;            // MulIOp or ShLIOp to replace
+      Operation *op;            // MulIOp, ShLIOp, or AddIOp to replace
       Value ivOrCast;           // IV or cast of IV
       Value factor;             // loop-invariant factor (null for shli)
       int64_t shiftAmount = -1; // for shli: bit count
+      Value offset;             // loop-invariant addend (null if no addi)
     };
-    SmallVector<Candidate> candidates;
+
+    // Phase 1: Detect muli/shli candidates.
+    SmallVector<Candidate> mulCandidates;
+    DenseMap<Operation *, unsigned> mulCandidateMap;
 
     for (auto &op : forOp.getBody()->getOperations()) {
       if (auto mulOp = dyn_cast<arith::MulIOp>(&op)) {
         Value lhs = mulOp.getLhs();
         Value rhs = mulOp.getRhs();
-        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs))
-          candidates.push_back({mulOp, lhs, rhs, -1});
-        else if (isIVOrCast(rhs, forOp) && forOp.isDefinedOutsideOfLoop(lhs))
-          candidates.push_back({mulOp, rhs, lhs, -1});
+        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs)) {
+          mulCandidateMap[mulOp] = mulCandidates.size();
+          mulCandidates.push_back({mulOp, lhs, rhs, -1, Value()});
+        } else if (isIVOrCast(rhs, forOp) &&
+                   forOp.isDefinedOutsideOfLoop(lhs)) {
+          mulCandidateMap[mulOp] = mulCandidates.size();
+          mulCandidates.push_back({mulOp, rhs, lhs, -1, Value()});
+        }
         continue;
       }
       if (auto shlOp = dyn_cast<arith::ShLIOp>(&op)) {
@@ -122,13 +130,71 @@ private:
         Value rhs = shlOp.getRhs();
         if (isIVOrCast(lhs, forOp)) {
           if (auto constOp = rhs.getDefiningOp<arith::ConstantOp>())
-            if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
-              candidates.push_back(
-                  {shlOp, lhs, Value(), intAttr.getValue().getSExtValue()});
+            if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue())) {
+              mulCandidateMap[shlOp] = mulCandidates.size();
+              mulCandidates.push_back({shlOp, lhs, Value(),
+                                       intAttr.getValue().getSExtValue(),
+                                       Value()});
+            }
         }
         continue;
       }
     }
+
+    // Phase 2: Detect addi candidates wrapping muli/shli results.
+    SmallVector<Candidate> addiCandidates;
+    DenseMap<Operation *, unsigned> addiUseCount;
+    for (auto &mc : mulCandidates)
+      addiUseCount[mc.op] = 0;
+
+    for (auto &op : forOp.getBody()->getOperations()) {
+      auto addOp = dyn_cast<arith::AddIOp>(&op);
+      if (!addOp)
+        continue;
+
+      Value lhs = addOp.getLhs();
+      Value rhs = addOp.getRhs();
+      Operation *mulDef = nullptr;
+      Value offset;
+
+      Operation *lhsDef = lhs.getDefiningOp();
+      Operation *rhsDef = rhs.getDefiningOp();
+
+      if (lhsDef && mulCandidateMap.count(lhsDef) &&
+          forOp.isDefinedOutsideOfLoop(rhs)) {
+        mulDef = lhsDef;
+        offset = rhs;
+      } else if (rhsDef && mulCandidateMap.count(rhsDef) &&
+                 forOp.isDefinedOutsideOfLoop(lhs)) {
+        mulDef = rhsDef;
+        offset = lhs;
+      }
+
+      if (mulDef) {
+        unsigned idx = mulCandidateMap[mulDef];
+        auto &mc = mulCandidates[idx];
+        addiCandidates.push_back(
+            {addOp, mc.ivOrCast, mc.factor, mc.shiftAmount, offset});
+        addiUseCount[mulDef]++;
+      }
+    }
+
+    // Phase 3: Determine which mulCandidates are fully absorbed by addis.
+    SmallVector<Operation *> absorbedOps;
+    SmallVector<Candidate> candidates;
+
+    for (auto &mc : mulCandidates) {
+      unsigned totalUses = 0;
+      for (auto &use : mc.op->getResult(0).getUses())
+        (void)use, totalUses++;
+
+      if (addiUseCount[mc.op] > 0 && addiUseCount[mc.op] == totalUses)
+        absorbedOps.push_back(mc.op);
+      else
+        candidates.push_back(mc);
+    }
+
+    candidates.append(addiCandidates.begin(), addiCandidates.end());
 
     if (candidates.empty())
       return;
@@ -168,6 +234,14 @@ private:
         init = arith::MulIOp::create(rewriter, loc, lbCast, factor);
       }
 
+      // Add offset to init if present.
+      if (c.offset) {
+        if (isConstantZero(lb))
+          init = c.offset; // 0 * factor + offset = offset
+        else
+          init = arith::AddIOp::create(rewriter, loc, init, c.offset);
+      }
+
       // increment = cast(step) * factor  (if step==1 → just factor)
       Value increment;
       if (isConstantOne(step)) {
@@ -203,12 +277,16 @@ private:
 
     auto newForOp = cast<scf::ForOp>(*result);
 
-    // Replace muli uses with accumulator block args and erase dead mulis.
+    // Replace candidate uses with accumulator block args and erase dead ops.
     for (auto [i, c] : llvm::enumerate(candidates)) {
       BlockArgument acc = newForOp.getRegionIterArgs()[numOrigIterArgs + i];
       rewriter.replaceAllUsesWith(c.op->getResult(0), acc);
       rewriter.eraseOp(c.op);
     }
+
+    // Erase absorbed muli/shli ops (all their uses were removed above).
+    for (auto *op : absorbedOps)
+      rewriter.eraseOp(op);
   }
 };
 
