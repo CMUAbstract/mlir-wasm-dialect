@@ -3,7 +3,7 @@ use std::fmt::Write;
 #[derive(Debug, Clone)]
 pub struct RunReport {
     pub expected: Option<i32>,
-    pub actual: i32,
+    pub return_val: i32,
     pub pass: bool,
     pub iterations: usize,
     pub warmup: usize,
@@ -24,10 +24,10 @@ impl RunReport {
             .unwrap_or_else(|| "none".to_string());
         let _ = write!(
             out,
-            "RESULT status={} expected={} actual={} iterations={} warmup={} ms_avg={:.6} ms_min={:.6} ms_max={:.6} print_count={} print_hash=0x{:016x}",
+            "RESULT status={} expected={} return_val={} iterations={} warmup={} ms_avg={:.6} ms_min={:.6} ms_max={:.6} print_count={} print_hash=0x{:016x}",
             status,
             expected,
-            self.actual,
+            self.return_val,
             self.iterations,
             self.warmup,
             self.avg_ms,
@@ -45,10 +45,10 @@ impl RunReport {
             .map(|v| v.to_string())
             .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"pass\":{},\"expected\":{},\"actual\":{},\"iterations\":{},\"warmup\":{},\"ms_avg\":{:.6},\"ms_min\":{:.6},\"ms_max\":{:.6},\"print_count\":{},\"print_hash\":\"0x{:016x}\"}}",
+            "{{\"pass\":{},\"expected\":{},\"return_val\":{},\"iterations\":{},\"warmup\":{},\"ms_avg\":{:.6},\"ms_min\":{:.6},\"ms_max\":{:.6},\"print_count\":{},\"print_hash\":\"0x{:016x}\"}}",
             if self.pass { "true" } else { "false" },
             expected,
-            self.actual,
+            self.return_val,
             self.iterations,
             self.warmup,
             self.avg_ms,

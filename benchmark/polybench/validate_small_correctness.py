@@ -142,7 +142,7 @@ def discover_small_benchmarks(name_filter: str) -> List[Path]:
 
 def compare_reports(lhs: Dict[str, object], rhs: Dict[str, object]) -> Dict[str, tuple]:
     mismatches = {}
-    for key in ("actual", "print_count", "print_hash"):
+    for key in ("return_val", "print_count", "print_hash"):
         if lhs.get(key) != rhs.get(key):
             mismatches[key] = (lhs.get(key), rhs.get(key))
     return mismatches
@@ -235,7 +235,7 @@ def main() -> int:
             if wami_only:
                 print(
                     f"[PASS] {benchmark.stem} "
-                    f"actual={wami_report['actual']} "
+                    f"return_val={wami_report['return_val']} "
                     f"count={wami_report['print_count']} "
                     f"hash={wami_report['print_hash']}"
                 )
@@ -260,7 +260,7 @@ def main() -> int:
                 else:
                     print(
                         f"[PASS] {benchmark.stem} "
-                        f"actual={wami_report['actual']} "
+                        f"return_val={wami_report['return_val']} "
                         f"count={wami_report['print_count']} "
                         f"hash={wami_report['print_hash']}"
                     )

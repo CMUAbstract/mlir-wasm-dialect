@@ -13,7 +13,7 @@ pub enum RunnerError {
     Trap(String),
     Expectation {
         expected: i32,
-        actual: i32,
+        return_val: i32,
         iteration: usize,
     },
     InvalidArgs(String),
@@ -42,12 +42,12 @@ impl Display for RunnerError {
             RunnerError::Trap(msg) => write!(f, "execution trap: {}", msg),
             RunnerError::Expectation {
                 expected,
-                actual,
+                return_val,
                 iteration,
             } => write!(
                 f,
                 "result mismatch at iteration {}: expected {}, got {}",
-                iteration, expected, actual
+                iteration, expected, return_val
             ),
             RunnerError::InvalidArgs(msg) => write!(f, "invalid arguments: {}", msg),
         }
@@ -69,7 +69,7 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
 
     let total_iterations = cli.warmup + cli.iterations;
     let mut durations: Vec<Duration> = Vec::with_capacity(cli.iterations);
-    let mut measured_actual = 0;
+    let mut measured_return_val = 0;
     let mut measured_print_count = 0;
     let mut measured_print_hash = 0;
 
@@ -79,16 +79,16 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
         let elapsed = result.toggle_duration.unwrap_or_else(|| started.elapsed());
 
         if iter >= cli.warmup {
-            measured_actual = result.actual;
+            measured_return_val = result.return_val;
             measured_print_count = result.print_count;
             measured_print_hash = result.print_hash;
             durations.push(elapsed);
 
             if let Some(expected) = cli.expect_i32 {
-                if result.actual != expected {
+                if result.return_val != expected {
                     return Err(RunnerError::Expectation {
                         expected,
-                        actual: result.actual,
+                        return_val: result.return_val,
                         iteration: iter - cli.warmup,
                     });
                 }
@@ -99,8 +99,11 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
     let (avg_ms, min_ms, max_ms) = summarize_ms(&durations);
     Ok(RunReport {
         expected: cli.expect_i32,
-        actual: measured_actual,
-        pass: cli.expect_i32.map(|v| v == measured_actual).unwrap_or(true),
+        return_val: measured_return_val,
+        pass: cli
+            .expect_i32
+            .map(|v| v == measured_return_val)
+            .unwrap_or(true),
         iterations: cli.iterations,
         warmup: cli.warmup,
         avg_ms,
@@ -112,7 +115,7 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
 }
 
 struct IterationResult {
-    actual: i32,
+    return_val: i32,
     toggle_duration: Option<Duration>,
     print_count: u64,
     print_hash: u64,
@@ -134,7 +137,7 @@ fn run_once(engine: &Engine, module: &Module, cli: &Cli) -> Result<IterationResu
         .get_func(&mut store, &cli.entry)
         .ok_or_else(|| RunnerError::MissingEntry(cli.entry.clone()))?;
 
-    let actual = if let Ok(typed) = entry.typed::<(), i32>(&store) {
+    let return_val = if let Ok(typed) = entry.typed::<(), i32>(&store) {
         typed
             .call(&mut store, ())
             .map_err(|e| RunnerError::Trap(e.to_string()))?
@@ -152,7 +155,7 @@ fn run_once(engine: &Engine, module: &Module, cli: &Cli) -> Result<IterationResu
     let print_hash = store.data().print_hash();
 
     Ok(IterationResult {
-        actual,
+        return_val,
         toggle_duration: store.data().latest_toggle_duration(),
         print_count,
         print_hash,
