@@ -79,16 +79,17 @@ jobs:
       - name: Fix LLVM permissions
         run: chmod -R +x ${{ env.LLVM_INSTALL_DIR }}/bin/
 
-      - name: Install WABT
+      - name: Install WABT and lit
         run: |
           sudo apt-get update
           sudo apt-get install -y wabt
+          pip install lit
 
       - name: Configure WAMI
         run: |
           cmake -G Ninja -S . -B build \
             -DMLIR_DIR=${{ env.LLVM_INSTALL_DIR }}/lib/cmake/mlir \
-            -DLLVM_EXTERNAL_LIT=${{ env.LLVM_INSTALL_DIR }}/bin/llvm-lit \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
