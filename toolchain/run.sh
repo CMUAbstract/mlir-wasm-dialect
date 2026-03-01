@@ -147,10 +147,16 @@ run_local_wasmtime() {
         local MODE="interpreter"
     fi
 
-    COMMAND_GROUP='
-        cd "$SCRIPT_DIR/wasmtime-executor" && \
-        cargo run --release -- --mode '"$MODE"' --quiet --iterations '"$ITERATIONS"' --warmup '"$WARMUP"' --input "'"$abs_file"'"
-    '
+    if [ "$SKIP_BUILD" = true ]; then
+        COMMAND_GROUP='
+            "$SCRIPT_DIR/wasmtime-executor/target/release/run_wasm_bin" --mode '"$MODE"' --quiet --iterations '"$ITERATIONS"' --warmup '"$WARMUP"' --input "'"$abs_file"'"
+        '
+    else
+        COMMAND_GROUP='
+            cd "$SCRIPT_DIR/wasmtime-executor" && \
+            cargo run --release -- --mode '"$MODE"' --quiet --iterations '"$ITERATIONS"' --warmup '"$WARMUP"' --input "'"$abs_file"'"
+        '
+    fi
 
     if [ "$SILENT" = true ]; then
         (eval "$COMMAND_GROUP") > /dev/null 2>&1
