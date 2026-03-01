@@ -15,6 +15,7 @@ from datetime import datetime
 NCPU = multiprocessing.cpu_count()
 
 _childrenLock = threading.Lock()
+_stderrLock = threading.Lock()
 _currentChildren = set()
 
 
@@ -47,7 +48,8 @@ def _run_single(row, timeout, silent, idx, total):
     row["timestamp"] = datetime.now().strftime("%y-%m-%d %H:%M:%S.%f")
 
     if not silent:
-        sys.stderr.write("[{}/{}] {}\n".format(idx, total, row["cmd"]))
+        with _stderrLock:
+            sys.stderr.write("[{}/{}] {}\n".format(idx, total, row["cmd"]))
 
     # Launch the command
     if "cwd" in row:
