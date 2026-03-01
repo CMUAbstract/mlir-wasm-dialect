@@ -10,6 +10,7 @@ BINARYEN_OPT_FLAGS=""
 COMPILER=""
 CLEAN=false
 LLVM_OPT_FLAGS=""
+SKIP_BUILD=false
 
 # Function to display usage information
 usage() {
@@ -55,6 +56,10 @@ while [[ "$#" -gt 0 ]]; do
             CLEAN=true
             shift
             ;;
+        --skip-build)
+            SKIP_BUILD=true
+            shift
+            ;;
         *)
             echo "Unknown parameter: $1"
             usage
@@ -89,9 +94,13 @@ OUTPUT_WASM="${OUTPUT_BASE}.wasm"
 OUTPUT_BEFOREOPT_WASM=""
 
 # Build the project
-echo "Building the project..."
-cmake --build "$REPO_ROOT/build"
-echo "Building the project... done"
+if [ "$SKIP_BUILD" = true ]; then
+    echo "Skipping project build (--skip-build)."
+else
+    echo "Building the project..."
+    cmake --build "$REPO_ROOT/build"
+    echo "Building the project... done"
+fi
 
 if [[ "$COMPILER" == "wami" ]]; then
     OUTPUT_WASMSTACK_MLIR="${OUTPUT_BASE}-wasmstack-1.mlir"

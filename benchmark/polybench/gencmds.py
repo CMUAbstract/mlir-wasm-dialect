@@ -47,9 +47,11 @@ def cmd(
     aot_opt_level: int = -1,
     iterations: int = 1,
     warmup: int = 0,
+    skip_build: bool = False,
 ) -> str:
     llvm_opt_flags = f"-O{llvm_opt_level}"
     binaryen_opt_flags = f"-O{binaryen_opt_level}"
+    skip_build_flag = "--skip-build" if skip_build else ""
 
     if device == "mcu":
         aot_str = (
@@ -72,6 +74,7 @@ def cmd(
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f"--use-aot={'true' if use_aot else 'false'}",
             "--silent",
+            skip_build_flag,
             aot_str if use_aot else "",
             '" | uv run ./measure.py',
         ]
@@ -84,6 +87,7 @@ def cmd(
             f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f"--use-aot={'true' if use_aot else 'false'}",
+            skip_build_flag,
             aot_str if use_aot else "",
         ]
     elif device == "local_wasmtime":
@@ -97,6 +101,7 @@ def cmd(
             f"--use-aot={'true' if use_aot else 'false'}",
             f"--iterations={iterations}" if iterations != 1 else "",
             f"--warmup={warmup}" if warmup != 0 else "",
+            skip_build_flag,
         ]
     else:
         raise ValueError(f"Invalid device: {device}")
@@ -117,6 +122,7 @@ def make_row(
     aot_opt_level=-1,
     iterations: int = 1,
     warmup: int = 0,
+    skip_build: bool = False,
 ) -> dict:
     row = {
         "device": device,
@@ -133,6 +139,7 @@ def make_row(
             aot_opt_level=aot_opt_level,
             iterations=iterations,
             warmup=warmup,
+            skip_build=skip_build,
         ),
         "compiler": compiler,
         "use_aot": use_aot,
@@ -161,6 +168,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--iterations", type=int, default=1)
     parser.add_argument("--warmup", type=int, default=0)
+    parser.add_argument("--skip-build", action="store_true", dest="skip_build")
     args = parser.parse_args()
 
     tags = [
@@ -212,6 +220,7 @@ if __name__ == "__main__":
                 aot_opt_level=aot_opt_level,
                 iterations=args.iterations,
                 warmup=args.warmup,
+                skip_build=args.skip_build,
             )
         )
         for device in devices

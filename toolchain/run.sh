@@ -21,6 +21,7 @@ AOT_FLAGS=""
 SILENT=false
 ITERATIONS=1
 WARMUP=0
+SKIP_BUILD=false
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -55,6 +56,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --silent)
             SILENT=true
+            shift
+            ;;
+        --skip-build)
+            SKIP_BUILD=true
             shift
             ;;
         --)
@@ -94,7 +99,11 @@ echo "Temporary directory created: $TEMP_DIR"
 echo $CMDARGS > $TEMP_DIR/cmdargs
 
 # Step 2: Compile input file to Wasm (depending on the type)
-COMPILE_CMD="\"$SCRIPT_DIR/compile.sh\" -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-flags=\"$LLVM_OPT_FLAGS\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\""
+SKIP_BUILD_FLAG=""
+if [ "$SKIP_BUILD" = true ]; then
+    SKIP_BUILD_FLAG="--skip-build"
+fi
+COMPILE_CMD="\"$SCRIPT_DIR/compile.sh\" -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-flags=\"$LLVM_OPT_FLAGS\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\" $SKIP_BUILD_FLAG"
 
 echo "Compiling $COMPILER to Wasm with command: $COMPILE_CMD"
 eval "$COMPILE_CMD"
