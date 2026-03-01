@@ -314,7 +314,7 @@ def plot_speedup_transposed(
     ax.set_xticks(x_ticks)
     ax.xaxis.set_major_formatter(plt.FormatStrFormatter("%.2f"))
     ax.tick_params(axis="x", labelsize=12)
-    ax.set_xlabel("Speedup (LLVM/WAMI)", fontsize=15)
+    ax.set_xlabel("Speedup (WAMI/LLVM)", fontsize=15)
 
     # Y-ticks for benchmarks
     ax.set_yticks(positions)
@@ -385,7 +385,7 @@ def plot_speedup_transposed(
     # Print summary stats
     stats = plot_data["statistics"]
     summary_text = (
-        f"Geometric Mean Speedup (LLVM/WAMI): {stats['geo_mean_speedup']:.3f}\n"
+        f"Geometric Mean Speedup (WAMI/LLVM): {stats['geo_mean_speedup']:.3f}\n"
         f"Benchmarks where WAMI outperforms LLVM: {stats['wami_wins']} out of {stats['total_benchmarks']}\n"
         f"Benchmarks where LLVM outperforms WAMI: {stats['llvm_wins']} out of {stats['total_benchmarks']}"
     )
@@ -462,7 +462,7 @@ def plot_speedup_side_by_side(data, binaryen_opt_level, output_file=None, title=
     plot_subplot(ax2, interpreter_plot_data, speedup_positive, speedup_negative)
 
     # Set x-label for both subplots
-    fig.text(0.5, 0.02, "Speedup (LLVM/WAMI)", ha="center", fontsize=20)
+    fig.text(0.5, 0.02, "Speedup (WAMI/LLVM)", ha="center", fontsize=20)
 
     # Create a common legend for both subplots
     from matplotlib.patches import Patch
