@@ -170,12 +170,14 @@ run_local_wasmtime() {
 
 run_local_wamr() {
     local file=$1
+    local abs_file
+    abs_file="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
 
     echo "Running on mac using $file..."
 
     COMMAND_GROUP='
         cd "$SCRIPT_DIR/local-executor" && \
-        xxd -i -n wasm_file "../$file" src/wasm.h && \
+        xxd -i -n wasm_file "$abs_file" src/wasm.h && \
         cmake --build build && \
         ./build/app
     '
@@ -193,6 +195,8 @@ run_local_wamr() {
 # Step 4: Function to run the compiled file on the device
 run_on_device() {
     local file=$1
+    local abs_file
+    abs_file="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
 
     if [ -z "$ZEPHYRPROJECT" ]; then
         echo "Error: ZEPHYRPROJECT environment variable is not set (required for --device=mcu)."
@@ -208,7 +212,7 @@ run_on_device() {
     # Define your command group
     COMMAND_GROUP='
         cd "$SCRIPT_DIR/mcu-wasm-executor" && \
-        xxd -i -n wasm_file "../$file" src/wasm.h && \
+        xxd -i -n wasm_file "$abs_file" src/wasm.h && \
         west build . -b apollo4p_blue_kxr_evb -p && \
         west flash
     '

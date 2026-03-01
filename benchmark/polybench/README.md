@@ -11,6 +11,53 @@ configuration of compilers, optimization levels, and evaluation setups.
 - Configurable AOT optimization levels (`0`, `1`, `2`, `3`)
 
 ## Prerequisites
+
+### Toolchain Setup (macOS)
+
+1. **Zephyr RTOS** (required for MCU deployment):
+   ```sh
+   # Create workspace and install west
+   mkdir -p ~/zephyrproject
+   uv venv ~/zephyrproject/.venv
+   source ~/zephyrproject/.venv/bin/activate
+   uv pip install west
+
+   # Initialize and fetch all modules
+   cd ~/zephyrproject
+   west init
+   west update  # takes several minutes
+
+   # Install Zephyr Python dependencies
+   uv pip install -r ~/zephyrproject/zephyr/scripts/requirements.txt
+   ```
+
+2. **GNU ARM Embedded Toolchain** (cross-compiler for Cortex-M4):
+   ```sh
+   brew install gcc-arm-embedded
+   ```
+
+3. **WAMR** (WebAssembly Micro Runtime, compiled as part of the Zephyr build):
+   ```sh
+   git clone https://github.com/bytecodealliance/wasm-micro-runtime.git ~/wasm/wasm-micro-runtime
+   ```
+
+4. **J-Link** (for flashing the board):
+   ```sh
+   brew install --cask segger-jlink
+   ```
+
+5. **Environment variables** (add to your `.envrc` or shell profile):
+   ```sh
+   export ZEPHYRPROJECT=~/zephyrproject
+   export ZEPHYR_BASE=~/zephyrproject/zephyr
+   export ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb
+   export GNUARMEMB_TOOLCHAIN_PATH=/Applications/ArmGNUToolchain/<version>/arm-none-eabi
+   export WAMR_ROOT_DIR=~/wasm/wasm-micro-runtime
+   ```
+   Replace `<version>` with the installed toolchain version (e.g., `15.2.rel1`).
+
+### Hardware Setup
+
 1. Connect the Apollo4 Blue Plus board and Saleae Logic device to the host machine.
 2. Connect to pin GND and 22 (see the uses of `am_hal_gpi_state_write` in `./src/*.h`)
 3. Install the Logic2 software: https://www.saleae.com/pages/downloads

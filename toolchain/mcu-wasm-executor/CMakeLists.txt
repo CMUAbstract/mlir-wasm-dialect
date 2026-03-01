@@ -45,5 +45,13 @@ target_sources(app PRIVATE ${WAMR_RUNTIME_LIB_SOURCE} src/main.c)
 
 target_sources(app PRIVATE ../../benchmark/polybench/src/polybench.h)
 
-target_compile_options(app PRIVATE -static -mthumb -mcpu=cortex-m4
-                                   -mfloat-abi=hard -mfpu=fpv4-sp-d16 -O3)
+target_compile_options(
+  app
+  PRIVATE -static
+          -mthumb
+          -mcpu=cortex-m4
+          -mfloat-abi=hard
+          -mfpu=fpv4-sp-d16
+          -O3
+          -Wno-int-conversion
+          -Wno-pointer-arith)
