@@ -132,6 +132,7 @@ if [[ "$COMPILER" == "wami" ]]; then
       lower-affine, \
       symbol-dce, \
       canonicalize, \
+      cse, \
       promote-loop-accumulators, \
       scf-loop-unroll{unroll-factor=4}, \
       sccp, \
