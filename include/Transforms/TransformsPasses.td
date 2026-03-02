@@ -18,21 +18,16 @@ include "mlir/Pass/PassBase.td"
 def StrengthReduce : Pass<"strength-reduce", "ModuleOp"> {
   let summary = "Strength-reduce induction variable multiplies in SCF loops";
   let description = [{
-    Replaces muli(cast(IV), loop-invariant) patterns inside scf.for loops
-    with accumulator iter_args that increment by a fixed stride each iteration.
+    Folds muli(cast(IV), K) patterns inside scf.for loops into the loop bounds,
+    replacing lb/ub/step with lb*K/ub*K/step*K and eliminating the multiply.
 
-    By default, only applies when the induction variable has no remaining uses
-    in the loop body after replacement (no register pressure increase).
-    Use aggressive=true to always apply the transformation.
+    Only applies when ALL multiply candidates in a loop share the same factor K
+    and the induction variable has no uses outside the multiply chain.
+    Never introduces additional loop-carried variables.
   }];
   let dependentDialects = [
     "arith::ArithDialect",
     "scf::SCFDialect"
-  ];
-  let options = [
-    Option<"aggressive", "aggressive", "bool", /*default=*/"false",
-           "Apply strength reduction even when the induction variable "
-           "remains live (increases register pressure)">
   ];
 }
 

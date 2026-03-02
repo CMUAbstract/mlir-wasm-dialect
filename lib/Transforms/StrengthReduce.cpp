@@ -367,29 +367,23 @@ private:
     foldInvariantAddiChains(rewriter, forOp);
 
     struct Candidate {
-      Operation *op;            // MulIOp, ShLIOp, or AddIOp to replace
-      Value ivOrCast;           // IV or cast of IV
+      Operation *op;            // MulIOp or ShLIOp
+      Value ivOrCast;           // IV or cast chain of IV
       Value factor;             // loop-invariant factor (null for shli)
       int64_t shiftAmount = -1; // for shli: bit count
-      Value offset;             // loop-invariant addend (null if no addi)
     };
 
     // Phase 1: Detect muli/shli candidates.
-    SmallVector<Candidate> mulCandidates;
-    DenseMap<Operation *, unsigned> mulCandidateMap;
+    SmallVector<Candidate> candidates;
 
     for (auto &op : forOp.getBody()->getOperations()) {
       if (auto mulOp = dyn_cast<arith::MulIOp>(&op)) {
         Value lhs = mulOp.getLhs();
         Value rhs = mulOp.getRhs();
-        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs)) {
-          mulCandidateMap[mulOp] = mulCandidates.size();
-          mulCandidates.push_back({mulOp, lhs, rhs, -1, Value()});
-        } else if (isIVOrCast(rhs, forOp) &&
-                   forOp.isDefinedOutsideOfLoop(lhs)) {
-          mulCandidateMap[mulOp] = mulCandidates.size();
-          mulCandidates.push_back({mulOp, rhs, lhs, -1, Value()});
-        }
+        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs))
+          candidates.push_back({mulOp, lhs, rhs, -1});
+        else if (isIVOrCast(rhs, forOp) && forOp.isDefinedOutsideOfLoop(lhs))
+          candidates.push_back({mulOp, rhs, lhs, -1});
         continue;
       }
       if (auto shlOp = dyn_cast<arith::ShLIOp>(&op)) {
@@ -397,175 +391,98 @@ private:
         Value rhs = shlOp.getRhs();
         if (isIVOrCast(lhs, forOp)) {
           if (auto constOp = rhs.getDefiningOp<arith::ConstantOp>())
-            if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue())) {
-              mulCandidateMap[shlOp] = mulCandidates.size();
-              mulCandidates.push_back({shlOp, lhs, Value(),
-                                       intAttr.getValue().getSExtValue(),
-                                       Value()});
-            }
+            if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
+              candidates.push_back(
+                  {shlOp, lhs, Value(), intAttr.getValue().getSExtValue()});
         }
         continue;
       }
     }
 
-    // Phase 2: Detect addi candidates wrapping muli/shli results.
-    SmallVector<Candidate> addiCandidates;
-    DenseMap<Operation *, unsigned> addiUseCount;
-    for (auto &mc : mulCandidates)
-      addiUseCount[mc.op] = 0;
-
-    for (auto &op : forOp.getBody()->getOperations()) {
-      auto addOp = dyn_cast<arith::AddIOp>(&op);
-      if (!addOp)
-        continue;
-
-      Value lhs = addOp.getLhs();
-      Value rhs = addOp.getRhs();
-      Operation *mulDef = nullptr;
-      Value offset;
-
-      Operation *lhsDef = lhs.getDefiningOp();
-      Operation *rhsDef = rhs.getDefiningOp();
-
-      if (lhsDef && mulCandidateMap.count(lhsDef) &&
-          forOp.isDefinedOutsideOfLoop(rhs)) {
-        mulDef = lhsDef;
-        offset = rhs;
-      } else if (rhsDef && mulCandidateMap.count(rhsDef) &&
-                 forOp.isDefinedOutsideOfLoop(lhs)) {
-        mulDef = rhsDef;
-        offset = lhs;
-      }
-
-      if (mulDef) {
-        unsigned idx = mulCandidateMap[mulDef];
-        auto &mc = mulCandidates[idx];
-        addiCandidates.push_back(
-            {addOp, mc.ivOrCast, mc.factor, mc.shiftAmount, offset});
-        addiUseCount[mulDef]++;
-      }
-    }
-
-    // Phase 3: Determine which mulCandidates are fully absorbed by addis.
-    SmallVector<Operation *> absorbedOps;
-    SmallVector<Candidate> candidates;
-
-    for (auto &mc : mulCandidates) {
-      unsigned totalUses = 0;
-      for (auto &use : mc.op->getResult(0).getUses())
-        (void)use, totalUses++;
-
-      if (addiUseCount[mc.op] > 0 && addiUseCount[mc.op] == totalUses)
-        absorbedOps.push_back(mc.op);
-      else
-        candidates.push_back(mc);
-    }
-
-    candidates.append(addiCandidates.begin(), addiCandidates.end());
-
     if (candidates.empty())
       return;
 
-    // Gate on IV liveness: only proceed when the IV becomes dead after
-    // replacement, unless aggressive mode is enabled.
-    if (!aggressive) {
-      llvm::DenseSet<Operation *> erasedOps;
-      for (auto &c : candidates)
-        erasedOps.insert(c.op);
-      for (auto *op : absorbedOps)
-        erasedOps.insert(op);
-      if (!isIVDeadAfterErasure(forOp.getInductionVar(), erasedOps))
+    // Phase 2: Same-factor check — all candidates must share the same factor.
+    bool allMuli =
+        llvm::all_of(candidates, [](const Candidate &c) { return !!c.factor; });
+    bool allShli = llvm::all_of(
+        candidates, [](const Candidate &c) { return c.shiftAmount >= 0; });
+
+    if (!allMuli && !allShli)
+      return;
+
+    if (allMuli) {
+      Value firstFactor = candidates[0].factor;
+      if (!llvm::all_of(candidates, [&](const Candidate &c) {
+            return c.factor == firstFactor;
+          }))
+        return;
+    } else {
+      int64_t firstShift = candidates[0].shiftAmount;
+      if (!llvm::all_of(candidates, [&](const Candidate &c) {
+            return c.shiftAmount == firstShift;
+          }))
         return;
     }
 
-    // Compute init values and increments before the loop.
+    // Phase 3: IV-dead check (correctness requirement).
+    // The IV must have no surviving uses after erasing the candidate ops,
+    // because the transformation changes the IV's value space.
+    llvm::DenseSet<Operation *> erasedOps;
+    for (auto &c : candidates)
+      erasedOps.insert(c.op);
+    if (!isIVDeadAfterErasure(forOp.getInductionVar(), erasedOps))
+      return;
+
+    // Phase 4: Bounds transformation.
+    // Fold the multiply factor into the loop bounds, eliminating
+    // per-iteration multiplies without adding loop-carried variables.
     rewriter.setInsertionPoint(forOp);
     Location loc = forOp.getLoc();
     Value lb = forOp.getLowerBound();
+    Value ub = forOp.getUpperBound();
     Value step = forOp.getStep();
 
-    SmallVector<Value> initValues;
-    SmallVector<Value> increments;
-
-    for (auto &c : candidates) {
-      Type resultType = c.op->getResult(0).getType();
-
-      // Get or materialize the loop-invariant factor.
-      Value factor;
-      if (c.factor) {
-        factor = c.factor;
-      } else {
-        // shli: factor = 1 << shiftAmount
-        int64_t factorVal = 1LL << c.shiftAmount;
-        factor = arith::ConstantOp::create(
-            rewriter, loc, resultType,
-            rewriter.getIntegerAttr(resultType, factorVal));
-      }
-
-      // init = cast(lb) * factor  (if lb==0 → just 0)
-      Value init;
-      if (isConstantZero(lb)) {
-        init = arith::ConstantOp::create(rewriter, loc, resultType,
-                                         rewriter.getZeroAttr(resultType));
-      } else {
-        Value lbCast =
-            createIndexCast(rewriter, loc, lb, resultType, c.ivOrCast);
-        init = arith::MulIOp::create(rewriter, loc, lbCast, factor);
-      }
-
-      // Add offset to init if present.
-      if (c.offset) {
-        if (isConstantZero(lb))
-          init = c.offset; // 0 * factor + offset = offset
-        else
-          init = arith::AddIOp::create(rewriter, loc, init, c.offset);
-      }
-
-      // increment = cast(step) * factor  (if step==1 → just factor)
-      Value increment;
-      if (isConstantOne(step)) {
-        increment = factor;
-      } else {
-        Value stepCast =
-            createIndexCast(rewriter, loc, step, resultType, c.ivOrCast);
-        increment = arith::MulIOp::create(rewriter, loc, stepCast, factor);
-      }
-
-      initValues.push_back(init);
-      increments.push_back(increment);
+    // Materialize factor as index type.
+    Value factorIndex;
+    if (allMuli) {
+      Value factor = candidates[0].factor;
+      if (factor.getType().isIndex())
+        factorIndex = factor;
+      else
+        factorIndex = arith::IndexCastOp::create(
+            rewriter, loc, rewriter.getIndexType(), factor);
+    } else {
+      int64_t factorVal = 1LL << candidates[0].shiftAmount;
+      factorIndex =
+          arith::ConstantOp::create(rewriter, loc, rewriter.getIndexType(),
+                                    rewriter.getIndexAttr(factorVal));
     }
 
-    // Add accumulator iter_args.
-    unsigned numOrigIterArgs = forOp.getNumRegionIterArgs();
-    auto newYieldFn =
-        [&](OpBuilder &b, Location yieldLoc,
-            ArrayRef<BlockArgument> newBbArgs) -> SmallVector<Value> {
-      SmallVector<Value> yieldValues;
-      for (auto [bbArg, inc] : llvm::zip(newBbArgs, increments)) {
-        Value next = arith::AddIOp::create(b, yieldLoc, bbArg, inc);
-        yieldValues.push_back(next);
-      }
-      return yieldValues;
-    };
+    // Compute new bounds: lb*K, ub*K, step*K.
+    Value newLb = lb;
+    if (!isConstantZero(lb))
+      newLb = arith::MulIOp::create(rewriter, loc, lb, factorIndex);
 
-    auto result = forOp.replaceWithAdditionalYields(
-        rewriter, initValues, /*replaceInitOperandUsesInLoop=*/false,
-        newYieldFn);
-    if (failed(result))
-      return;
+    Value newUb = arith::MulIOp::create(rewriter, loc, ub, factorIndex);
 
-    auto newForOp = cast<scf::ForOp>(*result);
+    Value newStep;
+    if (isConstantOne(step))
+      newStep = factorIndex;
+    else
+      newStep = arith::MulIOp::create(rewriter, loc, step, factorIndex);
 
-    // Replace candidate uses with accumulator block args and erase dead ops.
-    for (auto [i, c] : llvm::enumerate(candidates)) {
-      BlockArgument acc = newForOp.getRegionIterArgs()[numOrigIterArgs + i];
-      rewriter.replaceAllUsesWith(c.op->getResult(0), acc);
+    // Modify loop bounds in-place.
+    forOp->setOperand(0, newLb);
+    forOp->setOperand(1, newUb);
+    forOp->setOperand(2, newStep);
+
+    // Replace each muli/shli result with its ivOrCast operand.
+    // The IV now carries the factor via scaled bounds.
+    for (auto &c : candidates) {
+      rewriter.replaceAllUsesWith(c.op->getResult(0), c.ivOrCast);
       rewriter.eraseOp(c.op);
     }
-
-    // Erase absorbed muli/shli ops (all their uses were removed above).
-    for (auto *op : absorbedOps)
-      rewriter.eraseOp(op);
   }
 };
 
