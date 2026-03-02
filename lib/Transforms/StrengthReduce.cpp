@@ -44,6 +44,14 @@ public:
   }
 
 private:
+  /// A muli or shli of the IV with a loop-invariant factor.
+  struct Candidate {
+    Operation *op;            // MulIOp or ShLIOp
+    Value ivOrCast;           // IV or cast chain of IV
+    Value factor;             // loop-invariant factor (null for shli)
+    int64_t shiftAmount = -1; // for shli: bit count
+  };
+
   /// Check if v is the induction variable or a (chain of) cast(s) of it.
   static bool isIVOrCast(Value v, scf::ForOp forOp) {
     Value iv = forOp.getInductionVar();
@@ -130,7 +138,10 @@ private:
   /// dead after those ops are erased — no register pressure increase.
   static bool
   isIVDeadAfterErasure(Value iv, const llvm::DenseSet<Operation *> &erasedOps) {
+    llvm::DenseSet<Value> visited;
     std::function<bool(Value)> allUsesCovered = [&](Value v) -> bool {
+      if (!visited.insert(v).second)
+        return true; // already verified or in progress — treat as covered
       for (auto &use : v.getUses()) {
         Operation *user = use.getOwner();
         if (erasedOps.contains(user))
@@ -362,81 +373,42 @@ private:
     }
   }
 
-  void strengthReduceLoop(IRRewriter &rewriter, scf::ForOp forOp) {
-    distributeMultiplyOverIVExpr(rewriter, forOp);
-    foldInvariantAddiChains(rewriter, forOp);
-
-    struct Candidate {
-      Operation *op;            // MulIOp or ShLIOp
-      Value ivOrCast;           // IV or cast chain of IV
-      Value factor;             // loop-invariant factor (null for shli)
-      int64_t shiftAmount = -1; // for shli: bit count
-    };
-
-    // Phase 1: Detect muli/shli candidates.
-    SmallVector<Candidate> candidates;
-
-    for (auto &op : forOp.getBody()->getOperations()) {
-      if (auto mulOp = dyn_cast<arith::MulIOp>(&op)) {
-        Value lhs = mulOp.getLhs();
-        Value rhs = mulOp.getRhs();
-        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs))
-          candidates.push_back({mulOp, lhs, rhs, -1});
-        else if (isIVOrCast(rhs, forOp) && forOp.isDefinedOutsideOfLoop(lhs))
-          candidates.push_back({mulOp, rhs, lhs, -1});
-        continue;
-      }
-      if (auto shlOp = dyn_cast<arith::ShLIOp>(&op)) {
-        Value lhs = shlOp.getLhs();
-        Value rhs = shlOp.getRhs();
-        if (isIVOrCast(lhs, forOp)) {
-          if (auto constOp = rhs.getDefiningOp<arith::ConstantOp>())
-            if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
-              candidates.push_back(
-                  {shlOp, lhs, Value(), intAttr.getValue().getSExtValue()});
-        }
-        continue;
-      }
-    }
-
-    if (candidates.empty())
-      return;
-
-    // Phase 2: Same-factor check — all candidates must share the same factor.
+  /// Try bounds-based reduction: fold the multiply factor into the loop
+  /// bounds, eliminating per-iteration multiplies without new iter_args.
+  /// Requires all candidates to share the same factor and the IV to be dead.
+  bool tryBoundsBasedReduction(IRRewriter &rewriter, scf::ForOp forOp,
+                               SmallVector<Candidate> &candidates) {
+    // Same-factor check — all candidates must share the same factor.
     bool allMuli =
         llvm::all_of(candidates, [](const Candidate &c) { return !!c.factor; });
     bool allShli = llvm::all_of(
         candidates, [](const Candidate &c) { return c.shiftAmount >= 0; });
 
     if (!allMuli && !allShli)
-      return;
+      return false;
 
     if (allMuli) {
       Value firstFactor = candidates[0].factor;
       if (!llvm::all_of(candidates, [&](const Candidate &c) {
             return c.factor == firstFactor;
           }))
-        return;
+        return false;
     } else {
       int64_t firstShift = candidates[0].shiftAmount;
       if (!llvm::all_of(candidates, [&](const Candidate &c) {
             return c.shiftAmount == firstShift;
           }))
-        return;
+        return false;
     }
 
-    // Phase 3: IV-dead check (correctness requirement).
-    // The IV must have no surviving uses after erasing the candidate ops,
-    // because the transformation changes the IV's value space.
+    // IV-dead check (correctness requirement for bounds transformation).
     llvm::DenseSet<Operation *> erasedOps;
     for (auto &c : candidates)
       erasedOps.insert(c.op);
     if (!isIVDeadAfterErasure(forOp.getInductionVar(), erasedOps))
-      return;
+      return false;
 
-    // Phase 4: Bounds transformation.
-    // Fold the multiply factor into the loop bounds, eliminating
-    // per-iteration multiplies without adding loop-carried variables.
+    // Bounds transformation: fold the factor into lb/ub/step.
     rewriter.setInsertionPoint(forOp);
     Location loc = forOp.getLoc();
     Value lb = forOp.getLowerBound();
@@ -478,11 +450,225 @@ private:
     forOp->setOperand(2, newStep);
 
     // Replace each muli/shli result with its ivOrCast operand.
-    // The IV now carries the factor via scaled bounds.
     for (auto &c : candidates) {
       rewriter.replaceAllUsesWith(c.op->getResult(0), c.ivOrCast);
       rewriter.eraseOp(c.op);
     }
+
+    return true;
+  }
+
+  /// Accumulator-based reduction: convert each muli(iv, K) into a
+  /// loop-carried accumulator that increments by K*step each iteration.
+  /// Fires when bounds-based reduction cannot apply (different factors
+  /// or IV still alive).
+  bool accumulatorReduceLoop(IRRewriter &rewriter, scf::ForOp forOp,
+                             SmallVector<Candidate> &candidates) {
+    // Filter out candidates with no uses — adding an accumulator for a
+    // dead multiply would be wasteful.
+    llvm::erase_if(candidates, [](const Candidate &c) {
+      return c.op->getResult(0).use_empty();
+    });
+    if (candidates.empty())
+      return false;
+
+    // Group candidates by factor.
+    struct FactorGroup {
+      SmallVector<size_t> candidateIndices;
+      Value factor;
+      int64_t shiftAmount;
+      Value init;
+      Value increment;
+    };
+
+    SmallVector<FactorGroup> groups;
+    DenseMap<Value, size_t> muliFactorToGroup;
+    DenseMap<int64_t, size_t> shliAmountToGroup;
+
+    for (size_t i = 0; i < candidates.size(); ++i) {
+      auto &c = candidates[i];
+      if (c.factor) {
+        auto it = muliFactorToGroup.find(c.factor);
+        if (it != muliFactorToGroup.end()) {
+          groups[it->second].candidateIndices.push_back(i);
+        } else {
+          muliFactorToGroup[c.factor] = groups.size();
+          groups.push_back({{i}, c.factor, -1, Value(), Value()});
+        }
+      } else {
+        auto it = shliAmountToGroup.find(c.shiftAmount);
+        if (it != shliAmountToGroup.end()) {
+          groups[it->second].candidateIndices.push_back(i);
+        } else {
+          shliAmountToGroup[c.shiftAmount] = groups.size();
+          groups.push_back({{i}, Value(), c.shiftAmount, Value(), Value()});
+        }
+      }
+    }
+
+    // Verify all candidates in each group share the same result type.
+    for (auto &group : groups) {
+      Type expected =
+          candidates[group.candidateIndices[0]].op->getResult(0).getType();
+      for (size_t idx : group.candidateIndices)
+        assert(candidates[idx].op->getResult(0).getType() == expected &&
+               "all candidates in a factor group must share the same type");
+    }
+
+    // Register pressure check: only apply if root count does not increase.
+    // delta = (roots added) - (roots removed).
+    int delta = 0;
+    for (auto &group : groups) {
+      delta -= static_cast<int>(group.candidateIndices.size());
+      delta += 1; // one accumulator per group
+    }
+    llvm::DenseSet<Operation *> erasedOps;
+    for (auto &c : candidates)
+      erasedOps.insert(c.op);
+    if (isIVDeadAfterErasure(forOp.getInductionVar(), erasedOps))
+      delta -= 1;
+    if (delta > 0)
+      return false;
+
+    // Compute init/increment for each group.
+    Location loc = forOp.getLoc();
+    Value lb = forOp.getLowerBound();
+    Value step = forOp.getStep();
+
+    for (auto &group : groups) {
+      auto &exampleCandidate = candidates[group.candidateIndices[0]];
+      Type resultType = exampleCandidate.op->getResult(0).getType();
+      Value exampleCast = exampleCandidate.ivOrCast;
+
+      rewriter.setInsertionPoint(forOp);
+
+      if (group.factor) {
+        // muli group: init = cast(lb) * factor, incr = cast(step) * factor
+        if (isConstantZero(lb)) {
+          group.init = arith::ConstantOp::create(
+              rewriter, loc, rewriter.getIntegerAttr(resultType, 0));
+        } else {
+          Value lbCasted =
+              createIndexCast(rewriter, loc, lb, resultType, exampleCast);
+          group.init =
+              arith::MulIOp::create(rewriter, loc, lbCasted, group.factor);
+        }
+
+        if (isConstantOne(step)) {
+          group.increment = group.factor;
+        } else {
+          Value stepCasted =
+              createIndexCast(rewriter, loc, step, resultType, exampleCast);
+          group.increment =
+              arith::MulIOp::create(rewriter, loc, stepCasted, group.factor);
+        }
+      } else {
+        // shli group: init = cast(lb) << N, incr = cast(step) << N
+        if (isConstantZero(lb)) {
+          group.init = arith::ConstantOp::create(
+              rewriter, loc, rewriter.getIntegerAttr(resultType, 0));
+        } else {
+          Value lbCasted =
+              createIndexCast(rewriter, loc, lb, resultType, exampleCast);
+          Value shiftConst = arith::ConstantOp::create(
+              rewriter, loc,
+              rewriter.getIntegerAttr(resultType, group.shiftAmount));
+          group.init =
+              arith::ShLIOp::create(rewriter, loc, lbCasted, shiftConst);
+        }
+
+        if (isConstantOne(step)) {
+          group.increment = arith::ConstantOp::create(
+              rewriter, loc,
+              rewriter.getIntegerAttr(resultType, 1LL << group.shiftAmount));
+        } else {
+          Value stepCasted =
+              createIndexCast(rewriter, loc, step, resultType, exampleCast);
+          Value shiftConst = arith::ConstantOp::create(
+              rewriter, loc,
+              rewriter.getIntegerAttr(resultType, group.shiftAmount));
+          group.increment =
+              arith::ShLIOp::create(rewriter, loc, stepCasted, shiftConst);
+        }
+      }
+    }
+
+    // Collect init values.
+    SmallVector<Value> initValues;
+    for (auto &group : groups)
+      initValues.push_back(group.init);
+
+    // Add accumulators via replaceWithAdditionalYields.
+    auto newYieldFn =
+        [&](OpBuilder &b, Location yieldLoc,
+            ArrayRef<BlockArgument> newBbArgs) -> SmallVector<Value> {
+      SmallVector<Value> yieldValues;
+      for (auto [i, bbArg] : llvm::enumerate(newBbArgs)) {
+        // Replace all multiply results in this group with the accumulator.
+        for (size_t idx : groups[i].candidateIndices)
+          rewriter.replaceAllUsesWith(candidates[idx].op->getResult(0), bbArg);
+        // Yield: acc + increment.
+        Value next =
+            arith::AddIOp::create(b, yieldLoc, bbArg, groups[i].increment);
+        yieldValues.push_back(next);
+      }
+      return yieldValues;
+    };
+
+    auto result = forOp.replaceWithAdditionalYields(
+        rewriter, initValues, /*replaceInitOperandUsesInLoop=*/false,
+        newYieldFn);
+    if (failed(result))
+      return false;
+
+    // Erase dead multiply ops.
+    for (auto &c : candidates) {
+      if (c.op->use_empty())
+        rewriter.eraseOp(c.op);
+    }
+
+    return true;
+  }
+
+  void strengthReduceLoop(IRRewriter &rewriter, scf::ForOp forOp) {
+    distributeMultiplyOverIVExpr(rewriter, forOp);
+    foldInvariantAddiChains(rewriter, forOp);
+
+    // Phase 1: Detect muli/shli candidates.
+    SmallVector<Candidate> candidates;
+
+    for (auto &op : forOp.getBody()->getOperations()) {
+      if (auto mulOp = dyn_cast<arith::MulIOp>(&op)) {
+        Value lhs = mulOp.getLhs();
+        Value rhs = mulOp.getRhs();
+        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs))
+          candidates.push_back({mulOp, lhs, rhs, -1});
+        else if (isIVOrCast(rhs, forOp) && forOp.isDefinedOutsideOfLoop(lhs))
+          candidates.push_back({mulOp, rhs, lhs, -1});
+        continue;
+      }
+      if (auto shlOp = dyn_cast<arith::ShLIOp>(&op)) {
+        Value lhs = shlOp.getLhs();
+        Value rhs = shlOp.getRhs();
+        if (isIVOrCast(lhs, forOp)) {
+          if (auto constOp = rhs.getDefiningOp<arith::ConstantOp>())
+            if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
+              candidates.push_back(
+                  {shlOp, lhs, Value(), intAttr.getValue().getSExtValue()});
+        }
+        continue;
+      }
+    }
+
+    if (candidates.empty())
+      return;
+
+    // Try bounds-based reduction first (preferred: zero new iter_args).
+    if (tryBoundsBasedReduction(rewriter, forOp, candidates))
+      return;
+
+    // Fallback: accumulator-based reduction.
+    accumulatorReduceLoop(rewriter, forOp, candidates);
   }
 };
 

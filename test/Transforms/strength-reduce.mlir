@@ -690,13 +690,17 @@ func.func @distribute_nested_subi_addi(%n: index, %outer_inv: index) {
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// Test 27: Negative — different factors in same loop (no transformation)
+// Test 27: Different factors — accumulator-based reduction
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @different_factors
-// CHECK:         scf.for
-// CHECK:           arith.muli
-// CHECK:           arith.muli
+// CHECK:         scf.for {{.*}} iter_args(%[[ACC1:.*]] = %{{.*}}, %[[ACC2:.*]] = %{{.*}}) -> (i32, i32) {
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC1]])
+// CHECK:           call @use_i32(%[[ACC2]])
+// CHECK:           %[[NEXT1:.*]] = arith.addi %[[ACC1]]
+// CHECK:           %[[NEXT2:.*]] = arith.addi %[[ACC2]]
+// CHECK:           scf.yield %[[NEXT1]], %[[NEXT2]]
 // CHECK:         }
 func.func @different_factors(%n: index) {
   %c0 = arith.constant 0 : index
@@ -714,12 +718,16 @@ func.func @different_factors(%n: index) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test 28: Negative — IV cast has non-candidate use (IV still live)
+// Test 28: IV cast still live — accumulator-based reduction
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @iv_cast_still_live
-// CHECK:         scf.for
-// CHECK:           arith.muli
+// CHECK:         scf.for {{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32) {
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           call @use_i32(
+// CHECK:           arith.addi %[[ACC]],
+// CHECK:           scf.yield
 // CHECK:         }
 func.func @iv_cast_still_live(%n: index) {
   %c0 = arith.constant 0 : index
@@ -736,12 +744,16 @@ func.func @iv_cast_still_live(%n: index) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test 29: Negative — IV has direct non-candidate use
+// Test 29: IV has direct non-candidate use — accumulator-based reduction
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @iv_direct_use
-// CHECK:         scf.for
-// CHECK:           arith.muli
+// CHECK:         scf.for {{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (index) {
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_index(%[[ACC]])
+// CHECK:           call @use_index(
+// CHECK:           arith.addi %[[ACC]],
+// CHECK:           scf.yield
 // CHECK:         }
 func.func @iv_direct_use(%n: index) {
   %c0 = arith.constant 0 : index
@@ -858,6 +870,95 @@ func.func @distribute_negative_variant(%n: index) {
     %variant = arith.addi %cast, %cast : i32
     %mul = arith.muli %variant, %c8 : i32
     func.call @use_i32(%mul) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 35: Mixed muli+shli — separate accumulators
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @mixed_muli_shli
+// CHECK:         scf.for {{.*}} iter_args(%[[ACC1:.*]] = %{{.*}}, %[[ACC2:.*]] = %{{.*}}) -> (i32, i32) {
+// CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.shli
+// CHECK:           call @use_i32(%[[ACC1]])
+// CHECK:           call @use_i32(%[[ACC2]])
+// CHECK:           arith.addi %[[ACC1]],
+// CHECK:           arith.addi %[[ACC2]],
+// CHECK:           scf.yield
+// CHECK:         }
+func.func @mixed_muli_shli(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : i32
+  %c2 = arith.constant 2 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %cast = arith.index_cast %i : index to i32
+    %mul = arith.muli %cast, %c4 : i32
+    %shl = arith.shli %cast, %c2 : i32
+    func.call @use_i32(%mul) : (i32) -> ()
+    func.call @use_i32(%shl) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 36: Accumulator with existing iter_args
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @accum_with_existing_iter_args
+// CHECK:         scf.for {{.*}} iter_args(%[[SUM:.*]] = %{{.*}}, %[[ACC:.*]] = %{{.*}}) -> (i32, i32) {
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           call @use_i32(
+// CHECK:           arith.addi %[[SUM]]
+// CHECK:           arith.addi %[[ACC]]
+// CHECK:           scf.yield
+// CHECK:         }
+func.func @accum_with_existing_iter_args(%n: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : i32
+  %c8 = arith.constant 8 : i32
+  %init = arith.constant 0 : i32
+  %result = scf.for %i = %c0 to %n step %c1 iter_args(%sum = %init) -> (i32) {
+    %cast = arith.index_cast %i : index to i32
+    %mul = arith.muli %cast, %c4 : i32
+    func.call @use_i32(%mul) : (i32) -> ()
+    // Extra use of cast — prevents bounds-based
+    func.call @use_i32(%cast) : (i32) -> ()
+    %next = arith.addi %sum, %c8 : i32
+    scf.yield %next : i32
+  }
+  func.call @use_i32(%result) : (i32) -> ()
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 37: Accumulator with nonzero lb and non-unit step
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @accum_nonzero_lb_step
+// CHECK:         scf.for {{.*}} iter_args(%[[ACC1:.*]] = %{{.*}}, %[[ACC2:.*]] = %{{.*}}) -> (i32, i32) {
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC1]])
+// CHECK:           call @use_i32(%[[ACC2]])
+// CHECK:           arith.addi %[[ACC1]]
+// CHECK:           arith.addi %[[ACC2]]
+// CHECK:           scf.yield
+// CHECK:         }
+func.func @accum_nonzero_lb_step(%n: index) {
+  %c2 = arith.constant 2 : index
+  %c3 = arith.constant 3 : index
+  %c4 = arith.constant 4 : i32
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c2 to %n step %c3 {
+    %cast = arith.index_cast %i : index to i32
+    %mul1 = arith.muli %cast, %c4 : i32
+    %mul2 = arith.muli %cast, %c8 : i32
+    func.call @use_i32(%mul1) : (i32) -> ()
+    func.call @use_i32(%mul2) : (i32) -> ()
   }
   return
 }
