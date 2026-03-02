@@ -19,6 +19,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 
 namespace mlir::transforms {
@@ -122,6 +123,31 @@ private:
       }
       return v;
     }
+  }
+
+  /// Check if all uses of the IV lead only to ops in erasedOps
+  /// (transitively through any intermediate ops).  If so, the IV becomes
+  /// dead after those ops are erased — no register pressure increase.
+  static bool
+  isIVDeadAfterErasure(Value iv, const llvm::DenseSet<Operation *> &erasedOps) {
+    std::function<bool(Value)> allUsesCovered = [&](Value v) -> bool {
+      for (auto &use : v.getUses()) {
+        Operation *user = use.getOwner();
+        if (erasedOps.contains(user))
+          continue;
+        // If all of this user's results are transitively covered, the
+        // user is dead once erasedOps are removed.  Guard on
+        // getNumResults() > 0 so terminators and side-effecting void
+        // ops (e.g. func.call) aren't skipped.
+        if (user->getNumResults() > 0 &&
+            llvm::all_of(user->getResults(),
+                         [&](Value r) { return allUsesCovered(r); }))
+          continue;
+        return false; // uncovered use
+      }
+      return true;
+    };
+    return allUsesCovered(iv);
   }
 
   /// Recursively decompose `val` as `IV + offset` where offset is
@@ -439,6 +465,18 @@ private:
 
     if (candidates.empty())
       return;
+
+    // Gate on IV liveness: only proceed when the IV becomes dead after
+    // replacement, unless aggressive mode is enabled.
+    if (!aggressive) {
+      llvm::DenseSet<Operation *> erasedOps;
+      for (auto &c : candidates)
+        erasedOps.insert(c.op);
+      for (auto *op : absorbedOps)
+        erasedOps.insert(op);
+      if (!isIVDeadAfterErasure(forOp.getInductionVar(), erasedOps))
+        return;
+    }
 
     // Compute init values and increments before the loop.
     rewriter.setInsertionPoint(forOp);
