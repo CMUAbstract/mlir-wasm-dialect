@@ -127,12 +127,13 @@ if [[ "$COMPILER" == "wami" ]]; then
       func.func( \
         affine-scalrep, \
         affine-loop-invariant-code-motion, \
-        affine-loop-normalize, \
-        affine-loop-unroll{unroll-factor=4} \
+        affine-loop-normalize \
       ), \
       lower-affine, \
       symbol-dce, \
       canonicalize, \
+      promote-loop-accumulators, \
+      scf-loop-unroll{unroll-factor=4}, \
       sccp, \
       loop-invariant-code-motion, \
       loop-invariant-subset-hoisting, \

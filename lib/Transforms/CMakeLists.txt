@@ -1,5 +1,7 @@
 add_mlir_dialect_library(
   MLIRLocalTransforms
+  LoopAccumulatorPromotion.cpp
+  ScfLoopUnroll.cpp
   StrengthReduce.cpp
   ADDITIONAL_HEADER_DIRS
   ${PROJECT_SOURCE_DIR}/include/Transforms
@@ -9,5 +11,7 @@ add_mlir_dialect_library(
   PUBLIC
   MLIRIR
   MLIRArithDialect
+  MLIRMemRefDialect
   MLIRSCFDialect
+  MLIRSCFUtils
   MLIRPass)
