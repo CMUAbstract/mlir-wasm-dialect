@@ -146,6 +146,9 @@ if [[ "$COMPILER" == "wami" ]]; then
       loop-invariant-subset-hoisting, \
       cse, \
       control-flow-sink, \
+      strength-reduce, \
+      canonicalize, \
+      cse, \
       wami-convert-scf, \
       wami-convert-arith, \
       wami-convert-math, \
