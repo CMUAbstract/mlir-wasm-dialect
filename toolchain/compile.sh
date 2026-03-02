@@ -101,13 +101,10 @@ affine-loop-invariant-code-motion, \
 affine-loop-normalize"
 
 # Post-affine optimizations (on scf.for / memref.load / memref.store).
-# Includes SCF-level accumulator promotion as fallback for patterns the
-# affine pass cannot handle, followed by loop unrolling.
 POST_AFFINE_OPTS="\
 symbol-dce, \
 canonicalize, \
 cse, \
-promote-loop-accumulators, \
 scf-loop-unroll{unroll-factor=4}"
 
 # Standard optimization cleanup sequence (used after each lowering phase).
