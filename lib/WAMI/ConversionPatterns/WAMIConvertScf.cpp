@@ -385,12 +385,16 @@ private:
       loopIterArgs.push_back(loopBody->getArgument(i));
 
     // Exit check FIRST: ge_si i, ub → br_if @exit
+    // Pass loopIterArgs (current iteration's values), NOT blockIterArgs
+    // (initial values from BlockOp entry). The loop body block arguments are
+    // updated each iteration via the back-edge, so they hold the accumulated
+    // result when the exit condition fires.
     Value exitCond =
         wasmssa::GeSIOp::create(rewriter, loc, loopInductionVar, p.upperBound);
     Block *continueBlock = rewriter.createBlock(&loopOp.getBody());
     rewriter.setInsertionPointToEnd(loopBody);
     wasmssa::BranchIfOp::create(rewriter, loc, exitCond,
-                                /*exitLevel=*/1, blockIterArgs, continueBlock);
+                                /*exitLevel=*/1, loopIterArgs, continueBlock);
 
     // Body in continueBlock
     rewriter.setInsertionPointToEnd(continueBlock);
