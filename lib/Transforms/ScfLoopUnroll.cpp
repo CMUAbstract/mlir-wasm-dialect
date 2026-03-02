@@ -33,11 +33,18 @@ public:
 
     auto module = getOperation();
 
-    // Collect all ForOps, then process inner-first (reverse of pre-order).
-    SmallVector<scf::ForOp> forOps;
-    module.walk([&](scf::ForOp forOp) { forOps.push_back(forOp); });
+    // Collect only innermost ForOps (those whose body contains no nested
+    // scf.for). Unrolling outer loops causes massive code bloat with minimal
+    // benefit since outer loop overhead is negligible relative to inner work.
+    SmallVector<scf::ForOp> innermostOps;
+    module.walk([&](scf::ForOp forOp) {
+      bool hasNestedFor = false;
+      forOp.getBody()->walk([&](scf::ForOp) { hasNestedFor = true; });
+      if (!hasNestedFor)
+        innermostOps.push_back(forOp);
+    });
 
-    for (auto forOp : llvm::reverse(forOps))
+    for (auto forOp : innermostOps)
       (void)loopUnrollByFactor(forOp, unrollFactor);
   }
 };
