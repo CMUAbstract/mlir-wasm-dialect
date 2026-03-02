@@ -121,33 +121,38 @@ if [[ "$COMPILER" == "wami" ]]; then
     # Phase 5: Lower remaining dialects (scf, arith, math, func)
     echo "Converting $INPUT_MLIR to WasmStack..."
     "$REPO_ROOT/build/bin/wasm-opt" \
-    --inline \
-    --canonicalize \
-    --affine-loop-invariant-code-motion \
-    --affine-loop-normalize \
-    --affine-loop-unroll="unroll-factor=4" \
-    --lower-affine \
-    --symbol-dce \
-    --canonicalize \
-    --sccp \
-    --loop-invariant-code-motion \
-    --loop-invariant-subset-hoisting \
-    --cse \
-    --control-flow-sink \
-    --wami-convert-memref \
-    --canonicalize \
-    --sccp \
-    --loop-invariant-code-motion \
-    --loop-invariant-subset-hoisting \
-    --cse \
-    --control-flow-sink \
-    --wami-convert-scf \
-    --wami-convert-arith \
-    --wami-convert-math \
-    --wami-convert-func \
-    --reconcile-unrealized-casts \
-    --convert-to-wasmstack \
-    --verify-wasmstack \
+    --pass-pipeline="builtin.module( \
+      inline, \
+      canonicalize, \
+      func.func( \
+        affine-scalrep, \
+        affine-loop-invariant-code-motion, \
+        affine-loop-normalize, \
+        affine-loop-unroll{unroll-factor=4} \
+      ), \
+      lower-affine, \
+      symbol-dce, \
+      canonicalize, \
+      sccp, \
+      loop-invariant-code-motion, \
+      loop-invariant-subset-hoisting, \
+      cse, \
+      control-flow-sink, \
+      wami-convert-memref, \
+      canonicalize, \
+      sccp, \
+      loop-invariant-code-motion, \
+      loop-invariant-subset-hoisting, \
+      cse, \
+      control-flow-sink, \
+      wami-convert-scf, \
+      wami-convert-arith, \
+      wami-convert-math, \
+      wami-convert-func, \
+      reconcile-unrealized-casts, \
+      convert-to-wasmstack, \
+      verify-wasmstack \
+    )" \
         "$INPUT_MLIR" \
         -o "${OUTPUT_WASMSTACK_MLIR}"
 
@@ -187,34 +192,45 @@ elif [[ "$COMPILER" == "llvm" ]]; then
 
     echo "Converting $INPUT_MLIR to LLVM dialect..."
     mlir-opt "$INPUT_MLIR" \
-    --affine-loop-invariant-code-motion \
-    --affine-loop-normalize \
-    --lower-affine \
-    --canonicalize \
-    --sccp \
-    --loop-invariant-code-motion \
-    --loop-invariant-subset-hoisting \
-    --cse \
-    --control-flow-sink \
-    --convert-scf-to-cf \
-    --convert-arith-to-llvm="index-bitwidth=32" \
-    --convert-func-to-llvm="index-bitwidth=32" \
-    --memref-expand --expand-strided-metadata \
-    --finalize-memref-to-llvm="index-bitwidth=32" \
-    --convert-cf-to-llvm="index-bitwidth=32" \
-    --canonicalize \
-    --sccp \
-    --loop-invariant-code-motion \
-    --loop-invariant-subset-hoisting \
-    --cse \
-    --control-flow-sink \
-    --convert-to-llvm --reconcile-unrealized-casts \
-    --canonicalize \
-    --sccp \
-    --loop-invariant-code-motion \
-    --loop-invariant-subset-hoisting \
-    --cse \
-    --control-flow-sink \
+    --pass-pipeline="builtin.module( \
+      inline, \
+      canonicalize, \
+      func.func( \
+        affine-scalrep, \
+        affine-loop-invariant-code-motion, \
+        affine-loop-normalize, \
+        affine-loop-unroll{unroll-factor=4} \
+      ), \
+      lower-affine, \
+      symbol-dce, \
+      canonicalize, \
+      sccp, \
+      loop-invariant-code-motion, \
+      loop-invariant-subset-hoisting, \
+      cse, \
+      control-flow-sink, \
+      convert-scf-to-cf, \
+      convert-arith-to-llvm{index-bitwidth=32}, \
+      convert-func-to-llvm{index-bitwidth=32}, \
+      memref-expand, \
+      expand-strided-metadata, \
+      finalize-memref-to-llvm{index-bitwidth=32}, \
+      convert-cf-to-llvm{index-bitwidth=32}, \
+      canonicalize, \
+      sccp, \
+      loop-invariant-code-motion, \
+      loop-invariant-subset-hoisting, \
+      cse, \
+      control-flow-sink, \
+      convert-to-llvm, \
+      reconcile-unrealized-casts, \
+      canonicalize, \
+      sccp, \
+      loop-invariant-code-motion, \
+      loop-invariant-subset-hoisting, \
+      cse, \
+      control-flow-sink \
+    )" \
     -o "$OUTPUT_LLVM_MLIR"
 
     echo "Translating $OUTPUT_LLVM_MLIR to LLVM IR (.ll)..."
@@ -271,6 +287,7 @@ if [[ "$COMPILER" == "wami" ]]; then
 elif [[ "$COMPILER" == "llvm" ]]; then
     echo "  - $OUTPUT_LLVM_MLIR (LLVM dialect MLIR)"
     echo "  - $OUTPUT_LL (LLVM IR)"
+    echo "  - $OUTPUT_OPT_LL (LLVM IR after opt -O3)"
     echo "  - $OUTPUT_OBJ (Object file)"
     echo "  - $OUTPUT_WAT (WAT format)"
 fi

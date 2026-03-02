@@ -16,6 +16,7 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -41,6 +42,7 @@ int main(int argc, char **argv) {
                   mlir::affine::AffineDialect, mlir::math::MathDialect,
                   mlir::wasmssa::WasmSSADialect, mlir::wami::WAMIDialect,
                   mlir::wasmstack::WasmStackDialect, mlir::LLVM::LLVMDialect>();
+  mlir::func::registerInlinerExtension(registry);
   // Add the following to include *all* MLIR Core dialects, or selectively
   // include what you need like above. You only need to register dialects that
   // will be *parsed* by the tool, not the one generated
