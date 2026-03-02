@@ -114,6 +114,40 @@ private:
     return lbAttr.getValue().slt(ubAttr.getValue());
   }
 
+  /// Try to find a preceding store to the same memref+indices before
+  /// `beforeOp`, with no intervening memory writes. Returns the stored
+  /// value if found (enabling store-to-load forwarding), nullptr otherwise.
+  static Value findPrecedingStoreValue(Operation *beforeOp, Value memref,
+                                       OperandRange indices) {
+    Operation *prev = beforeOp->getPrevNode();
+    while (prev) {
+      if (auto storeOp = dyn_cast<memref::StoreOp>(prev)) {
+        if (storeOp.getMemRef() == memref) {
+          auto storeIndices = storeOp.getIndices();
+          if (storeIndices.size() == indices.size() &&
+              std::equal(storeIndices.begin(), storeIndices.end(),
+                         indices.begin()))
+            return storeOp.getValueToStore();
+        }
+        // Store to different address — could alias, stop.
+        return nullptr;
+      }
+      // Loads don't write memory — safe to skip.
+      if (isa<memref::LoadOp>(prev)) {
+        prev = prev->getPrevNode();
+        continue;
+      }
+      // Skip memory-effect-free ops.
+      if (isMemoryEffectFree(prev)) {
+        prev = prev->getPrevNode();
+        continue;
+      }
+      // Unknown side effect — stop.
+      return nullptr;
+    }
+    return nullptr;
+  }
+
   /// Check if a memref value originates from memref.alloc (not a function arg
   /// or other aliasable source).
   static bool isFromAlloc(Value memref) {
@@ -238,14 +272,21 @@ private:
       return;
 
     // Perform the transformation for all candidates at once.
-    // Step 1: Hoist initial loads before the loop.
+    // Step 1: Determine initial values — either forward from a preceding
+    // store (avoiding a redundant load) or hoist a load before the loop.
     rewriter.setInsertionPoint(forOp);
     SmallVector<Value> initValues;
     for (auto &c : candidates) {
-      auto hoistedLoad =
-          memref::LoadOp::create(rewriter, c.loadOp.getLoc(),
-                                 c.loadOp.getMemRef(), c.loadOp.getIndices());
-      initValues.push_back(hoistedLoad);
+      Value forwarded = findPrecedingStoreValue(forOp, c.loadOp.getMemRef(),
+                                                c.loadOp.getIndices());
+      if (forwarded) {
+        initValues.push_back(forwarded);
+      } else {
+        auto hoistedLoad =
+            memref::LoadOp::create(rewriter, c.loadOp.getLoc(),
+                                   c.loadOp.getMemRef(), c.loadOp.getIndices());
+        initValues.push_back(hoistedLoad);
+      }
     }
 
     // Step 2: Add iter_args via replaceWithAdditionalYields.
