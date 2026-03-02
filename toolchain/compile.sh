@@ -88,12 +88,55 @@ if [[ -z "$WASI_SDK_PATH" ]]; then
     exit 1
 fi
 
+# ============================================================
+# Common MLIR pass pipeline fragments (shared by both compilers)
+# ============================================================
+
+# Affine-level optimizations (on affine.for / affine.load / affine.store).
+# Accumulator promotion must precede unrolling for best pattern detection.
+AFFINE_OPTS="\
+affine-scalrep, \
+affine-promote-accumulators, \
+affine-loop-invariant-code-motion, \
+affine-loop-normalize"
+
+# Post-affine optimizations (on scf.for / memref.load / memref.store).
+# Includes SCF-level accumulator promotion as fallback for patterns the
+# affine pass cannot handle, followed by loop unrolling.
+POST_AFFINE_OPTS="\
+symbol-dce, \
+canonicalize, \
+cse, \
+promote-loop-accumulators, \
+scf-loop-unroll{unroll-factor=4}"
+
+# Standard optimization cleanup sequence (used after each lowering phase).
+OPT_CLEANUP="\
+sccp, \
+loop-invariant-code-motion, \
+loop-invariant-subset-hoisting, \
+cse, \
+control-flow-sink"
+
+# Full shared preprocessing: standard MLIR → optimized SCF/memref MLIR.
+# Both compilers apply this pipeline via wasm-opt (which has the custom
+# accumulator promotion passes registered).
+SHARED_PREPROCESS="\
+inline, \
+canonicalize, \
+func.func($AFFINE_OPTS), \
+lower-affine, \
+$POST_AFFINE_OPTS, \
+$OPT_CLEANUP"
+
+# ============================================================
+# Build
+# ============================================================
+
 # Final output file
 OUTPUT_WASM="${OUTPUT_BASE}.wasm"
-
 OUTPUT_BEFOREOPT_WASM=""
 
-# Build the project
 if [ "$SKIP_BUILD" = true ]; then
     echo "Skipping project build (--skip-build)."
 else
@@ -101,6 +144,26 @@ else
     cmake --build "$REPO_ROOT/build"
     echo "Building the project... done"
 fi
+
+# ============================================================
+# Find wasm-ld binary (shared by both compilers)
+# ============================================================
+
+find_wasm_ld() {
+    WASM_LD_BIN="${WASM_LD_BIN:-}"
+    if [[ -z "$WASM_LD_BIN" ]]; then
+        if command -v wasm-ld > /dev/null 2>&1; then
+            WASM_LD_BIN="$(command -v wasm-ld)"
+        else
+            WASM_LD_BIN="$WASI_SDK_PATH/bin/wasm-ld"
+        fi
+    fi
+    echo "Using wasm-ld binary: $WASM_LD_BIN"
+}
+
+# ============================================================
+# Compiler-specific pipelines
+# ============================================================
 
 if [[ "$COMPILER" == "wami" ]]; then
     OUTPUT_WASMSTACK_MLIR="${OUTPUT_BASE}-wasmstack-1.mlir"
@@ -113,42 +176,19 @@ if [[ "$COMPILER" == "wami" ]]; then
         echo "Warning: --add-debug-functions is not supported in the new wami->wasmstack pipeline. Ignoring."
     fi
 
-    # Lower standard MLIR to WasmStack using the split pipeline.
-    # Phase 1: Inline + affine optimizations + unrolling
-    # Phase 2: Standard optimizations after affine lowering
-    # Phase 3: Lower memref (address math emitted as arith ops)
-    # Phase 4: Optimize address computations (CSE, LICM)
-    # Phase 5: Lower remaining dialects (scf, arith, math, func)
+    # Full WAMI pipeline: shared preprocessing + WAMI-specific lowering.
+    # Runs entirely in wasm-opt (single invocation).
+    #   Phase 1-2: Shared preprocessing (affine opts, accumulator promotion, unrolling)
+    #   Phase 3:   Lower memref (address math emitted as arith ops)
+    #   Phase 4:   Optimize address computations + strength reduction
+    #   Phase 5:   Lower remaining dialects (scf, arith, math, func) to WasmStack
     echo "Converting $INPUT_MLIR to WasmStack..."
     "$REPO_ROOT/build/bin/wasm-opt" \
     --pass-pipeline="builtin.module( \
-      inline, \
-      canonicalize, \
-      func.func( \
-        affine-scalrep, \
-        affine-promote-accumulators, \
-        affine-loop-invariant-code-motion, \
-        affine-loop-normalize \
-      ), \
-      lower-affine, \
-      symbol-dce, \
-      canonicalize, \
-      cse, \
-      promote-loop-accumulators, \
-      scf-loop-unroll{unroll-factor=4}, \
-      sccp, \
-      loop-invariant-code-motion, \
-      loop-invariant-subset-hoisting, \
-      cse, \
-      control-flow-sink, \
+      $SHARED_PREPROCESS, \
       wami-convert-memref, \
       canonicalize, \
-      sccp, \
-      cse, \
-      loop-invariant-code-motion, \
-      loop-invariant-subset-hoisting, \
-      cse, \
-      control-flow-sink, \
+      $OPT_CLEANUP, \
       strength-reduce, \
       canonicalize, \
       cse, \
@@ -163,24 +203,14 @@ if [[ "$COMPILER" == "wami" ]]; then
         "$INPUT_MLIR" \
         -o "${OUTPUT_WASMSTACK_MLIR}"
 
-    # Emit relocatable object file from WasmStack MLIR.
     echo "Emitting relocatable object from $OUTPUT_WASMSTACK_MLIR..."
     "$REPO_ROOT/build/bin/wasm-emit" "$OUTPUT_WASMSTACK_MLIR" --mlir-to-wasm --relocatable -o "$OUTPUT_OBJ"
 
     echo "Converting $OUTPUT_OBJ to WAT format..."
     wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_WAT"
 
-    # Link with libc to resolve malloc/free.
     echo "Linking the object file with stdlib using wasm-ld..."
-    WASM_LD_BIN="${WASM_LD_BIN:-}"
-    if [[ -z "$WASM_LD_BIN" ]]; then
-        if command -v wasm-ld > /dev/null 2>&1; then
-            WASM_LD_BIN="$(command -v wasm-ld)"
-        else
-            WASM_LD_BIN="$WASI_SDK_PATH/bin/wasm-ld"
-        fi
-    fi
-    echo "Using wasm-ld binary: $WASM_LD_BIN"
+    find_wasm_ld
     "$WASM_LD_BIN" --no-entry --allow-undefined \
     --export-memory --export=main --export=malloc --export=free \
     --export=__heap_end \
@@ -190,6 +220,7 @@ if [[ "$COMPILER" == "wami" ]]; then
     wasm2wat "$OUTPUT_BEFOREOPT_WASM" -o "$OUTPUT_BEFOREOPT_WAT"
 
 elif [[ "$COMPILER" == "llvm" ]]; then
+    OUTPUT_PREPROCESSED="${OUTPUT_BASE}-preprocessed-0.mlir" # after shared opts
     OUTPUT_LLVM_MLIR="${OUTPUT_BASE}-llvm-1.mlir" # MLIR LLVM IR dialect
     OUTPUT_LL="${OUTPUT_BASE}-2.ll" # LLVM IR
     OUTPUT_OBJ="${OUTPUT_BASE}-3.o" # object file
@@ -197,25 +228,20 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-5.wasm"
     OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-6.wat"
 
-    echo "Converting $INPUT_MLIR to LLVM dialect..."
-    mlir-opt "$INPUT_MLIR" \
+    # Step 1: Shared preprocessing via wasm-opt.
+    # Uses wasm-opt (not mlir-opt) because the custom accumulator promotion
+    # passes are registered there.
+    echo "Preprocessing $INPUT_MLIR (shared optimizations)..."
+    "$REPO_ROOT/build/bin/wasm-opt" \
+    --pass-pipeline="builtin.module($SHARED_PREPROCESS)" \
+        "$INPUT_MLIR" \
+        -o "$OUTPUT_PREPROCESSED"
+
+    # Step 2: LLVM-specific lowering via mlir-opt.
+    # Input is already optimized SCF/memref MLIR from step 1.
+    echo "Converting $OUTPUT_PREPROCESSED to LLVM dialect..."
+    mlir-opt "$OUTPUT_PREPROCESSED" \
     --pass-pipeline="builtin.module( \
-      inline, \
-      canonicalize, \
-      func.func( \
-        affine-scalrep, \
-        affine-loop-invariant-code-motion, \
-        affine-loop-normalize, \
-        affine-loop-unroll{unroll-factor=4} \
-      ), \
-      lower-affine, \
-      symbol-dce, \
-      canonicalize, \
-      sccp, \
-      loop-invariant-code-motion, \
-      loop-invariant-subset-hoisting, \
-      cse, \
-      control-flow-sink, \
       convert-scf-to-cf, \
       convert-arith-to-llvm{index-bitwidth=32}, \
       convert-func-to-llvm{index-bitwidth=32}, \
@@ -224,20 +250,11 @@ elif [[ "$COMPILER" == "llvm" ]]; then
       finalize-memref-to-llvm{index-bitwidth=32}, \
       convert-cf-to-llvm{index-bitwidth=32}, \
       canonicalize, \
-      sccp, \
-      cse, \
-      loop-invariant-code-motion, \
-      loop-invariant-subset-hoisting, \
-      cse, \
-      control-flow-sink, \
+      $OPT_CLEANUP, \
       convert-to-llvm, \
       reconcile-unrealized-casts, \
       canonicalize, \
-      sccp, \
-      loop-invariant-code-motion, \
-      loop-invariant-subset-hoisting, \
-      cse, \
-      control-flow-sink \
+      $OPT_CLEANUP \
     )" \
     -o "$OUTPUT_LLVM_MLIR"
 
@@ -255,19 +272,11 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_WAT"
 
     echo "Linking the object file with stdlib using wasm-ld..."
-    WASM_LD_BIN="${WASM_LD_BIN:-}"
-    if [[ -z "$WASM_LD_BIN" ]]; then
-        if command -v wasm-ld > /dev/null 2>&1; then
-            WASM_LD_BIN="$(command -v wasm-ld)"
-        else
-            WASM_LD_BIN="$WASI_SDK_PATH/bin/wasm-ld"
-        fi
-    fi
-    echo "Using wasm-ld binary: $WASM_LD_BIN"
+    find_wasm_ld
     # We always use -O3 optimization level
     "$WASM_LD_BIN" --no-entry --allow-undefined \
     --export-memory --export=main --export=malloc --export=free \
-    --export=__heap_end -export=__data_base \
+    --export=__heap_end --export=__data_base \
     -L $WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasi -lc \
     -O3 --lto-CGO3 --lto-O3 -o "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_OBJ"
 fi
@@ -283,7 +292,9 @@ fi
 # Clean up temporary files if --clean flag is set
 if $CLEAN; then
     echo "Cleaning up temporary files..."
-    rm -f "$OUTPUT_WASMSTACK_MLIR" "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_BEFOREOPT_WAT" "$OUTPUT_LLVM_MLIR" "$OUTPUT_LL" "$OUTPUT_OPT_LL" "$OUTPUT_OBJ" "$OUTPUT_WAT"
+    rm -f "$OUTPUT_WASMSTACK_MLIR" "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_BEFOREOPT_WAT" \
+          "$OUTPUT_LLVM_MLIR" "$OUTPUT_LL" "$OUTPUT_OPT_LL" "$OUTPUT_OBJ" "$OUTPUT_WAT" \
+          "$OUTPUT_PREPROCESSED"
 fi
 
 # Print the produced files
@@ -293,6 +304,7 @@ if [[ "$COMPILER" == "wami" ]]; then
     echo "  - $OUTPUT_OBJ (Relocatable object file)"
     echo "  - $OUTPUT_WAT (WAT format)"
 elif [[ "$COMPILER" == "llvm" ]]; then
+    echo "  - $OUTPUT_PREPROCESSED (Preprocessed MLIR after shared optimizations)"
     echo "  - $OUTPUT_LLVM_MLIR (LLVM dialect MLIR)"
     echo "  - $OUTPUT_LL (LLVM IR)"
     echo "  - $OUTPUT_OPT_LL (LLVM IR after opt -O3)"
