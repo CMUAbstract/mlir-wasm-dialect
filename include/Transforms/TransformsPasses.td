@@ -20,11 +20,19 @@ def StrengthReduce : Pass<"strength-reduce", "ModuleOp"> {
   let description = [{
     Replaces muli(cast(IV), loop-invariant) patterns inside scf.for loops
     with accumulator iter_args that increment by a fixed stride each iteration.
-    This converts multiplications into additions (strength reduction).
+
+    By default, only applies when the induction variable has no remaining uses
+    in the loop body after replacement (no register pressure increase).
+    Use aggressive=true to always apply the transformation.
   }];
   let dependentDialects = [
     "arith::ArithDialect",
     "scf::SCFDialect"
+  ];
+  let options = [
+    Option<"aggressive", "aggressive", "bool", /*default=*/"false",
+           "Apply strength reduction even when the induction variable "
+           "remains live (increases register pressure)">
   ];
 }
 

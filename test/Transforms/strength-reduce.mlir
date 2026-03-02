@@ -1,4 +1,4 @@
-// RUN: wasm-opt %s --strength-reduce | FileCheck %s
+// RUN: wasm-opt %s --strength-reduce="aggressive=true" | FileCheck %s
 
 func.func private @use_i32(i32) -> ()
 func.func private @use_i64(i64) -> ()
