@@ -103,6 +103,18 @@ def cmd(
             f"--warmup={warmup}" if warmup != 0 else "",
             skip_build_flag,
         ]
+    elif device == "local_node":
+        cmd_parts = [
+            "cd ../.. && ./toolchain/run.sh",
+            f"--device={device}",
+            f"benchmark/polybench/{size}/{file_name}",
+            f"--compiler={compiler}",
+            f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+            f"--binaryen-opt-flags={binaryen_opt_flags}",
+            f"--iterations={iterations}" if iterations != 1 else "",
+            f"--warmup={warmup}" if warmup != 0 else "",
+            skip_build_flag,
+        ]
     else:
         raise ValueError(f"Invalid device: {device}")
 
@@ -203,7 +215,7 @@ if __name__ == "__main__":
         "trmm",
     ]
 
-    devices = ["local_wamr", "local_wasmtime", "mcu"]
+    devices = ["local_wamr", "local_wasmtime", "local_node", "mcu"]
     sizes = ["small", "medium", "large", "extralarge"]
     compilers = ["wami", "llvm"]
 

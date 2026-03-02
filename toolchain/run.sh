@@ -192,6 +192,25 @@ run_local_wamr() {
 
 }
 
+run_local_node() {
+    local file=$1
+    local abs_file
+    abs_file="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
+
+    echo "Running on mac using $file..."
+
+    COMMAND_GROUP='
+        node "$SCRIPT_DIR/node-executor/run_wasm.mjs" \
+            --quiet --iterations '"$ITERATIONS"' --warmup '"$WARMUP"' --input "'"$abs_file"'"
+    '
+
+    if [ "$SILENT" = true ]; then
+        (eval "$COMMAND_GROUP") > /dev/null 2>&1
+    else
+        (eval "$COMMAND_GROUP")
+    fi
+}
+
 # Step 4: Function to run the compiled file on the device
 run_on_device() {
     local file=$1
@@ -238,6 +257,8 @@ if [ "$DEVICE" = "local_wamr" ]; then
     run_local_wamr "$EXEC_FILE"
 elif [ "$DEVICE" = "local_wasmtime" ]; then
     run_local_wasmtime "$EXEC_FILE"
+elif [ "$DEVICE" = "local_node" ]; then
+    run_local_node "$EXEC_FILE"
 elif [ "$DEVICE" = "mcu" ]; then
     run_on_device "$EXEC_FILE"
 else

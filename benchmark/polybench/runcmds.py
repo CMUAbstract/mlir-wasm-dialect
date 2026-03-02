@@ -140,7 +140,7 @@ if __name__ == "__main__":
     if args.jobs > 1:
         for row in rows:
             device = row.get("device", "")
-            if device != "local_wasmtime":
+            if device not in ("local_wasmtime", "local_node"):
                 tag = row.get("tag", "<unknown>")
                 sys.stderr.write(
                     "Error: --jobs > 1 only supports device=local_wasmtime. "

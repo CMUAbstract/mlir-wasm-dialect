@@ -114,15 +114,20 @@ if [[ "$COMPILER" == "wami" ]]; then
     fi
 
     # Lower standard MLIR to WasmStack using the split pipeline.
-    # Phase 1: Affine lowering + standard optimizations
-    # Phase 2: Lower memref (address math emitted as arith ops)
-    # Phase 3: Optimize address computations (CSE, LICM)
-    # Phase 4: Lower remaining dialects (scf, arith, math, func)
+    # Phase 1: Inline + affine optimizations + unrolling
+    # Phase 2: Standard optimizations after affine lowering
+    # Phase 3: Lower memref (address math emitted as arith ops)
+    # Phase 4: Optimize address computations (CSE, LICM)
+    # Phase 5: Lower remaining dialects (scf, arith, math, func)
     echo "Converting $INPUT_MLIR to WasmStack..."
     "$REPO_ROOT/build/bin/wasm-opt" \
+    --inline \
+    --canonicalize \
     --affine-loop-invariant-code-motion \
     --affine-loop-normalize \
+    --affine-loop-unroll="unroll-factor=4" \
     --lower-affine \
+    --symbol-dce \
     --canonicalize \
     --sccp \
     --loop-invariant-code-motion \
@@ -136,7 +141,6 @@ if [[ "$COMPILER" == "wami" ]]; then
     --loop-invariant-subset-hoisting \
     --cse \
     --control-flow-sink \
-    --strength-reduce \
     --wami-convert-scf \
     --wami-convert-arith \
     --wami-convert-math \
@@ -216,8 +220,12 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     echo "Translating $OUTPUT_LLVM_MLIR to LLVM IR (.ll)..."
     mlir-translate "$OUTPUT_LLVM_MLIR" --mlir-to-llvmir -o "$OUTPUT_LL"
 
-    echo "Lowering $OUTPUT_LL to object file (.o)..."
-    llc $LLVM_OPT_FLAGS -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_LL" -o "$OUTPUT_OBJ"
+    OUTPUT_OPT_LL="${OUTPUT_BASE}-opt-2b.ll"
+    echo "Running LLVM middle-end optimizations on $OUTPUT_LL..."
+    opt -O3 -S "$OUTPUT_LL" -o "$OUTPUT_OPT_LL"
+
+    echo "Lowering $OUTPUT_OPT_LL to object file (.o)..."
+    llc $LLVM_OPT_FLAGS -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_OPT_LL" -o "$OUTPUT_OBJ"
 
     echo "Converting $OUTPUT_OBJ to WAT format..."
     wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_WAT"
@@ -251,7 +259,7 @@ fi
 # Clean up temporary files if --clean flag is set
 if $CLEAN; then
     echo "Cleaning up temporary files..."
-    rm -f "$OUTPUT_WASMSTACK_MLIR" "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_BEFOREOPT_WAT" "$OUTPUT_LLVM_MLIR" "$OUTPUT_LL" "$OUTPUT_OBJ" "$OUTPUT_WAT"
+    rm -f "$OUTPUT_WASMSTACK_MLIR" "$OUTPUT_BEFOREOPT_WASM" "$OUTPUT_BEFOREOPT_WAT" "$OUTPUT_LLVM_MLIR" "$OUTPUT_LL" "$OUTPUT_OPT_LL" "$OUTPUT_OBJ" "$OUTPUT_WAT"
 fi
 
 # Print the produced files
