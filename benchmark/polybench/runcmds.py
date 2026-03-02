@@ -126,7 +126,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-t", "--timeout", type=float, default=300.0, dest="timeout")
+    parser.add_argument("-t", "--timeout", type=float, default=600.0, dest="timeout")
     parser.add_argument("-s", "--silent", action="store_true", dest="silent")
     parser.add_argument(
         "-o", "--output", type=argparse.FileType("a"), default=sys.stdout, dest="output"
