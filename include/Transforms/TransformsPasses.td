@@ -18,12 +18,17 @@ include "mlir/Pass/PassBase.td"
 def StrengthReduce : Pass<"strength-reduce", "ModuleOp"> {
   let summary = "Strength-reduce induction variable multiplies in SCF loops";
   let description = [{
-    Folds muli(cast(IV), K) patterns inside scf.for loops into the loop bounds,
-    replacing lb/ub/step with lb*K/ub*K/step*K and eliminating the multiply.
+    Eliminates muli(cast(IV), K) and shli(cast(IV), N) patterns inside scf.for
+    loops using two strategies:
 
-    Only applies when ALL multiply candidates in a loop share the same factor K
-    and the induction variable has no uses outside the multiply chain.
-    Never introduces additional loop-carried variables.
+    1. Bounds-based (preferred): Folds the multiply factor into the loop bounds,
+       replacing lb/ub/step with lb*K/ub*K/step*K. Requires all candidates to
+       share the same factor and the IV to have no surviving uses.
+
+    2. Accumulator-based (fallback): Converts each multiply into a loop-carried
+       accumulator that increments by K*step each iteration. Handles multiple
+       different factors in the same loop and cases where the IV is still alive.
+       Only applies when the transformation does not increase register pressure.
   }];
   let dependentDialects = [
     "arith::ArithDialect",
