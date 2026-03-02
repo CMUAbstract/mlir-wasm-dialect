@@ -745,7 +745,7 @@ func.func @distribute_cast_addi_shli(%n: index) {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @distribute_subi
-// CHECK:         arith.subi %{{.*}} : i32
+// CHECK:         arith.subi %{{.*}} : index
 // CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32)
 // CHECK-NOT:       arith.muli
 // CHECK:           call @use_i32(%[[ACC]])
@@ -875,6 +875,77 @@ func.func @distribute_negative_variant(%n: index) {
     // Addend is loop-variant (depends on iv)
     %variant = arith.addi %cast, %cast : i32
     %mul = arith.muli %variant, %c8 : i32
+    func.call @use_i32(%mul) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 35: Phase 0 — nested addi(subi(iv, inv), k) (nussinov pattern)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_nested_addi_subi
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           arith.addi %[[ACC]]
+// CHECK:           scf.yield
+func.func @distribute_nested_addi_subi(%n: index, %outer_inv: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %sub = arith.subi %i, %outer_inv : index
+    %add = arith.addi %sub, %c1 : index
+    %cast = arith.index_cast %add : index to i32
+    %mul = arith.muli %cast, %c8 : i32
+    func.call @use_i32(%mul) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 36: Phase 0 — nested subi(addi(iv, k), inv)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_nested_subi_addi
+// CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32)
+// CHECK-NOT:       arith.muli
+// CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           arith.addi %[[ACC]]
+// CHECK:           scf.yield
+func.func @distribute_nested_subi_addi(%n: index, %outer_inv: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %add = arith.addi %i, %c1 : index
+    %sub = arith.subi %add, %outer_inv : index
+    %cast = arith.index_cast %sub : index to i32
+    %mul = arith.muli %cast, %c8 : i32
+    func.call @use_i32(%mul) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 37: Negative — subi(inv, iv) gives negative IV coefficient (no transform)
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @distribute_negative_subi_iv_rhs
+// CHECK:         scf.for
+// CHECK-NOT:       iter_args
+// CHECK:           arith.muli
+// CHECK:         }
+func.func @distribute_negative_subi_iv_rhs(%n: index, %outer_inv: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : i32
+  scf.for %i = %c0 to %n step %c1 {
+    %sub = arith.subi %outer_inv, %i : index
+    %add = arith.addi %sub, %c1 : index
+    %cast = arith.index_cast %add : index to i32
+    %mul = arith.muli %cast, %c8 : i32
     func.call @use_i32(%mul) : (i32) -> ()
   }
   return

@@ -124,15 +124,70 @@ private:
     }
   }
 
-  /// Phase 0: Distribute multiply/shift over IV addition/subtraction.
+  /// Recursively decompose `val` as `IV + offset` where offset is
+  /// loop-invariant.  Returns the loop-invariant offset, or a null Value
+  /// if `val` cannot be expressed as IV + (loop-invariant).
+  /// Materializes offset arithmetic before `forOp` — all created values
+  /// are loop-invariant.
+  Value decomposeAsIVPlusOffset(Value val, scf::ForOp forOp,
+                                IRRewriter &rewriter) {
+    Value iv = forOp.getInductionVar();
+
+    // Base case: val IS the induction variable → offset = 0.
+    if (val == iv) {
+      rewriter.setInsertionPoint(forOp);
+      return arith::ConstantOp::create(rewriter, forOp.getLoc(),
+                                       rewriter.getIndexType(),
+                                       rewriter.getIndexAttr(0));
+    }
+
+    // If val is entirely loop-invariant, it has no IV component.
+    if (forOp.isDefinedOutsideOfLoop(val))
+      return Value();
+
+    // addi(A, B): one side must decompose, the other must be invariant.
+    if (auto addOp = val.getDefiningOp<arith::AddIOp>()) {
+      Value lhs = addOp.getLhs(), rhs = addOp.getRhs();
+      if (forOp.isDefinedOutsideOfLoop(rhs)) {
+        if (Value lhsOff = decomposeAsIVPlusOffset(lhs, forOp, rewriter)) {
+          rewriter.setInsertionPoint(forOp);
+          return arith::AddIOp::create(rewriter, addOp.getLoc(), lhsOff, rhs);
+        }
+      }
+      if (forOp.isDefinedOutsideOfLoop(lhs)) {
+        if (Value rhsOff = decomposeAsIVPlusOffset(rhs, forOp, rewriter)) {
+          rewriter.setInsertionPoint(forOp);
+          return arith::AddIOp::create(rewriter, addOp.getLoc(), lhs, rhsOff);
+        }
+      }
+    }
+
+    // subi(A, B): only A can decompose (B must be invariant).
+    // subi(inv, IV+off) would give a negative IV coefficient — skip.
+    if (auto subOp = val.getDefiningOp<arith::SubIOp>()) {
+      Value lhs = subOp.getLhs(), rhs = subOp.getRhs();
+      if (forOp.isDefinedOutsideOfLoop(rhs)) {
+        if (Value lhsOff = decomposeAsIVPlusOffset(lhs, forOp, rewriter)) {
+          rewriter.setInsertionPoint(forOp);
+          return arith::SubIOp::create(rewriter, subOp.getLoc(), lhsOff, rhs);
+        }
+      }
+    }
+
+    return Value();
+  }
+
+  /// Phase 0: Distribute multiply/shift over IV expressions.
   ///
-  /// Rewrites:
-  ///   muli(castChain(addi(iv, k)), factor)
-  ///     → addi(muli(castChain(iv), factor), muli(castChain(k), factor))
+  /// Uses recursive decomposition to handle arbitrary nesting of
+  /// addi/subi around the induction variable.  Rewrites:
+  ///   muli(castChain(IV_expr), factor)
+  ///     → addi(muli(castChain(iv), factor), muli(castChain(offset), factor))
+  /// where IV_expr = iv + offset (with offset loop-invariant).
   ///
   /// After this, the inner muli becomes a Phase 1 candidate and the
   /// wrapping addi becomes a Phase 2 candidate.
-  void distributeMultiplyOverIVAdd(IRRewriter &rewriter, scf::ForOp forOp) {
+  void distributeMultiplyOverIVExpr(IRRewriter &rewriter, scf::ForOp forOp) {
     SmallVector<Operation *> mulOps;
     for (auto &op : forOp.getBody()->getOperations())
       if (isa<arith::MulIOp, arith::ShLIOp>(&op))
@@ -169,65 +224,41 @@ private:
       if (isIVOrCast(ivSide, forOp))
         continue;
 
-      // Unwrap cast chain to find inner addi/subi.
+      // Unwrap cast chain to find inner expression.
       Value inner = unwrapCasts(ivSide);
-      Value ivPart, kPart;
-      bool isSub = false;
 
-      if (auto addOp = inner.getDefiningOp<arith::AddIOp>()) {
-        Value lhs = addOp.getLhs(), rhs = addOp.getRhs();
-        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs)) {
-          ivPart = lhs;
-          kPart = rhs;
-        } else if (isIVOrCast(rhs, forOp) &&
-                   forOp.isDefinedOutsideOfLoop(lhs)) {
-          ivPart = rhs;
-          kPart = lhs;
-        } else {
-          continue;
-        }
-      } else if (auto subOp = inner.getDefiningOp<arith::SubIOp>()) {
-        Value lhs = subOp.getLhs(), rhs = subOp.getRhs();
-        if (isIVOrCast(lhs, forOp) && forOp.isDefinedOutsideOfLoop(rhs)) {
-          ivPart = lhs;
-          kPart = rhs;
-          isSub = true;
-        } else {
-          continue;
-        }
-      } else {
+      // Recursively decompose as IV + offset.
+      Value offset = decomposeAsIVPlusOffset(inner, forOp, rewriter);
+      if (!offset)
         continue;
-      }
 
       Location loc = op->getLoc();
       Type mulType = ivSide.getType();
+      Value iv = forOp.getInductionVar();
 
-      // Compute k * factor before the loop (loop-invariant).
+      // Compute offset * factor before the loop (loop-invariant).
       rewriter.setInsertionPoint(forOp);
-      Value kCasted = createIndexCast(rewriter, loc, kPart, mulType, ivSide);
-      Value kProduct;
+      Value offsetCasted =
+          createIndexCast(rewriter, loc, offset, mulType, ivSide);
+      Value offsetProduct;
       if (isShift)
-        kProduct = arith::ShLIOp::create(rewriter, loc, kCasted, factorSide);
+        offsetProduct =
+            arith::ShLIOp::create(rewriter, loc, offsetCasted, factorSide);
       else
-        kProduct = arith::MulIOp::create(rewriter, loc, kCasted, factorSide);
+        offsetProduct =
+            arith::MulIOp::create(rewriter, loc, offsetCasted, factorSide);
 
-      if (isSub) {
-        Value zero =
-            arith::ConstantOp::create(rewriter, loc, kProduct.getType(),
-                                      rewriter.getZeroAttr(kProduct.getType()));
-        kProduct = arith::SubIOp::create(rewriter, loc, zero, kProduct);
-      }
-
-      // Create iv * factor + k_product in the loop body.
+      // Create iv * factor + offset_product in the loop body.
       rewriter.setInsertionPoint(op);
-      Value ivCasted = createIndexCast(rewriter, loc, ivPart, mulType, ivSide);
+      Value ivCasted = createIndexCast(rewriter, loc, iv, mulType, ivSide);
       Value ivProduct;
       if (isShift)
         ivProduct = arith::ShLIOp::create(rewriter, loc, ivCasted, factorSide);
       else
         ivProduct = arith::MulIOp::create(rewriter, loc, ivCasted, factorSide);
 
-      Value result = arith::AddIOp::create(rewriter, loc, ivProduct, kProduct);
+      Value result =
+          arith::AddIOp::create(rewriter, loc, ivProduct, offsetProduct);
 
       rewriter.replaceAllUsesWith(op->getResult(0), result);
       rewriter.eraseOp(op);
@@ -306,7 +337,7 @@ private:
   }
 
   void strengthReduceLoop(IRRewriter &rewriter, scf::ForOp forOp) {
-    distributeMultiplyOverIVAdd(rewriter, forOp);
+    distributeMultiplyOverIVExpr(rewriter, forOp);
     foldInvariantAddiChains(rewriter, forOp);
 
     struct Candidate {
