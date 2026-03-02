@@ -14,6 +14,7 @@
 #include "WAMI/ConversionPatterns/WAMIConvertScf.h"
 #include "WAMI/ConversionPatterns/WAMIConversionUtils.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 
@@ -136,162 +137,281 @@ struct IfOpLowering : public OpConversionPattern<scf::IfOp> {
 // ForOp Lowering
 //===----------------------------------------------------------------------===//
 
+/// Check if lb < ub can be proven for constant bounds, meaning the loop body
+/// always executes at least once (no guard needed, tail-controlled is safe).
+static bool hasPositiveTripCount(scf::ForOp forOp) {
+  auto lbConst = forOp.getLowerBound().getDefiningOp<arith::ConstantOp>();
+  auto ubConst = forOp.getUpperBound().getDefiningOp<arith::ConstantOp>();
+  if (!lbConst || !ubConst)
+    return false;
+
+  auto lbAttr = dyn_cast<IntegerAttr>(lbConst.getValue());
+  auto ubAttr = dyn_cast<IntegerAttr>(ubConst.getValue());
+  if (!lbAttr || !ubAttr)
+    return false;
+
+  return lbAttr.getValue().slt(ubAttr.getValue());
+}
+
+/// ForOp lowering with two strategies:
+///
+/// **Tail-controlled** (constant bounds with lb < ub):
+///   block @exit
+///     loop @loop
+///       <body>
+///       nextI = add i, step
+///       continueCond = lt_si nextI, ub
+///       br_if @loop                         // conditional back-edge (hot)
+///       br @exit                            // unconditional exit (cold)
+///     end
+///   end
+///   Binaryen folds br_if + br into a single br_if, eliminating 1 branch/iter.
+///
+/// **Header-controlled** (dynamic bounds):
+///   block @exit
+///     loop @loop
+///       exitCond = ge_si i, ub
+///       br_if @exit                         // conditional exit
+///       <body>
+///       nextI = add i, step
+///       BlockReturn [nextI, yielded]        // br @loop (back-edge)
+///     end
+///   end
 struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
   using OpConversionPattern<scf::ForOp>::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(scf::ForOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
+    if (hasPositiveTripCount(op))
+      return lowerTailControlled(op, adaptor, rewriter);
+    return lowerHeaderControlled(op, adaptor, rewriter);
+  }
 
-    // Get loop bounds and step - convert to i32 if needed
-    Value lowerBound = adaptor.getLowerBound();
-    Value upperBound = adaptor.getUpperBound();
-    Value step = adaptor.getStep();
-
-    // Ensure loop control values are i32.
-    Type i32Type = rewriter.getI32Type();
-    if (failed(normalizeToType(lowerBound, i32Type, loc, rewriter, lowerBound)))
-      return failure();
-    if (failed(normalizeToType(upperBound, i32Type, loc, rewriter, upperBound)))
-      return failure();
-    if (failed(normalizeToType(step, i32Type, loc, rewriter, step)))
-      return failure();
-
-    // Collect initial values: induction variable + iter_args
-    SmallVector<Value, 4> initValues;
-    initValues.push_back(lowerBound);
-    for (Value initArg : adaptor.getInitArgs()) {
-      initValues.push_back(initArg);
-    }
-
-    // Convert result types
-    SmallVector<Type, 4> resultTypes;
-    for (Type t : op.getResultTypes()) {
-      resultTypes.push_back(getTypeConverter()->convertType(t));
-    }
-
-    SmallVector<Type, 4> initTypes;
-    initTypes.push_back(i32Type);
-    initTypes.append(resultTypes.begin(), resultTypes.end());
-
+private:
+  /// Shared prologue: normalize bounds, collect init values and types,
+  /// create the outer BlockOp and afterBlock.
+  struct LoopPrologue {
+    Value lowerBound, upperBound, step;
     SmallVector<Value, 4> normalizedInitValues;
-    if (failed(normalizeOperandsToTypes(initValues, initTypes, loc, rewriter,
-                                        normalizedInitValues)))
+    SmallVector<Type, 4> resultTypes;
+    SmallVector<Type, 4> initTypes;
+    Block *afterBlock;
+    wasmssa::BlockOp blockOp;
+    Block *blockEntry;
+  };
+
+  LogicalResult buildPrologue(scf::ForOp op, OpAdaptor &adaptor,
+                              ConversionPatternRewriter &rewriter,
+                              LoopPrologue &p) const {
+    Location loc = op.getLoc();
+    Type i32Type = rewriter.getI32Type();
+
+    p.lowerBound = adaptor.getLowerBound();
+    p.upperBound = adaptor.getUpperBound();
+    p.step = adaptor.getStep();
+
+    if (failed(normalizeToType(p.lowerBound, i32Type, loc, rewriter,
+                               p.lowerBound)))
+      return failure();
+    if (failed(normalizeToType(p.upperBound, i32Type, loc, rewriter,
+                               p.upperBound)))
+      return failure();
+    if (failed(normalizeToType(p.step, i32Type, loc, rewriter, p.step)))
       return failure();
 
-    // Create successor block for after the loop
+    SmallVector<Value, 4> initValues;
+    initValues.push_back(p.lowerBound);
+    for (Value initArg : adaptor.getInitArgs())
+      initValues.push_back(initArg);
+
+    for (Type t : op.getResultTypes())
+      p.resultTypes.push_back(getTypeConverter()->convertType(t));
+
+    p.initTypes.push_back(i32Type);
+    p.initTypes.append(p.resultTypes.begin(), p.resultTypes.end());
+
+    if (failed(normalizeOperandsToTypes(initValues, p.initTypes, loc, rewriter,
+                                        p.normalizedInitValues)))
+      return failure();
+
     Block *currentBlock = rewriter.getInsertionBlock();
-    Block *afterBlock =
+    p.afterBlock =
         rewriter.splitBlock(currentBlock, rewriter.getInsertionPoint());
-    for (Type t : resultTypes) {
-      afterBlock->addArgument(t, loc);
-    }
+    for (Type t : p.resultTypes)
+      p.afterBlock->addArgument(t, loc);
 
-    // Go back to insert the block op
     rewriter.setInsertionPointToEnd(currentBlock);
+    p.blockOp = wasmssa::BlockOp::create(rewriter, loc, p.normalizedInitValues,
+                                         p.afterBlock);
+    p.blockEntry = p.blockOp.createBlock();
+    rewriter.setInsertionPointToEnd(p.blockEntry);
+    return success();
+  }
 
-    // Create outer block for break-out
-    auto blockOp = wasmssa::BlockOp::create(rewriter, loc, normalizedInitValues,
-                                            afterBlock);
+  /// Move body ops from scf.for into loopBody, remap induction var and
+  /// iter args, return the yielded values (normalized to resultTypes).
+  LogicalResult
+  moveBodyAndGetYielded(scf::ForOp op, ConversionPatternRewriter &rewriter,
+                        Location loc, Block *loopBody, Value loopInductionVar,
+                        ArrayRef<Value> loopIterArgs,
+                        ArrayRef<Type> resultTypes,
+                        SmallVector<Value, 4> &normalizedYielded) const {
+    Block *origBody = op.getBody();
+    rewriter.replaceAllUsesWith(op.getInductionVar(), loopInductionVar);
+    for (auto [oldArg, newArg] :
+         llvm::zip(op.getRegionIterArgs(), loopIterArgs))
+      rewriter.replaceAllUsesWith(oldArg, newArg);
 
-    // Create block entry
-    Block *blockEntry = blockOp.createBlock();
-    rewriter.setInsertionPointToEnd(blockEntry);
+    SmallVector<Value, 4> yieldedValues;
+    if (auto yieldOp = dyn_cast<scf::YieldOp>(origBody->getTerminator()))
+      for (Value v : yieldOp.getOperands())
+        yieldedValues.push_back(v);
 
-    // Block arguments: iter_args (skip induction var at index 0)
+    for (auto &bodyOp :
+         llvm::make_early_inc_range(origBody->without_terminator()))
+      bodyOp.moveBefore(loopBody, loopBody->end());
+    rewriter.eraseOp(origBody->getTerminator());
+
+    return normalizeOperandsToTypes(yieldedValues, resultTypes, loc, rewriter,
+                                    normalizedYielded);
+  }
+
+  /// Tail-controlled: body first, then conditional back-edge + unconditional
+  /// exit. Used when lb < ub is provable (no guard needed).
+  LogicalResult lowerTailControlled(scf::ForOp op, OpAdaptor adaptor,
+                                    ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    LoopPrologue p;
+    if (failed(buildPrologue(op, adaptor, rewriter, p)))
+      return failure();
+
     SmallVector<Value, 4> blockIterArgs;
-    for (unsigned i = 1; i < blockEntry->getNumArguments(); ++i) {
-      blockIterArgs.push_back(blockEntry->getArgument(i));
-    }
+    for (unsigned i = 1; i < p.blockEntry->getNumArguments(); ++i)
+      blockIterArgs.push_back(p.blockEntry->getArgument(i));
 
-    // Create a dummy exit block within the outer block (needed as loop target)
-    Block *loopExitBlock = rewriter.createBlock(&blockOp.getBody());
+    // Dummy exit block (unreachable — loop exits via wami.branch)
+    Block *loopExitBlock = rewriter.createBlock(&p.blockOp.getBody());
     rewriter.setInsertionPointToEnd(loopExitBlock);
     wasmssa::BlockReturnOp::create(rewriter, loc, blockIterArgs);
 
-    // Go back to block entry to create the loop
-    rewriter.setInsertionPointToEnd(blockEntry);
-
-    // Create inner loop
+    rewriter.setInsertionPointToEnd(p.blockEntry);
     auto loopOp = wasmssa::LoopOp::create(
-        rewriter, loc, blockEntry->getArguments(), loopExitBlock);
-
-    // Create loop body
+        rewriter, loc, p.blockEntry->getArguments(), loopExitBlock);
     Block *loopBody = loopOp.createBlock();
     rewriter.setInsertionPointToEnd(loopBody);
 
-    // Loop arguments
     Value loopInductionVar = loopBody->getArgument(0);
     SmallVector<Value, 4> loopIterArgs;
-    for (unsigned i = 1; i < loopBody->getNumArguments(); ++i) {
+    for (unsigned i = 1; i < loopBody->getNumArguments(); ++i)
       loopIterArgs.push_back(loopBody->getArgument(i));
-    }
 
-    // Check exit condition: induction >= upper_bound
-    Value exitCond =
-        wasmssa::GeSIOp::create(rewriter, loc, loopInductionVar, upperBound);
-
-    // Create continuation block within loop for the body
-    Block *continueBlock = rewriter.createBlock(&loopOp.getBody());
-
-    // branch_if exitCond to level 1 (outer block) with iter_args, else continue
-    rewriter.setInsertionPointToEnd(loopBody);
-    wasmssa::BranchIfOp::create(rewriter, loc, exitCond,
-                                /*exitLevel=*/1, loopIterArgs, continueBlock);
-
-    // In continue block, execute body and loop back
-    rewriter.setInsertionPointToEnd(continueBlock);
-
-    // Instead of cloning (which causes stale references for nested ops),
-    // replace block argument uses and move operations directly.
-    // This allows the conversion framework to properly handle nested
-    // scf.for/if.
-    Block *origBody = op.getBody();
-
-    // Replace uses of old block arguments with new loop block arguments
-    rewriter.replaceAllUsesWith(op.getInductionVar(), loopInductionVar);
-    for (auto [oldArg, newArg] :
-         llvm::zip(op.getRegionIterArgs(), loopIterArgs)) {
-      rewriter.replaceAllUsesWith(oldArg, newArg);
-    }
-
-    // Get yielded values BEFORE moving operations (terminator will be erased)
-    SmallVector<Value, 4> yieldedValues;
-    if (auto yieldOp = dyn_cast<scf::YieldOp>(origBody->getTerminator())) {
-      for (Value v : yieldOp.getOperands()) {
-        yieldedValues.push_back(v);
-      }
-    }
-
-    // Move operations from original body to continueBlock (don't clone)
-    for (auto &bodyOp :
-         llvm::make_early_inc_range(origBody->without_terminator())) {
-      bodyOp.moveBefore(continueBlock, continueBlock->end());
-    }
-
-    // Erase the original terminator to avoid "value still has uses" error
-    rewriter.eraseOp(origBody->getTerminator());
-
-    SmallVector<Value, 4> normalizedYieldedValues;
-    if (failed(normalizeOperandsToTypes(yieldedValues, resultTypes, loc,
-                                        rewriter, normalizedYieldedValues)))
+    // Body FIRST (before exit check)
+    SmallVector<Value, 4> normalizedYielded;
+    if (failed(moveBodyAndGetYielded(op, rewriter, loc, loopBody,
+                                     loopInductionVar, loopIterArgs,
+                                     p.resultTypes, normalizedYielded)))
       return failure();
 
-    // Update induction variable
+    // nextI = add i, step
     Value nextInduction =
-        wasmssa::AddOp::create(rewriter, loc, loopInductionVar, step);
+        wasmssa::AddOp::create(rewriter, loc, loopInductionVar, p.step);
 
-    // Continue loop with updated values
+    // continueCond = lt_si nextI, ub
+    Value continueCond =
+        wasmssa::LtSIOp::create(rewriter, loc, nextInduction, p.upperBound);
+
     SmallVector<Value, 4> continueValues;
     continueValues.push_back(nextInduction);
-    for (Value v : normalizedYieldedValues) {
+    for (Value v : normalizedYielded)
       continueValues.push_back(v);
-    }
-    wasmssa::BlockReturnOp::create(rewriter, loc, continueValues);
 
-    // Replace the original op with results
-    rewriter.replaceOp(op, afterBlock->getArguments());
+    // br_if @loop (exitLevel=0) — conditional back-edge
+    Block *exitBlock = rewriter.createBlock(&loopOp.getBody());
+    rewriter.setInsertionPointToEnd(loopBody);
+    wasmssa::BranchIfOp::create(rewriter, loc, continueCond,
+                                /*exitLevel=*/0, continueValues, exitBlock);
+
+    // Unconditional exit via always-true BranchIfOp to level 1 (@exit block).
+    // Binaryen folds br_if(const 1) into br, then merges br_if @loop + br @exit
+    // into a single br_if @loop.
+    rewriter.setInsertionPointToEnd(exitBlock);
+    Value constTrue =
+        wasmssa::ConstOp::create(rewriter, loc, rewriter.getI32IntegerAttr(1));
+    Block *dummyBlock = rewriter.createBlock(&loopOp.getBody());
+    rewriter.setInsertionPointToEnd(exitBlock);
+    wasmssa::BranchIfOp::create(rewriter, loc, constTrue,
+                                /*exitLevel=*/1, normalizedYielded, dummyBlock);
+
+    // Dummy block (unreachable — BranchIfOp above always taken)
+    rewriter.setInsertionPointToEnd(dummyBlock);
+    wasmssa::BlockReturnOp::create(
+        rewriter, loc, SmallVector<Value>(loopBody->getArguments()));
+
+    rewriter.replaceOp(op, p.afterBlock->getArguments());
+    return success();
+  }
+
+  /// Header-controlled: exit check first, then body + unconditional back-edge.
+  /// Used when bounds are dynamic (guard-free, always correct).
+  LogicalResult
+  lowerHeaderControlled(scf::ForOp op, OpAdaptor adaptor,
+                        ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    LoopPrologue p;
+    if (failed(buildPrologue(op, adaptor, rewriter, p)))
+      return failure();
+
+    SmallVector<Value, 4> blockIterArgs;
+    for (unsigned i = 1; i < p.blockEntry->getNumArguments(); ++i)
+      blockIterArgs.push_back(p.blockEntry->getArgument(i));
+
+    // Dummy exit block for LoopOp (unreachable — loop exits via br_if @exit).
+    // Passes only iter_args (not induction var) since BlockOp results =
+    // resultTypes.
+    Block *loopExitBlock = rewriter.createBlock(&p.blockOp.getBody());
+    rewriter.setInsertionPointToEnd(loopExitBlock);
+    wasmssa::BlockReturnOp::create(rewriter, loc, blockIterArgs);
+
+    rewriter.setInsertionPointToEnd(p.blockEntry);
+    auto loopOp = wasmssa::LoopOp::create(
+        rewriter, loc, p.blockEntry->getArguments(), loopExitBlock);
+    Block *loopBody = loopOp.createBlock();
+    rewriter.setInsertionPointToEnd(loopBody);
+
+    Value loopInductionVar = loopBody->getArgument(0);
+    SmallVector<Value, 4> loopIterArgs;
+    for (unsigned i = 1; i < loopBody->getNumArguments(); ++i)
+      loopIterArgs.push_back(loopBody->getArgument(i));
+
+    // Exit check FIRST: ge_si i, ub → br_if @exit
+    Value exitCond =
+        wasmssa::GeSIOp::create(rewriter, loc, loopInductionVar, p.upperBound);
+    Block *continueBlock = rewriter.createBlock(&loopOp.getBody());
+    rewriter.setInsertionPointToEnd(loopBody);
+    wasmssa::BranchIfOp::create(rewriter, loc, exitCond,
+                                /*exitLevel=*/1, blockIterArgs, continueBlock);
+
+    // Body in continueBlock
+    rewriter.setInsertionPointToEnd(continueBlock);
+    SmallVector<Value, 4> normalizedYielded;
+    if (failed(moveBodyAndGetYielded(op, rewriter, loc, continueBlock,
+                                     loopInductionVar, loopIterArgs,
+                                     p.resultTypes, normalizedYielded)))
+      return failure();
+
+    // nextI = add i, step
+    Value nextInduction =
+        wasmssa::AddOp::create(rewriter, loc, loopInductionVar, p.step);
+
+    // Back-edge: BlockReturnOp [nextI, yielded] → br @loop
+    SmallVector<Value, 4> backEdgeValues;
+    backEdgeValues.push_back(nextInduction);
+    for (Value v : normalizedYielded)
+      backEdgeValues.push_back(v);
+    wasmssa::BlockReturnOp::create(rewriter, loc, backEdgeValues);
+
+    rewriter.replaceOp(op, p.afterBlock->getArguments());
     return success();
   }
 };
