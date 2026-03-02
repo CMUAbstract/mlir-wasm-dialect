@@ -144,6 +144,7 @@ if [[ "$COMPILER" == "wami" ]]; then
       wami-convert-memref, \
       canonicalize, \
       sccp, \
+      cse, \
       loop-invariant-code-motion, \
       loop-invariant-subset-hoisting, \
       cse, \
@@ -224,6 +225,7 @@ elif [[ "$COMPILER" == "llvm" ]]; then
       convert-cf-to-llvm{index-bitwidth=32}, \
       canonicalize, \
       sccp, \
+      cse, \
       loop-invariant-code-motion, \
       loop-invariant-subset-hoisting, \
       cse, \
