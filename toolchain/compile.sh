@@ -126,6 +126,7 @@ if [[ "$COMPILER" == "wami" ]]; then
       canonicalize, \
       func.func( \
         affine-scalrep, \
+        affine-promote-accumulators, \
         affine-loop-invariant-code-motion, \
         affine-loop-normalize \
       ), \

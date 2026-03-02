@@ -1,5 +1,6 @@
 add_mlir_dialect_library(
   MLIRLocalTransforms
+  AffineAccumulatorPromotion.cpp
   LoopAccumulatorPromotion.cpp
   ScfLoopUnroll.cpp
   StrengthReduce.cpp
@@ -10,7 +11,10 @@ add_mlir_dialect_library(
   LINK_LIBS
   PUBLIC
   MLIRIR
+  MLIRAffineDialect
+  MLIRAffineAnalysis
   MLIRArithDialect
+  MLIRFuncDialect
   MLIRMemRefDialect
   MLIRSCFDialect
   MLIRSCFUtils

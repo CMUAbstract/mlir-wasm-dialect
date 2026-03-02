@@ -53,6 +53,19 @@ def ScfLoopUnroll : Pass<"scf-loop-unroll", "ModuleOp"> {
   ];
 }
 
+def AffinePromoteAccumulators : Pass<"affine-promote-accumulators", "func::FuncOp"> {
+  let summary = "Promote affine load-accumulate-store patterns to iter_args";
+  let description = [{
+    Identifies loop-invariant affine.load/affine.store pairs inside affine.for
+    loops where the store value depends on the load, and promotes them to
+    iter_args. Uses affine dependence analysis to prove non-aliasing with
+    other memory accesses in the loop.
+  }];
+  let dependentDialects = [
+    "affine::AffineDialect"
+  ];
+}
+
 def LoopAccumulatorPromotion : Pass<"promote-loop-accumulators", "ModuleOp"> {
   let summary = "Promote memory load-accumulate-store patterns to iter_args";
   let description = [{
