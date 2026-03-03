@@ -14,6 +14,7 @@
 #ifndef WAMI_WAMITYPECONVERTER_H
 #define WAMI_WAMITYPECONVERTER_H
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -111,6 +112,20 @@ public:
         }
       }
 
+      // If input is a constant, create a constant of the target type directly
+      // instead of wrapping in unrealized_conversion_cast.
+      if (auto constOp = input.getDefiningOp<arith::ConstantOp>()) {
+        if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue())) {
+          int64_t val = intAttr.getValue().getSExtValue();
+          if (auto intType = dyn_cast<IntegerType>(type))
+            return arith::ConstantOp::create(
+                builder, loc, builder.getIntegerAttr(intType, val));
+          if (isa<IndexType>(type))
+            return arith::ConstantOp::create(builder, loc,
+                                             builder.getIndexAttr(val));
+        }
+      }
+
       return UnrealizedConversionCastOp::create(builder, loc, type, inputs)
           .getResult(0);
     });
@@ -153,6 +168,20 @@ public:
           return UnrealizedConversionCastOp::create(builder, loc, type,
                                                     extracted)
               .getResult(0);
+        }
+      }
+
+      // If input is a constant, create a constant of the target type directly
+      // instead of wrapping in unrealized_conversion_cast.
+      if (auto constOp = input.getDefiningOp<arith::ConstantOp>()) {
+        if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue())) {
+          int64_t val = intAttr.getValue().getSExtValue();
+          if (auto intType = dyn_cast<IntegerType>(type))
+            return arith::ConstantOp::create(
+                builder, loc, builder.getIntegerAttr(intType, val));
+          if (isa<IndexType>(type))
+            return arith::ConstantOp::create(builder, loc,
+                                             builder.getIndexAttr(val));
         }
       }
 

@@ -326,7 +326,7 @@ func.func @read_from_array() -> i32 {
   // CHECK: wasmssa.global_get @global_array_base
   %ref = memref.get_global @global_array : memref<4xi32>
   %c2 = arith.constant 2 : index
-  // CHECK: wasmssa.mul
+  // Constant index folded: 2 * 4 = 8
   // CHECK: wasmssa.add
   // CHECK: wami.load
   %val = memref.load %ref[%c2] : memref<4xi32>
@@ -339,7 +339,7 @@ func.func @write_to_array(%val: i32) {
   // CHECK: wasmssa.global_get @global_array_base
   %ref = memref.get_global @global_array : memref<4xi32>
   %c1 = arith.constant 1 : index
-  // CHECK: wasmssa.mul
+  // Constant index folded: 1 * 4 = 4
   // CHECK: wasmssa.add
   // CHECK: wami.store
   memref.store %val, %ref[%c1] : memref<4xi32>
