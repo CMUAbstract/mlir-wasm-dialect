@@ -390,3 +390,67 @@ func.func @absorb_asymmetric_addi(%n: index, %base: i32) {
   }
   return
 }
+
+//===----------------------------------------------------------------------===//
+// Test 12: Reverse invariant order — largest first, smallest last
+//
+// Without the min-delta fix, uses[0]=inv3 (largest) would be the reference,
+// giving deltas [0, -4, -8, -12] (NEGATIVE). Negative offsets prevent
+// i32.load offset=N folding in WebAssembly.
+//
+// With the fix, the smallest invariant (inv0) becomes the reference,
+// giving deltas [12, 8, 4, 0] (all non-negative). The delta-0 use
+// (inv0) appears as just %ACC with no arith.addi.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @absorb_reverse_order_nonneg
+// CHECK: scf.for {{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32) {
+// CHECK-NOT: arith.muli
+// All deltas non-negative; the three larger invariants get addi(ACC, delta):
+// CHECK: %[[A0:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
+// CHECK: %[[A1:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
+// CHECK: %[[A2:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
+// The smallest invariant has delta=0, so its use is just %ACC:
+// CHECK: call @use_i32(%[[A0]])
+// CHECK: call @use_i32(%[[A1]])
+// CHECK: call @use_i32(%[[A2]])
+// CHECK: call @use_i32(%[[ACC]])
+// CHECK: }
+func.func @absorb_reverse_order_nonneg(%n: index, %k: index, %base: i32) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4_i32 = arith.constant 4 : i32
+  %c0_i32 = arith.constant 0 : i32
+  %c16_i32 = arith.constant 16 : i32
+  %c2 = arith.constant 2 : index
+  %c3 = arith.constant 3 : index
+  %k1 = arith.addi %k, %c1 : index
+  %k2 = arith.addi %k, %c2 : index
+  %k3 = arith.addi %k, %c3 : index
+  // Invariants in REVERSE order: largest first.
+  %ck3 = arith.index_cast %k3 : index to i32
+  %m3 = arith.muli %ck3, %c4_i32 : i32
+  %inv3 = arith.addi %m3, %base : i32
+  %ck2 = arith.index_cast %k2 : index to i32
+  %m2 = arith.muli %ck2, %c4_i32 : i32
+  %inv2 = arith.addi %m2, %base : i32
+  %ck1 = arith.index_cast %k1 : index to i32
+  %m1 = arith.muli %ck1, %c4_i32 : i32
+  %inv1 = arith.addi %m1, %base : i32
+  %ck0 = arith.index_cast %k : index to i32
+  %m0 = arith.muli %ck0, %c4_i32 : i32
+  %inv0 = arith.addi %m0, %base : i32
+  scf.for %i = %c0 to %n step %c1 iter_args(%acc = %c0_i32) -> (i32) {
+    %a0 = arith.addi %acc, %inv3 : i32
+    %a1 = arith.addi %acc, %inv2 : i32
+    %a2 = arith.addi %acc, %inv1 : i32
+    %a3 = arith.addi %acc, %inv0 : i32
+    func.call @use_i32(%a0) : (i32) -> ()
+    func.call @use_i32(%a1) : (i32) -> ()
+    func.call @use_i32(%a2) : (i32) -> ()
+    func.call @use_i32(%a3) : (i32) -> ()
+    %next = arith.addi %acc, %c16_i32 : i32
+    scf.yield %next : i32
+  }
+  return
+}
