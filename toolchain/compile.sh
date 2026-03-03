@@ -9,7 +9,7 @@ ADD_DEBUG_FUNCTIONS=false
 BINARYEN_OPT_FLAGS=""
 COMPILER=""
 CLEAN=false
-LLVM_OPT_FLAGS=""
+LLVM_OPT_LEVEL="O3"
 SKIP_BUILD=false
 
 # Function to display usage information
@@ -19,7 +19,7 @@ usage() {
     echo "  -o, --output     Output base name"
     echo "  --compiler       Compiler to use (wami or llvm)"
     echo "  --binaryen-opt-flags    Perform WebAssembly optimization (optional)"
-    echo "  --llvm-opt-flags        Perform LLVM optimization (optional, only supported in --compiler=llvm)"
+    echo "  --llvm-opt-level        LLVM optimization level (default: O3, only supported in --compiler=llvm)"
     echo "  --add-debug-functions   Add debug functions to the output (optional, only supported in --compiler=wami)"
     echo "  --clean                 Remove temporary files after completion"
     exit 1
@@ -44,8 +44,8 @@ while [[ "$#" -gt 0 ]]; do
             BINARYEN_OPT_FLAGS="${1#*=}"
             shift
             ;;
-        --llvm-opt-flags=*)
-            LLVM_OPT_FLAGS="${1#*=}"
+        --llvm-opt-level=*)
+            LLVM_OPT_LEVEL="${1#*=}"
             shift
             ;;
         --add-debug-functions)
@@ -267,10 +267,10 @@ elif [[ "$COMPILER" == "llvm" ]]; then
 
     OUTPUT_OPT_LL="${OUTPUT_BASE}-opt-2b.ll"
     echo "Running LLVM middle-end optimizations on $OUTPUT_LL..."
-    opt -O3 -S "$OUTPUT_LL" -o "$OUTPUT_OPT_LL"
+    opt -$LLVM_OPT_LEVEL -S "$OUTPUT_LL" -o "$OUTPUT_OPT_LL"
 
     echo "Lowering $OUTPUT_OPT_LL to object file (.o)..."
-    llc $LLVM_OPT_FLAGS -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_OPT_LL" -o "$OUTPUT_OBJ"
+    llc -$LLVM_OPT_LEVEL -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_OPT_LL" -o "$OUTPUT_OBJ"
 
     echo "Converting $OUTPUT_OBJ to WAT format..."
     wasm2wat "$OUTPUT_OBJ" -o "$OUTPUT_WAT"
@@ -311,7 +311,7 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     echo "  - $OUTPUT_PREPROCESSED (Preprocessed MLIR after shared optimizations)"
     echo "  - $OUTPUT_LLVM_MLIR (LLVM dialect MLIR)"
     echo "  - $OUTPUT_LL (LLVM IR)"
-    echo "  - $OUTPUT_OPT_LL (LLVM IR after opt -O3)"
+    echo "  - $OUTPUT_OPT_LL (LLVM IR after opt -$LLVM_OPT_LEVEL)"
     echo "  - $OUTPUT_OBJ (Object file)"
     echo "  - $OUTPUT_WAT (WAT format)"
 fi

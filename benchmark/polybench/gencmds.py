@@ -49,7 +49,7 @@ def cmd(
     warmup: int = 0,
     skip_build: bool = False,
 ) -> str:
-    llvm_opt_flags = f"-O{llvm_opt_level}"
+    llvm_opt_flags = f"O{llvm_opt_level}"
     binaryen_opt_flags = f"-O{binaryen_opt_level}"
     skip_build_flag = "--skip-build" if skip_build else ""
 
@@ -70,7 +70,7 @@ def cmd(
             f"--device={device}",
             f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
-            f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+            f"--llvm-opt-level={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f"--use-aot={'true' if use_aot else 'false'}",
             "--silent",
@@ -84,7 +84,7 @@ def cmd(
             f"--device={device}",
             f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
-            f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+            f"--llvm-opt-level={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f"--use-aot={'true' if use_aot else 'false'}",
             skip_build_flag,
@@ -96,7 +96,7 @@ def cmd(
             f"--device={device}",
             f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
-            f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+            f"--llvm-opt-level={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f"--use-aot={'true' if use_aot else 'false'}",
             f"--iterations={iterations}" if iterations != 1 else "",
@@ -109,7 +109,7 @@ def cmd(
             f"--device={device}",
             f"benchmark/polybench/{size}/{file_name}",
             f"--compiler={compiler}",
-            f"--llvm-opt-flags={llvm_opt_flags}" if compiler == "llvm" else "",
+            f"--llvm-opt-level={llvm_opt_flags}" if compiler == "llvm" else "",
             f"--binaryen-opt-flags={binaryen_opt_flags}",
             f"--iterations={iterations}" if iterations != 1 else "",
             f"--warmup={warmup}" if warmup != 0 else "",
