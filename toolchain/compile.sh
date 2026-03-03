@@ -189,6 +189,7 @@ if [[ "$COMPILER" == "wami" ]]; then
       $OPT_CLEANUP, \
       remainder-to-and, \
       strength-reduce, \
+      loop-invariant-code-motion, \
       canonicalize, \
       cse, \
       wami-convert-scf, \
