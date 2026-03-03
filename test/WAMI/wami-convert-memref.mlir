@@ -50,7 +50,7 @@ func.func @matrix_const_access() -> i32 {
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
   // Address should be: base + (1 * 3 + 2) * 4 = base + 20
-  // CHECK: wasmssa.mul
+  // Constant indices are folded through type conversions, so mul is folded away
   // CHECK: wasmssa.add
   // CHECK: wami.load
   %val = memref.load %ref[%c1, %c2] : memref<2x3xi32>
