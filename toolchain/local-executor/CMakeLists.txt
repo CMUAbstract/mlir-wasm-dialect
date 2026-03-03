@@ -43,3 +43,10 @@ target_sources(app PRIVATE ${WAMR_RUNTIME_LIB_SOURCE} src/main.c)
 target_sources(app PRIVATE ../../benchmark/polybench/src/polybench.h)
 
 target_compile_options(app PRIVATE -O3)
+
+if(DEFINED BENCH_WARMUP)
+  target_compile_definitions(app PRIVATE WARMUP=${BENCH_WARMUP})
+endif()
+if(DEFINED BENCH_ITERATIONS)
+  target_compile_definitions(app PRIVATE ITERATIONS=${BENCH_ITERATIONS})
+endif()

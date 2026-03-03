@@ -178,6 +178,7 @@ run_local_wamr() {
     COMMAND_GROUP='
         cd "$SCRIPT_DIR/local-executor" && \
         xxd -i -n wasm_file "$abs_file" src/wasm.h && \
+        cmake -S . -B build -DBENCH_WARMUP='"$WARMUP"' -DBENCH_ITERATIONS='"$ITERATIONS"' && \
         cmake --build build && \
         ./build/app
     '

@@ -17,8 +17,12 @@
 #define CONFIG_APP_STACK_SIZE 20480000
 #define CONFIG_APP_HEAP_SIZE 20480000
 
+#ifndef WARMUP
 #define WARMUP 5
+#endif
+#ifndef ITERATIONS
 #define ITERATIONS 20
+#endif
 
 // Array to store elapsed times in milliseconds with sub-millisecond precision.
 static double measurements[ITERATIONS];
@@ -91,11 +95,12 @@ void print_timing_statistics() {
   }
   double stddev = sqrt(sum_sq_diff / ITERATIONS);
 
-  printf("Timing statistics over %d iterations:\n", ITERATIONS);
-  printf("[execution time] %.2f miliseconds\n", mean);
-  printf("[min] %.2f miliseconds\n", min);
-  printf("[max] %.2f miliseconds\n", max);
-  printf("[standard deviation] %.2f miliseconds\n", stddev);
+  printf("[execution time] %.3f miliseconds\n", mean);
+  printf("[iterations] %d\n", ITERATIONS);
+  printf("[warmup] %d\n", WARMUP);
+  printf("[min] %.3f miliseconds\n", min);
+  printf("[max] %.3f miliseconds\n", max);
+  printf("[stddev] %.3f miliseconds\n", stddev);
 }
 
 #define PRINT_COUNT 0
