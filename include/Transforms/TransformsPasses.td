@@ -112,6 +112,21 @@ def LoopAccumulatorPromotion : Pass<"promote-loop-accumulators", "ModuleOp"> {
   ];
 }
 
+def AffineSimplifyIf : Pass<"affine-simplify-if", "func::FuncOp"> {
+  let summary = "Eliminate affine.if ops provably true/false from enclosing loop bounds";
+  let description = [{
+    For each affine.if, builds the iteration domain from enclosing affine.for
+    loop bounds using Presburger arithmetic. If the domain implies the condition
+    is always true, inlines the then-block. If always false, inlines the
+    else-block (or deletes the op if no else).
+
+    Skips affine.if ops that return results (would require yield merging).
+  }];
+  let dependentDialects = [
+    "affine::AffineDialect"
+  ];
+}
+
 def ReassociateAdditions : Pass<"reassociate-additions", "ModuleOp"> {
   let summary = "Reassociate additions to expose common sub-expressions for CSE";
   let description = [{

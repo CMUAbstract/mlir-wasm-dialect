@@ -97,6 +97,7 @@ fi
 AFFINE_OPTS="\
 affine-scalrep, \
 affine-promote-accumulators, \
+affine-simplify-if, \
 affine-loop-invariant-code-motion, \
 affine-loop-normalize"
 

@@ -1,6 +1,7 @@
 add_mlir_dialect_library(
   MLIRLocalTransforms
   AffineAccumulatorPromotion.cpp
+  AffineSimplifyIf.cpp
   HoistFromScfIf.cpp
   LoopAccumulatorPromotion.cpp
   ReassociateAdditions.cpp
