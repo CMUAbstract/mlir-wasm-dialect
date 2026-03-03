@@ -127,6 +127,17 @@ def AffineSimplifyIf : Pass<"affine-simplify-if", "func::FuncOp"> {
   ];
 }
 
+def ReassociateReductions : Pass<"reassociate-reductions", "ModuleOp"> {
+  let summary = "Restructure sequential reduction chains into balanced trees";
+  let description = [{
+    After loop unrolling, iter_arg reductions become left-folded sequential
+    chains (e.g., max(max(max(acc, v0), v1), v2)). This pass restructures
+    them into balanced trees (max(acc, max(max(v0, v1), max(v2, v3)))) to
+    reduce loop-carried dependency depth from N to 1.
+  }];
+  let dependentDialects = ["arith::ArithDialect", "scf::SCFDialect"];
+}
+
 def ReassociateAdditions : Pass<"reassociate-additions", "ModuleOp"> {
   let summary = "Reassociate additions to expose common sub-expressions for CSE";
   let description = [{

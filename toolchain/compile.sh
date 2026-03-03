@@ -106,7 +106,8 @@ POST_AFFINE_OPTS="\
 symbol-dce, \
 canonicalize, \
 cse, \
-scf-loop-unroll{unroll-factor=4}"
+scf-loop-unroll{unroll-factor=4}, \
+reassociate-reductions"
 
 # Standard optimization cleanup sequence (used after each lowering phase).
 OPT_CLEANUP="\

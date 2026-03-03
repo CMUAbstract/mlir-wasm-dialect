@@ -5,6 +5,7 @@ add_mlir_dialect_library(
   HoistFromScfIf.cpp
   LoopAccumulatorPromotion.cpp
   ReassociateAdditions.cpp
+  ReassociateReductions.cpp
   RemainderToAnd.cpp
   ScfLoopUnroll.cpp
   StrengthReduce.cpp
