@@ -18,6 +18,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/WasmSSA/IR/WasmSSA.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
 
 namespace mlir::wami {
@@ -176,16 +177,41 @@ std::pair<LogicalResult, Value> generatePointerComputation(
     Value strideConst = arith::ConstantOp::create(
         rewriter, loc, rewriter.getI32IntegerAttr(strideXSize));
 
-    // Multiply index by (stride * elementSize)
     Value index = indices[i];
-    // Ensure index is i32
-    if (!index.getType().isInteger(32)) {
-      index =
-          arith::TruncIOp::create(rewriter, loc, rewriter.getI32Type(), index);
+
+    // Try to extract a constant value from the index.
+    // After type conversion, constant indices appear as
+    // unrealized_conversion_cast(arith.constant) because
+    // applyPartialConversion doesn't call materializations.
+    std::optional<int64_t> constIndexVal;
+    if (auto constOp = index.getDefiningOp<arith::ConstantOp>()) {
+      if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
+        constIndexVal = intAttr.getValue().getSExtValue();
+    } else if (auto castOp =
+                   index.getDefiningOp<UnrealizedConversionCastOp>()) {
+      if (castOp.getNumOperands() == 1) {
+        if (auto constOp =
+                castOp.getOperand(0).getDefiningOp<arith::ConstantOp>()) {
+          if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
+            constIndexVal = intAttr.getValue().getSExtValue();
+        }
+      }
     }
 
-    Value indexOffset =
-        arith::MulIOp::create(rewriter, loc, index, strideConst);
+    Value indexOffset;
+    if (constIndexVal) {
+      // Fold index * strideXSize at compile time
+      int64_t foldedVal = *constIndexVal * strideXSize;
+      indexOffset = arith::ConstantOp::create(
+          rewriter, loc, rewriter.getI32IntegerAttr(foldedVal));
+    } else {
+      // Dynamic index — keep the MulIOp
+      if (!index.getType().isInteger(32)) {
+        index = arith::TruncIOp::create(rewriter, loc, rewriter.getI32Type(),
+                                        index);
+      }
+      indexOffset = arith::MulIOp::create(rewriter, loc, index, strideConst);
+    }
 
     // Add to running total
     result = arith::AddIOp::create(rewriter, loc, result, indexOffset);
