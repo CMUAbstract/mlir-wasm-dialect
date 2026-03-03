@@ -81,7 +81,7 @@ def compile_wasm(
     compiler: str,
     out_dir: Path,
     binaryen_opt_flags: str,
-    llvm_opt_flags: str,
+    llvm_opt_level: str,
 ) -> Path:
     output_base = out_dir / f"{mlir_path.stem}-{compiler}"
     cmd: List[str] = [
@@ -94,8 +94,8 @@ def compile_wasm(
     ]
     if binaryen_opt_flags:
         cmd.append(f"--binaryen-opt-flags={binaryen_opt_flags}")
-    if compiler == "llvm" and llvm_opt_flags:
-        cmd.append(f"--llvm-opt-flags={llvm_opt_flags}")
+    if compiler == "llvm" and llvm_opt_level:
+        cmd.append(f"--llvm-opt-level={llvm_opt_level}")
     run_cmd(cmd, ROOT_DIR)
 
     wasm_path = output_base.with_suffix(".wasm")
@@ -169,9 +169,9 @@ def parse_args() -> argparse.Namespace:
         help="Optional Binaryen optimization flags forwarded to compile.sh.",
     )
     parser.add_argument(
-        "--llvm-opt-flags",
+        "--llvm-opt-level",
         default="",
-        help="Optional LLVM optimization flags forwarded to compile.sh for --compiler=llvm.",
+        help="LLVM optimization level forwarded to compile.sh for --compiler=llvm (e.g. O3).",
     )
     parser.add_argument(
         "--wami-only",
@@ -228,7 +228,7 @@ def main() -> int:
                 "wami",
                 tmp_dir,
                 args.binaryen_opt_flags,
-                args.llvm_opt_flags,
+                args.llvm_opt_level,
             )
             wami_report = run_wasm(wami_wasm, args.print_hash_seed)
 
@@ -245,7 +245,7 @@ def main() -> int:
                     "llvm",
                     tmp_dir,
                     args.binaryen_opt_flags,
-                    args.llvm_opt_flags,
+                    args.llvm_opt_level,
                 )
                 llvm_report = run_wasm(llvm_wasm, args.print_hash_seed)
                 mismatches = compare_reports(wami_report, llvm_report)

@@ -116,7 +116,7 @@ return value, `print_count`, and `print_hash`:
 ```sh
 ./validate_small_correctness.py --wami-only --filter floyd-warshall
 ./validate_small_correctness.py --keep-temp
-./validate_small_correctness.py --binaryen-opt-flags=-O2 --llvm-opt-flags=-O3
+./validate_small_correctness.py --binaryen-opt-flags=-O2 --llvm-opt-level=O3
 ```
 
 ### Requirements

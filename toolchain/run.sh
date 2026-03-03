@@ -14,7 +14,7 @@ fi
 MLIR_FILE=""
 COMPILER="wami"  # Default type is wami
 DEVICE="mcu"  # Default device is mcu
-LLVM_OPT_FLAGS=""
+LLVM_OPT_LEVEL="O3"
 BINARYEN_OPT_FLAGS=""
 USE_AOT=false  # Default is to use interpreter
 AOT_FLAGS=""
@@ -34,8 +34,8 @@ while [[ "$#" -gt 0 ]]; do
             COMPILER="${1#*=}"
             shift
             ;;
-        --llvm-opt-flags=*)
-            LLVM_OPT_FLAGS="${1#*=}"
+        --llvm-opt-level=*)
+            LLVM_OPT_LEVEL="${1#*=}"
             shift
             ;;
         --binaryen-opt-flags=*)
@@ -103,7 +103,7 @@ SKIP_BUILD_FLAG=""
 if [ "$SKIP_BUILD" = true ]; then
     SKIP_BUILD_FLAG="--skip-build"
 fi
-COMPILE_CMD="\"$SCRIPT_DIR/compile.sh\" -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-flags=\"$LLVM_OPT_FLAGS\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\" $SKIP_BUILD_FLAG"
+COMPILE_CMD="\"$SCRIPT_DIR/compile.sh\" -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-level=\"$LLVM_OPT_LEVEL\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\" $SKIP_BUILD_FLAG"
 
 echo "Compiling $COMPILER to Wasm with command: $COMPILE_CMD"
 eval "$COMPILE_CMD"
