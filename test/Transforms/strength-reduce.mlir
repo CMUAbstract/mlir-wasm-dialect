@@ -306,16 +306,18 @@ func.func @extui_chain(%n: index) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test 13: addi(muli(cast(iv), c4), base) with lb=0 — addi gets correct operand
+// Test 13: addi(muli(cast(iv), c4), base) with lb=0 — addi absorbed into bounds
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @addi_basic
-// CHECK-DAG:     %[[BASE:.*]] = arith.constant 100 : i32
-// CHECK:         scf.for %[[I:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
+// CHECK:         arith.muli %{{.*}} : index
+// CHECK:         %[[OFF_IDX:.*]] = arith.index_cast %{{.*}} : i32 to index
+// CHECK:         arith.addi %{{.*}}, %[[OFF_IDX]] : index
+// CHECK:         scf.for %[[I:.*]] = %[[OFF_IDX]] to %{{.*}} step %{{.*}} {
 // CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.addi
 // CHECK:           %[[CAST:.*]] = arith.index_cast %[[I]] : index to i32
-// CHECK:           %[[ADDR:.*]] = arith.addi %[[CAST]], %[[BASE]] : i32
-// CHECK:           call @use_i32(%[[ADDR]])
+// CHECK:           call @use_i32(%[[CAST]])
 // CHECK:         }
 func.func @addi_basic(%n: index) {
   %c0 = arith.constant 0 : index
@@ -336,12 +338,16 @@ func.func @addi_basic(%n: index) {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @addi_nonzero_lb
-// CHECK-DAG:     %[[BASE:.*]] = arith.constant 100 : i32
-// CHECK:         scf.for %[[I:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
+// CHECK:         arith.muli %{{.*}} : index
+// CHECK:         arith.muli %{{.*}} : index
+// CHECK:         %[[OFF_IDX:.*]] = arith.index_cast %{{.*}} : i32 to index
+// CHECK:         %[[NEW_LB:.*]] = arith.addi %{{.*}}, %[[OFF_IDX]] : index
+// CHECK:         %[[NEW_UB:.*]] = arith.addi %{{.*}}, %[[OFF_IDX]] : index
+// CHECK:         scf.for %[[I:.*]] = %[[NEW_LB]] to %[[NEW_UB]] step %{{.*}} {
 // CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.addi
 // CHECK:           %[[CAST:.*]] = arith.index_cast %[[I]] : index to i32
-// CHECK:           %[[ADDR:.*]] = arith.addi %[[CAST]], %[[BASE]] : i32
-// CHECK:           call @use_i32(%[[ADDR]])
+// CHECK:           call @use_i32(%[[CAST]])
 // CHECK:         }
 func.func @addi_nonzero_lb(%n: index) {
   %c5 = arith.constant 5 : index
@@ -419,12 +425,14 @@ func.func @addi_multiple_offsets(%n: index) {
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @addi_shli
-// CHECK-DAG:     %[[BASE:.*]] = arith.constant 100 : i32
-// CHECK:         scf.for %[[I:.*]] = %{{.*}} to %{{.*}} step %{{.*}} {
+// CHECK:         arith.muli %{{.*}} : index
+// CHECK:         %[[OFF_IDX:.*]] = arith.index_cast %{{.*}} : i32 to index
+// CHECK:         arith.addi %{{.*}}, %[[OFF_IDX]] : index
+// CHECK:         scf.for %[[I:.*]] = %[[OFF_IDX]] to %{{.*}} step %{{.*}} {
 // CHECK-NOT:       arith.shli
+// CHECK-NOT:       arith.addi
 // CHECK:           %[[CAST:.*]] = arith.index_cast %[[I]] : index to i32
-// CHECK:           %[[ADDR:.*]] = arith.addi %[[CAST]], %[[BASE]] : i32
-// CHECK:           call @use_i32(%[[ADDR]])
+// CHECK:           call @use_i32(%[[CAST]])
 // CHECK:         }
 func.func @addi_shli(%n: index) {
   %c0 = arith.constant 0 : index
@@ -447,10 +455,11 @@ func.func @addi_shli(%n: index) {
 // CHECK-LABEL: func.func @addi_direct_iv
 // CHECK-DAG:     %[[C4:.*]] = arith.constant 4 : index
 // CHECK-DAG:     %[[BASE:.*]] = arith.constant 100 : index
-// CHECK:         scf.for %[[I:.*]] = %{{.*}} to %{{.*}} step %[[C4]] {
+// CHECK:         %[[NEW_UB:.*]] = arith.addi %{{.*}}, %[[BASE]] : index
+// CHECK:         scf.for %[[I:.*]] = %[[BASE]] to %[[NEW_UB]] step %[[C4]] {
 // CHECK-NOT:       arith.muli
-// CHECK:           %[[ADDR:.*]] = arith.addi %[[I]], %[[BASE]] : index
-// CHECK:           call @use_index(%[[ADDR]])
+// CHECK-NOT:       arith.addi
+// CHECK:           call @use_index(%[[I]])
 // CHECK:         }
 func.func @addi_direct_iv(%n: index) {
   %c0 = arith.constant 0 : index
@@ -472,10 +481,12 @@ func.func @addi_direct_iv(%n: index) {
 // CHECK-LABEL: func.func @distribute_cast_addi_mul
 // CHECK:         arith.muli %{{.*}} : i32
 // CHECK:         arith.muli %{{.*}} : index
+// CHECK:         arith.index_cast %{{.*}} : i32 to index
+// CHECK:         arith.addi %{{.*}} : index
 // CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 // CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.addi
 // CHECK:           arith.index_cast
-// CHECK:           arith.addi
 // CHECK:           call @use_i32
 // CHECK:         }
 func.func @distribute_cast_addi_mul(%n: index) {
@@ -498,11 +509,13 @@ func.func @distribute_cast_addi_mul(%n: index) {
 // CHECK-LABEL: func.func @distribute_cast_addi_shli
 // CHECK:         arith.shli %{{.*}} : i32
 // CHECK:         arith.muli %{{.*}} : index
+// CHECK:         arith.index_cast %{{.*}} : i32 to index
+// CHECK:         arith.addi %{{.*}} : index
 // CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 // CHECK-NOT:       arith.shli
 // CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.addi
 // CHECK:           arith.index_cast
-// CHECK:           arith.addi
 // CHECK:           call @use_i32
 // CHECK:         }
 func.func @distribute_cast_addi_shli(%n: index) {
@@ -525,10 +538,12 @@ func.func @distribute_cast_addi_shli(%n: index) {
 // CHECK-LABEL: func.func @distribute_subi
 // CHECK:         arith.muli %{{.*}} : i32
 // CHECK:         arith.muli %{{.*}} : index
+// CHECK:         arith.index_cast %{{.*}} : i32 to index
+// CHECK:         arith.addi %{{.*}} : index
 // CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 // CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.addi
 // CHECK:           arith.index_cast
-// CHECK:           arith.addi
 // CHECK:           call @use_i32
 // CHECK:         }
 func.func @distribute_subi(%n: index) {
@@ -615,14 +630,19 @@ func.func @distribute_jacobi(%n: index, %base: i32) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test 24: Phase 0 — (iv+k)*factor + base (outer addi folded into init)
+// Test 24: Phase 0 — (iv+k)*factor + base (offset absorbed into bounds)
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @distribute_with_outer_addi
+// CHECK:         arith.muli %{{.*}} : i32
+// CHECK:         arith.addi %{{.*}} : i32
+// CHECK:         arith.muli %{{.*}} : index
+// CHECK:         arith.index_cast %{{.*}} : i32 to index
+// CHECK:         arith.addi %{{.*}} : index
 // CHECK:         scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
 // CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.addi
 // CHECK:           arith.index_cast
-// CHECK:           arith.addi
 // CHECK:           call @use_i32
 // CHECK:         }
 func.func @distribute_with_outer_addi(%n: index, %base: i32) {
@@ -769,13 +789,17 @@ func.func @iv_direct_use(%n: index) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test 30: Negative — no multiply (no transformation)
+// Test 30: No multiply — addi(cast(iv), offset) absorbed into bounds
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @no_multiply
-// CHECK:         scf.for
-// CHECK:           arith.addi
+// CHECK:         %[[OFF_IDX:.*]] = arith.index_cast %{{.*}} : i32 to index
+// CHECK:         %[[NEW_UB:.*]] = arith.addi %{{.*}}, %[[OFF_IDX]] : index
+// CHECK:         scf.for %[[I:.*]] = %[[OFF_IDX]] to %[[NEW_UB]] step %{{.*}} {
 // CHECK-NOT:       arith.muli
+// CHECK-NOT:       arith.addi
+// CHECK:           %[[CAST:.*]] = arith.index_cast %[[I]] : index to i32
+// CHECK:           call @use_i32(%[[CAST]])
 // CHECK:         }
 func.func @no_multiply(%n: index) {
   %c0 = arith.constant 0 : index
@@ -959,6 +983,27 @@ func.func @accum_nonzero_lb_step(%n: index) {
     %mul2 = arith.muli %cast, %c8 : i32
     func.call @use_i32(%mul1) : (i32) -> ()
     func.call @use_i32(%mul2) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Test 38: Standalone offset absorption (no multiply, just addi(iv, base))
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @standalone_offset_absorption
+// CHECK-SAME:    (%[[N:.*]]: index, %[[BASE:.*]]: index)
+// CHECK:         %[[NEW_UB:.*]] = arith.addi %[[N]], %[[BASE]] : index
+// CHECK:         scf.for %[[I:.*]] = %[[BASE]] to %[[NEW_UB]] step %{{.*}} {
+// CHECK-NOT:       arith.addi
+// CHECK:           call @use_index(%[[I]])
+// CHECK:         }
+func.func @standalone_offset_absorption(%n: index, %base: index) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  scf.for %i = %c0 to %n step %c1 {
+    %addr = arith.addi %i, %base : index
+    func.call @use_index(%addr) : (index) -> ()
   }
   return
 }

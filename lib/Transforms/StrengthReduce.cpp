@@ -458,6 +458,119 @@ private:
     return true;
   }
 
+  /// Try to absorb a common additive offset into the loop bounds.
+  /// After bounds-based reduction folds muli into bounds, patterns like
+  ///   addi(cast(iv), base)
+  /// remain in the loop body.  This eliminates the per-iteration addi by
+  /// shifting lb and ub by the offset.
+  bool tryAbsorbCommonOffset(IRRewriter &rewriter, scf::ForOp forOp) {
+    // Clean up dead ops first (e.g., stale addi/cast chains left behind
+    // by the distribution phase).  Reverse iteration handles chains:
+    // erasing a dead user makes its producer dead in the same pass.
+    for (Operation &op : llvm::make_early_inc_range(
+             llvm::reverse(forOp.getBody()->getOperations()))) {
+      if (!op.use_empty())
+        continue;
+      if (isa<arith::AddIOp, arith::SubIOp, arith::MulIOp, arith::ShLIOp,
+              arith::IndexCastOp, arith::ExtSIOp, arith::ExtUIOp,
+              arith::ConstantOp, UnrealizedConversionCastOp>(&op))
+        rewriter.eraseOp(&op);
+    }
+
+    // Collect addi candidates: addi(ivOrCast, loop_invariant).
+    // Only accept IV, index_cast, or unrealized_conversion_cast chains —
+    // NOT extsi/extui, because addition does not distribute over
+    // sign/zero extension (e.g., extsi(trunc(iv+off)) != extsi(trunc(iv))+off).
+    auto isSimpleIVOrCast = [&](Value v) -> bool {
+      Value iv = forOp.getInductionVar();
+      while (true) {
+        if (v == iv)
+          return true;
+        if (auto castOp = v.getDefiningOp<arith::IndexCastOp>()) {
+          v = castOp.getIn();
+          continue;
+        }
+        if (auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>()) {
+          if (castOp.getInputs().size() == 1) {
+            v = castOp.getInputs()[0];
+            continue;
+          }
+        }
+        return false;
+      }
+    };
+
+    struct OffsetCandidate {
+      arith::AddIOp addOp;
+      Value ivOrCast;
+      Value offset;
+    };
+    SmallVector<OffsetCandidate> candidates;
+
+    for (auto &op : forOp.getBody()->getOperations()) {
+      auto addOp = dyn_cast<arith::AddIOp>(&op);
+      if (!addOp)
+        continue;
+      // Skip dead addis (e.g., leftovers from earlier distribution).
+      if (addOp.getResult().use_empty())
+        continue;
+      Value lhs = addOp.getLhs(), rhs = addOp.getRhs();
+      if (isSimpleIVOrCast(lhs) && forOp.isDefinedOutsideOfLoop(rhs))
+        candidates.push_back({addOp, lhs, rhs});
+      else if (isSimpleIVOrCast(rhs) && forOp.isDefinedOutsideOfLoop(lhs))
+        candidates.push_back({addOp, rhs, lhs});
+    }
+
+    if (candidates.empty())
+      return false;
+
+    // All addis must share the same loop-invariant offset.
+    Value commonOffset = candidates[0].offset;
+    if (!llvm::all_of(candidates, [&](const OffsetCandidate &c) {
+          return c.offset == commonOffset;
+        }))
+      return false;
+
+    // IV must become dead after erasing all addis.
+    llvm::DenseSet<Operation *> erasedOps;
+    for (auto &c : candidates)
+      erasedOps.insert(c.addOp.getOperation());
+    if (!isIVDeadAfterErasure(forOp.getInductionVar(), erasedOps))
+      return false;
+
+    // Absorb offset into bounds.
+    rewriter.setInsertionPoint(forOp);
+    Location loc = forOp.getLoc();
+    Value lb = forOp.getLowerBound();
+    Value ub = forOp.getUpperBound();
+
+    Value offsetIndex;
+    if (commonOffset.getType().isIndex())
+      offsetIndex = commonOffset;
+    else
+      offsetIndex = arith::IndexCastOp::create(
+          rewriter, loc, rewriter.getIndexType(), commonOffset);
+
+    Value newLb;
+    if (isConstantZero(lb))
+      newLb = offsetIndex;
+    else
+      newLb = arith::AddIOp::create(rewriter, loc, lb, offsetIndex);
+
+    Value newUb = arith::AddIOp::create(rewriter, loc, ub, offsetIndex);
+
+    forOp->setOperand(0, newLb);
+    forOp->setOperand(1, newUb);
+
+    // Replace each addi with its ivOrCast operand.
+    for (auto &c : candidates) {
+      rewriter.replaceAllUsesWith(c.addOp.getResult(), c.ivOrCast);
+      rewriter.eraseOp(c.addOp);
+    }
+
+    return true;
+  }
+
   /// Accumulator-based reduction: convert each muli(iv, K) into a
   /// loop-carried accumulator that increments by K*step each iteration.
   /// Fires when bounds-based reduction cannot apply (different factors
@@ -660,12 +773,16 @@ private:
       }
     }
 
-    if (candidates.empty())
+    if (candidates.empty()) {
+      tryAbsorbCommonOffset(rewriter, forOp);
       return;
+    }
 
     // Try bounds-based reduction first (preferred: zero new iter_args).
-    if (tryBoundsBasedReduction(rewriter, forOp, candidates))
+    if (tryBoundsBasedReduction(rewriter, forOp, candidates)) {
+      tryAbsorbCommonOffset(rewriter, forOp);
       return;
+    }
 
     // Fallback: accumulator-based reduction.
     accumulatorReduceLoop(rewriter, forOp, candidates);
