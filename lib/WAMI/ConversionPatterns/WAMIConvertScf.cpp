@@ -167,16 +167,21 @@ static bool hasPositiveTripCount(scf::ForOp forOp) {
 ///   end
 ///   Binaryen folds br_if + br into a single br_if, eliminating 1 branch/iter.
 ///
-/// **Header-controlled** (dynamic bounds):
-///   block @exit
-///     loop @loop
-///       exitCond = ge_si i, ub
-///       br_if @exit                         // conditional exit
-///       <body>
-///       nextI = add i, step
-///       BlockReturn [nextI, yielded]        // br @loop (back-edge)
+/// **Guarded tail-controlled** (dynamic bounds):
+///   if (lt_si lb, ub)                       // guard: skip if zero trips
+///     block @exit
+///       loop @loop
+///         <body>
+///         nextI = add i, step
+///         continueCond = lt_si nextI, ub
+///         br_if @loop                       // conditional back-edge (hot)
+///         br @exit                          // unconditional exit (cold)
+///       end
 ///     end
+///   else
+///     <init values>                         // zero-trip: return init values
 ///   end
+///   IfOp guard wraps a tail-controlled body; avoids per-iteration exit check.
 struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
   using OpConversionPattern<scf::ForOp>::OpConversionPattern;
 
@@ -185,12 +190,12 @@ struct ForOpLowering : public OpConversionPattern<scf::ForOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (hasPositiveTripCount(op))
       return lowerTailControlled(op, adaptor, rewriter);
-    return lowerHeaderControlled(op, adaptor, rewriter);
+    return lowerGuardedTailControlled(op, adaptor, rewriter);
   }
 
 private:
-  /// Shared prologue: normalize bounds, collect init values and types,
-  /// create the outer BlockOp and afterBlock.
+  /// Prologue for lowerTailControlled: normalize bounds, collect init values
+  /// and types, create the outer BlockOp and afterBlock.
   struct LoopPrologue {
     Value lowerBound, upperBound, step;
     SmallVector<Value, 4> normalizedInitValues;
@@ -277,27 +282,27 @@ private:
                                     normalizedYielded);
   }
 
-  /// Tail-controlled: body first, then conditional back-edge + unconditional
-  /// exit. Used when lb < ub is provable (no guard needed).
-  LogicalResult lowerTailControlled(scf::ForOp op, OpAdaptor adaptor,
-                                    ConversionPatternRewriter &rewriter) const {
-    Location loc = op.getLoc();
-    LoopPrologue p;
-    if (failed(buildPrologue(op, adaptor, rewriter, p)))
-      return failure();
-
+  /// Build the tail-controlled loop core inside a BlockOp: LoopOp with
+  /// body-first execution, conditional back-edge, and unconditional exit.
+  /// Shared by both lowerTailControlled and lowerGuardedTailControlled.
+  LogicalResult buildTailControlledLoop(scf::ForOp op,
+                                        ConversionPatternRewriter &rewriter,
+                                        Location loc, wasmssa::BlockOp blockOp,
+                                        Block *blockEntry, Value upperBound,
+                                        Value step,
+                                        ArrayRef<Type> resultTypes) const {
     SmallVector<Value, 4> blockIterArgs;
-    for (unsigned i = 1; i < p.blockEntry->getNumArguments(); ++i)
-      blockIterArgs.push_back(p.blockEntry->getArgument(i));
+    for (unsigned i = 1; i < blockEntry->getNumArguments(); ++i)
+      blockIterArgs.push_back(blockEntry->getArgument(i));
 
-    // Dummy exit block (unreachable — loop exits via wami.branch)
-    Block *loopExitBlock = rewriter.createBlock(&p.blockOp.getBody());
+    // Dummy exit block (unreachable — loop exits via BranchIfOp)
+    Block *loopExitBlock = rewriter.createBlock(&blockOp.getBody());
     rewriter.setInsertionPointToEnd(loopExitBlock);
     wasmssa::BlockReturnOp::create(rewriter, loc, blockIterArgs);
 
-    rewriter.setInsertionPointToEnd(p.blockEntry);
+    rewriter.setInsertionPointToEnd(blockEntry);
     auto loopOp = wasmssa::LoopOp::create(
-        rewriter, loc, p.blockEntry->getArguments(), loopExitBlock);
+        rewriter, loc, blockEntry->getArguments(), loopExitBlock);
     Block *loopBody = loopOp.createBlock();
     rewriter.setInsertionPointToEnd(loopBody);
 
@@ -310,16 +315,16 @@ private:
     SmallVector<Value, 4> normalizedYielded;
     if (failed(moveBodyAndGetYielded(op, rewriter, loc, loopBody,
                                      loopInductionVar, loopIterArgs,
-                                     p.resultTypes, normalizedYielded)))
+                                     resultTypes, normalizedYielded)))
       return failure();
 
     // nextI = add i, step
     Value nextInduction =
-        wasmssa::AddOp::create(rewriter, loc, loopInductionVar, p.step);
+        wasmssa::AddOp::create(rewriter, loc, loopInductionVar, step);
 
     // continueCond = lt_si nextI, ub
     Value continueCond =
-        wasmssa::LtSIOp::create(rewriter, loc, nextInduction, p.upperBound);
+        wasmssa::LtSIOp::create(rewriter, loc, nextInduction, upperBound);
 
     SmallVector<Value, 4> continueValues;
     continueValues.push_back(nextInduction);
@@ -348,74 +353,119 @@ private:
     wasmssa::BlockReturnOp::create(
         rewriter, loc, SmallVector<Value>(loopBody->getArguments()));
 
-    rewriter.replaceOp(op, p.afterBlock->getArguments());
     return success();
   }
 
-  /// Header-controlled: exit check first, then body + unconditional back-edge.
-  /// Used when bounds are dynamic (guard-free, always correct).
-  LogicalResult
-  lowerHeaderControlled(scf::ForOp op, OpAdaptor adaptor,
-                        ConversionPatternRewriter &rewriter) const {
+  /// Tail-controlled: body first, then conditional back-edge + unconditional
+  /// exit. Used when lb < ub is provable (no guard needed).
+  LogicalResult lowerTailControlled(scf::ForOp op, OpAdaptor adaptor,
+                                    ConversionPatternRewriter &rewriter) const {
     Location loc = op.getLoc();
     LoopPrologue p;
     if (failed(buildPrologue(op, adaptor, rewriter, p)))
       return failure();
 
-    SmallVector<Value, 4> blockIterArgs;
-    for (unsigned i = 1; i < p.blockEntry->getNumArguments(); ++i)
-      blockIterArgs.push_back(p.blockEntry->getArgument(i));
-
-    // Dummy exit block for LoopOp (unreachable — loop exits via br_if @exit).
-    // Passes only iter_args (not induction var) since BlockOp results =
-    // resultTypes.
-    Block *loopExitBlock = rewriter.createBlock(&p.blockOp.getBody());
-    rewriter.setInsertionPointToEnd(loopExitBlock);
-    wasmssa::BlockReturnOp::create(rewriter, loc, blockIterArgs);
-
-    rewriter.setInsertionPointToEnd(p.blockEntry);
-    auto loopOp = wasmssa::LoopOp::create(
-        rewriter, loc, p.blockEntry->getArguments(), loopExitBlock);
-    Block *loopBody = loopOp.createBlock();
-    rewriter.setInsertionPointToEnd(loopBody);
-
-    Value loopInductionVar = loopBody->getArgument(0);
-    SmallVector<Value, 4> loopIterArgs;
-    for (unsigned i = 1; i < loopBody->getNumArguments(); ++i)
-      loopIterArgs.push_back(loopBody->getArgument(i));
-
-    // Exit check FIRST: ge_si i, ub → br_if @exit
-    // Pass loopIterArgs (current iteration's values), NOT blockIterArgs
-    // (initial values from BlockOp entry). The loop body block arguments are
-    // updated each iteration via the back-edge, so they hold the accumulated
-    // result when the exit condition fires.
-    Value exitCond =
-        wasmssa::GeSIOp::create(rewriter, loc, loopInductionVar, p.upperBound);
-    Block *continueBlock = rewriter.createBlock(&loopOp.getBody());
-    rewriter.setInsertionPointToEnd(loopBody);
-    wasmssa::BranchIfOp::create(rewriter, loc, exitCond,
-                                /*exitLevel=*/1, loopIterArgs, continueBlock);
-
-    // Body in continueBlock
-    rewriter.setInsertionPointToEnd(continueBlock);
-    SmallVector<Value, 4> normalizedYielded;
-    if (failed(moveBodyAndGetYielded(op, rewriter, loc, continueBlock,
-                                     loopInductionVar, loopIterArgs,
-                                     p.resultTypes, normalizedYielded)))
+    if (failed(buildTailControlledLoop(op, rewriter, loc, p.blockOp,
+                                       p.blockEntry, p.upperBound, p.step,
+                                       p.resultTypes)))
       return failure();
 
-    // nextI = add i, step
-    Value nextInduction =
-        wasmssa::AddOp::create(rewriter, loc, loopInductionVar, p.step);
-
-    // Back-edge: BlockReturnOp [nextI, yielded] → br @loop
-    SmallVector<Value, 4> backEdgeValues;
-    backEdgeValues.push_back(nextInduction);
-    for (Value v : normalizedYielded)
-      backEdgeValues.push_back(v);
-    wasmssa::BlockReturnOp::create(rewriter, loc, backEdgeValues);
-
     rewriter.replaceOp(op, p.afterBlock->getArguments());
+    return success();
+  }
+
+  /// Guarded tail-controlled: IfOp guard + tail-controlled body. Used when
+  /// bounds are dynamic (guard ensures zero-trip safety, body is efficient).
+  ///
+  /// Generates: if (lb < ub) { block { loop { body; br_if loop; br block } } }
+  /// else { init_values }
+  LogicalResult
+  lowerGuardedTailControlled(scf::ForOp op, OpAdaptor adaptor,
+                             ConversionPatternRewriter &rewriter) const {
+    Location loc = op.getLoc();
+    Type i32Type = rewriter.getI32Type();
+
+    // Normalize bounds and step
+    Value lowerBound = adaptor.getLowerBound();
+    Value upperBound = adaptor.getUpperBound();
+    Value step = adaptor.getStep();
+    if (failed(normalizeToType(lowerBound, i32Type, loc, rewriter, lowerBound)))
+      return failure();
+    if (failed(normalizeToType(upperBound, i32Type, loc, rewriter, upperBound)))
+      return failure();
+    if (failed(normalizeToType(step, i32Type, loc, rewriter, step)))
+      return failure();
+
+    // Collect result types and normalize init args
+    SmallVector<Type, 4> resultTypes;
+    for (Type t : op.getResultTypes())
+      resultTypes.push_back(getTypeConverter()->convertType(t));
+
+    SmallVector<Value, 4> initArgValues(adaptor.getInitArgs());
+    SmallVector<Value, 4> normalizedInitArgs;
+    if (failed(normalizeOperandsToTypes(initArgValues, resultTypes, loc,
+                                        rewriter, normalizedInitArgs)))
+      return failure();
+
+    // Guard condition: lb < ub → loop should execute
+    Value guardCond =
+        wasmssa::LtSIOp::create(rewriter, loc, lowerBound, upperBound);
+
+    // Split for after the IfOp
+    Block *currentBlock = rewriter.getInsertionBlock();
+    Block *afterIfBlock =
+        rewriter.splitBlock(currentBlock, rewriter.getInsertionPoint());
+    for (Type t : resultTypes)
+      afterIfBlock->addArgument(t, loc);
+
+    rewriter.setInsertionPointToEnd(currentBlock);
+    auto ifOp = wasmssa::IfOp::create(rewriter, loc, guardCond,
+                                      /*inputs=*/ValueRange{}, afterIfBlock);
+
+    // === Else block: return init values unchanged (zero-trip case) ===
+    Block *elseBlock = ifOp.createElseBlock();
+    rewriter.setInsertionPointToEnd(elseBlock);
+    wasmssa::BlockReturnOp::create(rewriter, loc, normalizedInitArgs);
+
+    // === Then block: tail-controlled loop ===
+    Block *thenBlock = ifOp.createIfBlock();
+    rewriter.setInsertionPointToEnd(thenBlock);
+
+    // Build BlockOp inside the then region. Loop init values: [lb,
+    // initArgs...].
+    SmallVector<Value, 4> loopInitValues;
+    loopInitValues.push_back(lowerBound);
+    loopInitValues.append(normalizedInitArgs.begin(), normalizedInitArgs.end());
+
+    SmallVector<Type, 4> loopInitTypes;
+    loopInitTypes.push_back(i32Type);
+    loopInitTypes.append(resultTypes.begin(), resultTypes.end());
+
+    SmallVector<Value, 4> normalizedLoopInit;
+    if (failed(normalizeOperandsToTypes(loopInitValues, loopInitTypes, loc,
+                                        rewriter, normalizedLoopInit)))
+      return failure();
+
+    // afterBlockOp receives BlockOp results, then exits IfOp
+    Block *afterBlockOp =
+        rewriter.splitBlock(thenBlock, rewriter.getInsertionPoint());
+    for (Type t : resultTypes)
+      afterBlockOp->addArgument(t, loc);
+    rewriter.setInsertionPointToEnd(afterBlockOp);
+    wasmssa::BlockReturnOp::create(rewriter, loc, afterBlockOp->getArguments());
+
+    // Create BlockOp in thenBlock
+    rewriter.setInsertionPointToEnd(thenBlock);
+    auto blockOp = wasmssa::BlockOp::create(rewriter, loc, normalizedLoopInit,
+                                            afterBlockOp);
+    Block *blockEntry = blockOp.createBlock();
+    rewriter.setInsertionPointToEnd(blockEntry);
+
+    if (failed(buildTailControlledLoop(op, rewriter, loc, blockOp, blockEntry,
+                                       upperBound, step, resultTypes)))
+      return failure();
+
+    rewriter.replaceOp(op, afterIfBlock->getArguments());
     return success();
   }
 };
