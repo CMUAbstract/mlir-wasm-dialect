@@ -982,6 +982,22 @@ private:
       if (!canAbsorb)
         continue;
 
+      // Find minimum delta. If negative, switch reference to produce all
+      // non-negative deltas — enables i32.load offset=N folding in wasm.
+      int64_t minDelta = 0;
+      size_t minIdx = 0;
+      for (auto [i, a] : llvm::enumerate(absorptions)) {
+        if (a.delta < minDelta) {
+          minDelta = a.delta;
+          minIdx = i;
+        }
+      }
+      if (minDelta < 0) {
+        refInvariant = uses[minIdx].invariant;
+        for (auto &a : absorptions)
+          a.delta -= minDelta;
+      }
+
       // Absorb refInvariant into init value.
       Value oldInit = forOp.getInitArgs()[idx];
       Location loc = forOp.getLoc();

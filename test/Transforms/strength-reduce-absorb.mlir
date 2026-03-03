@@ -201,10 +201,10 @@ func.func @absorb_nonzero_lb(%n: index, %base: i32) {
 // CHECK:           %[[A0:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
 // CHECK:           %[[A1:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
 // CHECK:           %[[A2:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
+// CHECK:           call @use_i32(%[[ACC]])
 // CHECK:           call @use_i32(%[[A0]])
 // CHECK:           call @use_i32(%[[A1]])
 // CHECK:           call @use_i32(%[[A2]])
-// CHECK:           call @use_i32(%[[ACC]])
 // CHECK:         }
 func.func @absorb_deep_muli_unroll(%n: index, %k: index, %base: i32) {
   %c0 = arith.constant 0 : index
@@ -256,8 +256,8 @@ func.func @absorb_deep_muli_unroll(%n: index, %k: index, %base: i32) {
 // CHECK:         scf.for {{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32) {
 // CHECK-NOT:       arith.muli
 // CHECK:           %[[A0:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
-// CHECK:           call @use_i32(%[[A0]])
 // CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           call @use_i32(%[[A0]])
 // CHECK:         }
 func.func @absorb_deep_muli_cast_chain(%n: index, %k: index, %base: i32) {
   %c0 = arith.constant 0 : index
@@ -369,8 +369,8 @@ func.func @absorb_deep_subi(%n: index, %base: i32) {
 // CHECK-SAME:    (%{{.*}}: index, %[[BASE:.*]]: i32)
 // CHECK:         scf.for {{.*}} iter_args(%[[ACC:.*]] = %{{.*}}) -> (i32) {
 // CHECK:           %[[A0:.*]] = arith.addi %[[ACC]], %{{.*}} : i32
-// CHECK:           call @use_i32(%[[A0]])
 // CHECK:           call @use_i32(%[[ACC]])
+// CHECK:           call @use_i32(%[[A0]])
 // CHECK:         }
 func.func @absorb_asymmetric_addi(%n: index, %base: i32) {
   %c0 = arith.constant 0 : index
