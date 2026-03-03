@@ -66,6 +66,23 @@ def AffinePromoteAccumulators : Pass<"affine-promote-accumulators", "func::FuncO
   ];
 }
 
+def HoistFromScfIf : Pass<"hoist-from-scf-if", "ModuleOp"> {
+  let summary = "Hoist pure operations out of scf.if regions";
+  let description = [{
+    Moves pure (side-effect-free) operations whose operands are all defined
+    outside the scf.if region to before the scf.if in the parent block.
+    Processes bottom-up (innermost scf.if first) to handle nesting.
+    Exposes redundant computations to subsequent CSE and LICM.
+
+    This mirrors what LLVM's LICM does unconditionally for pure arithmetic
+    inside conditional blocks (llvm/lib/Transforms/Scalar/LICM.cpp). LLVM's
+    flat CFG makes all basic blocks visible to loop-level LICM, but MLIR's
+    structured scf.if regions hide operations from its LICM. This pass
+    bridges that gap. Any over-hoisting can be cleaned up by control-flow-sink.
+  }];
+  let dependentDialects = ["scf::SCFDialect"];
+}
+
 def LoopAccumulatorPromotion : Pass<"promote-loop-accumulators", "ModuleOp"> {
   let summary = "Promote memory load-accumulate-store patterns to iter_args";
   let description = [{

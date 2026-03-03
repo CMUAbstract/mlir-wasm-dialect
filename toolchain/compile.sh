@@ -185,6 +185,7 @@ if [[ "$COMPILER" == "wami" ]]; then
       $SHARED_PREPROCESS, \
       wami-convert-memref, \
       canonicalize, \
+      hoist-from-scf-if, \
       $OPT_CLEANUP, \
       strength-reduce, \
       canonicalize, \
