@@ -112,4 +112,23 @@ def LoopAccumulatorPromotion : Pass<"promote-loop-accumulators", "ModuleOp"> {
   ];
 }
 
+def ReassociateAdditions : Pass<"reassociate-additions", "ModuleOp"> {
+  let summary = "Reassociate additions to expose common sub-expressions for CSE";
+  let description = [{
+    Flattens arbitrary-depth arith.addi trees into leaf terms, separates
+    constants from non-constants, and rebuilds as (sum of non-constants) +
+    combined_constant. When multiple addi ops inside a loop share the same
+    non-constant terms (differing only in constants), a single shared anchor
+    expression is built and each original is replaced with addi(anchor, const).
+
+    This enables CSE to merge the shared anchors across addresses and allows
+    downstream passes (e.g. WebAssembly offset folding) to absorb the constant
+    offsets.
+  }];
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "scf::SCFDialect"
+  ];
+}
+
 #endif // TRANSFORMS_PASSES

@@ -192,6 +192,10 @@ if [[ "$COMPILER" == "wami" ]]; then
       loop-invariant-code-motion, \
       canonicalize, \
       cse, \
+      reassociate-additions, \
+      canonicalize, \
+      loop-invariant-code-motion, \
+      cse, \
       wami-convert-scf, \
       wami-convert-arith, \
       wami-convert-math, \
