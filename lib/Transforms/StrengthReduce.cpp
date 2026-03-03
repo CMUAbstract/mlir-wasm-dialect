@@ -24,6 +24,149 @@
 
 namespace mlir::transforms {
 
+/// Get a compile-time integer value from a Value (constant op or cast thereof).
+static std::optional<int64_t> getConstantIntValue(Value v) {
+  if (auto c = v.getDefiningOp<arith::ConstantOp>())
+    if (auto intAttr = dyn_cast<IntegerAttr>(c.getValue()))
+      return intAttr.getValue().getSExtValue();
+  if (auto cast = v.getDefiningOp<UnrealizedConversionCastOp>())
+    if (cast.getNumOperands() == 1)
+      return getConstantIntValue(cast.getOperand(0));
+  return std::nullopt;
+}
+
+/// Recursively compute (a - b) when the difference is a compile-time constant.
+/// Returns nullopt if the difference cannot be determined.
+/// Walks parallel SSA def-chains through addi, subi, muli, and cast ops.
+static std::optional<int64_t> getConstantDifference(Value a, Value b,
+                                                    int depth = 0) {
+  // Depth limit prevents excessive recursion; 8 suffices for practical IR
+  // nesting (cast + muli + addi chains typically nest 4-5 levels deep).
+  if (depth > 8)
+    return std::nullopt;
+  if (a == b)
+    return 0;
+
+  // Both compile-time constants.
+  auto ca = getConstantIntValue(a), cb = getConstantIntValue(b);
+  if (ca && cb) {
+    int64_t result;
+    if (llvm::SubOverflow(*ca, *cb, result))
+      return std::nullopt;
+    return result;
+  }
+
+  // addi with one shared operand — tries all 4 commutative pairings.
+  auto matchSharedOperandAddi = [&](auto aOp,
+                                    auto bOp) -> std::optional<int64_t> {
+    if (aOp.getLhs() == bOp.getLhs())
+      return getConstantDifference(aOp.getRhs(), bOp.getRhs(), depth + 1);
+    if (aOp.getRhs() == bOp.getRhs())
+      return getConstantDifference(aOp.getLhs(), bOp.getLhs(), depth + 1);
+    if (aOp.getLhs() == bOp.getRhs())
+      return getConstantDifference(aOp.getRhs(), bOp.getLhs(), depth + 1);
+    if (aOp.getRhs() == bOp.getLhs())
+      return getConstantDifference(aOp.getLhs(), bOp.getRhs(), depth + 1);
+    return std::nullopt;
+  };
+
+  // addi: diff propagates directly (symmetric case).
+  if (auto aa = a.getDefiningOp<arith::AddIOp>())
+    if (auto ab = b.getDefiningOp<arith::AddIOp>())
+      if (auto d = matchSharedOperandAddi(aa, ab))
+        return d;
+
+  // Asymmetric addi: only one side is addi.
+  // a = addi(X, Y): a - b = (X - b) + constY  or  (Y - b) + constX
+  auto tryAsymAddi = [&](arith::AddIOp addOp, Value other,
+                         bool addIsA) -> std::optional<int64_t> {
+    for (int swap = 0; swap < 2; ++swap) {
+      Value inner = swap ? addOp.getRhs() : addOp.getLhs();
+      Value constSide = swap ? addOp.getLhs() : addOp.getRhs();
+      auto cv = getConstantIntValue(constSide);
+      if (!cv)
+        continue;
+      auto d = addIsA ? getConstantDifference(inner, other, depth + 1)
+                      : getConstantDifference(other, inner, depth + 1);
+      if (!d)
+        continue;
+      int64_t result;
+      if (addIsA ? llvm::AddOverflow(*d, *cv, result)
+                 : llvm::SubOverflow(*d, *cv, result))
+        continue;
+      return result;
+    }
+    return std::nullopt;
+  };
+  // Asymmetric addi fallback: decompose one addi when it has a constant
+  // operand.  Fires even when both sides are addi (after symmetric fails)
+  // to handle un-CSE'd constants like addi(0,2) vs addi(0,3).
+  if (auto aa = a.getDefiningOp<arith::AddIOp>())
+    if (auto r = tryAsymAddi(aa, b, /*addIsA=*/true))
+      return r;
+  if (auto ab = b.getDefiningOp<arith::AddIOp>())
+    if (auto r = tryAsymAddi(ab, a, /*addIsA=*/false))
+      return r;
+
+  // subi: diff(X-Y, X'-Y) = diff(X, X'); diff(X-Y, X-Y') = diff(Y', Y)
+  if (auto sa = a.getDefiningOp<arith::SubIOp>())
+    if (auto sb = b.getDefiningOp<arith::SubIOp>()) {
+      if (sa.getLhs() == sb.getLhs())
+        return getConstantDifference(sb.getRhs(), sa.getRhs(), depth + 1);
+      if (sa.getRhs() == sb.getRhs())
+        return getConstantDifference(sa.getLhs(), sb.getLhs(), depth + 1);
+    }
+
+  // muli with shared constant factor: diff = factor * diff(operands).
+  if (auto ma = a.getDefiningOp<arith::MulIOp>())
+    if (auto mb = b.getDefiningOp<arith::MulIOp>()) {
+      auto tryMul = [&](Value aOther, Value aFactor, Value bOther,
+                        Value bFactor) -> std::optional<int64_t> {
+        if (aFactor != bFactor)
+          return std::nullopt;
+        auto fv = getConstantIntValue(aFactor);
+        if (!fv)
+          return std::nullopt;
+        auto d = getConstantDifference(aOther, bOther, depth + 1);
+        if (!d)
+          return std::nullopt;
+        int64_t result;
+        if (llvm::MulOverflow(*fv, *d, result))
+          return std::nullopt;
+        return result;
+      };
+      if (auto r = tryMul(ma.getLhs(), ma.getRhs(), mb.getLhs(), mb.getRhs()))
+        return r;
+      if (auto r = tryMul(ma.getLhs(), ma.getRhs(), mb.getRhs(), mb.getLhs()))
+        return r;
+      if (auto r = tryMul(ma.getRhs(), ma.getLhs(), mb.getLhs(), mb.getRhs()))
+        return r;
+      if (auto r = tryMul(ma.getRhs(), ma.getLhs(), mb.getRhs(), mb.getLhs()))
+        return r;
+    }
+
+  // Cast ops (index_cast, extsi, unrealized_conversion_cast):
+  // diff passes through unchanged.  ExtUIOp is excluded because
+  // zero-extension changes the numeric value for negative inputs,
+  // making the difference through extui potentially incorrect.
+  auto getCastOperand = [](Value v) -> Value {
+    if (auto op = v.getDefiningOp<arith::IndexCastOp>())
+      return op.getIn();
+    if (auto op = v.getDefiningOp<arith::ExtSIOp>())
+      return op.getIn();
+    if (auto op = v.getDefiningOp<UnrealizedConversionCastOp>())
+      if (op.getNumOperands() == 1)
+        return op.getOperand(0);
+    return {};
+  };
+  Value aCast = getCastOperand(a), bCast = getCastOperand(b);
+  if (aCast && bCast &&
+      a.getDefiningOp()->getName() == b.getDefiningOp()->getName())
+    return getConstantDifference(aCast, bCast, depth + 1);
+
+  return std::nullopt;
+}
+
 #define GEN_PASS_DEF_STRENGTHREDUCE
 #include "Transforms/TransformsPasses.h.inc"
 
@@ -575,7 +718,7 @@ private:
   /// loop-carried accumulator that increments by K*step each iteration.
   /// Fires when bounds-based reduction cannot apply (different factors
   /// or IV still alive).
-  bool accumulatorReduceLoop(IRRewriter &rewriter, scf::ForOp forOp,
+  bool accumulatorReduceLoop(IRRewriter &rewriter, scf::ForOp &forOp,
                              SmallVector<Candidate> &candidates) {
     // Filter out candidates with no uses — adding an accumulator for a
     // dead multiply would be wasteful.
@@ -733,6 +876,7 @@ private:
         newYieldFn);
     if (failed(result))
       return false;
+    forOp = cast<scf::ForOp>((*result).getOperation());
 
     // Erase dead multiply ops.
     for (auto &c : candidates) {
@@ -741,6 +885,130 @@ private:
     }
 
     return true;
+  }
+
+  /// Absorb loop-invariant additive offsets into accumulator init values.
+  ///
+  /// After accumulator-based reduction, the loop body often contains:
+  ///   addi(acc, base), addi(acc, addi(base, 4)), ...
+  /// where acc is an iter_arg and base is loop-invariant.
+  ///
+  /// This absorbs the common base into the init:
+  ///   new_init = old_init + base
+  /// and replaces each addi: delta=0 -> acc, delta!=0 -> addi(acc, delta).
+  void absorbInvariantIntoAccumulators(IRRewriter &rewriter, scf::ForOp forOp) {
+    auto yieldOp = cast<scf::YieldOp>(forOp.getBody()->getTerminator());
+    auto iterArgs = forOp.getRegionIterArgs();
+
+    for (auto [idx, bbarg] : llvm::enumerate(iterArgs)) {
+      // Changing the init changes the final result — only safe if unused.
+      if (!forOp.getResult(idx).use_empty())
+        continue;
+
+      // The yield must be addi(bbarg, loop_invariant_step).
+      Value yieldVal = yieldOp.getOperand(idx);
+      auto yieldAdd = yieldVal.getDefiningOp<arith::AddIOp>();
+      if (!yieldAdd)
+        continue;
+
+      bool lhsIsBBarg = (yieldAdd.getLhs() == bbarg);
+      bool rhsIsBBarg = (yieldAdd.getRhs() == bbarg);
+      Value yieldStep;
+      if (lhsIsBBarg && !rhsIsBBarg)
+        yieldStep = yieldAdd.getRhs();
+      else if (rhsIsBBarg && !lhsIsBBarg)
+        yieldStep = yieldAdd.getLhs();
+      else
+        continue;
+      if (!forOp.isDefinedOutsideOfLoop(yieldStep))
+        continue;
+
+      // Collect non-yield uses: each must be addi(bbarg, loop_invariant).
+      struct UseInfo {
+        arith::AddIOp addOp;
+        Value invariant;
+      };
+      SmallVector<UseInfo> uses;
+      bool allValid = true;
+
+      for (auto &use : bbarg.getUses()) {
+        Operation *user = use.getOwner();
+        if (user == yieldAdd.getOperation())
+          continue;
+
+        auto addOp = dyn_cast<arith::AddIOp>(user);
+        if (!addOp) {
+          allValid = false;
+          break;
+        }
+
+        Value other;
+        if (addOp.getLhs() == bbarg &&
+            forOp.isDefinedOutsideOfLoop(addOp.getRhs()))
+          other = addOp.getRhs();
+        else if (addOp.getRhs() == bbarg &&
+                 forOp.isDefinedOutsideOfLoop(addOp.getLhs()))
+          other = addOp.getLhs();
+        else {
+          allValid = false;
+          break;
+        }
+
+        uses.push_back({addOp, other});
+      }
+
+      if (!allValid || uses.empty())
+        continue;
+
+      // Pick first invariant as reference. Compute deltas from it using
+      // recursive getConstantDifference to handle deeply nested patterns
+      // like addi(muli(cast(K), 4), base) vs addi(muli(cast(K+1), 4), base).
+      Value refInvariant = uses[0].invariant;
+      struct AbsorbInfo {
+        arith::AddIOp addOp;
+        int64_t delta;
+      };
+      SmallVector<AbsorbInfo> absorptions;
+      bool canAbsorb = true;
+
+      for (auto &u : uses) {
+        auto diff = getConstantDifference(u.invariant, refInvariant);
+        if (!diff) {
+          canAbsorb = false;
+          break;
+        }
+        absorptions.push_back({u.addOp, *diff});
+      }
+      if (!canAbsorb)
+        continue;
+
+      // Absorb refInvariant into init value.
+      Value oldInit = forOp.getInitArgs()[idx];
+      Location loc = forOp.getLoc();
+      rewriter.setInsertionPoint(forOp);
+      Value newInit;
+      if (isConstantZero(oldInit))
+        newInit = refInvariant;
+      else
+        newInit = arith::AddIOp::create(rewriter, loc, oldInit, refInvariant);
+      forOp.getInitArgsMutable()[idx].set(newInit);
+
+      // Replace each user addi.
+      for (auto &a : absorptions) {
+        if (a.delta == 0) {
+          rewriter.replaceAllUsesWith(a.addOp.getResult(), bbarg);
+          rewriter.eraseOp(a.addOp);
+        } else {
+          rewriter.setInsertionPoint(a.addOp);
+          Value deltaConst = arith::ConstantOp::create(
+              rewriter, loc, rewriter.getIntegerAttr(bbarg.getType(), a.delta));
+          Value newAdd =
+              arith::AddIOp::create(rewriter, loc, bbarg, deltaConst);
+          rewriter.replaceAllUsesWith(a.addOp.getResult(), newAdd);
+          rewriter.eraseOp(a.addOp);
+        }
+      }
+    }
   }
 
   void strengthReduceLoop(IRRewriter &rewriter, scf::ForOp forOp) {
@@ -774,18 +1042,22 @@ private:
     }
 
     if (candidates.empty()) {
+      absorbInvariantIntoAccumulators(rewriter, forOp);
       tryAbsorbCommonOffset(rewriter, forOp);
       return;
     }
 
     // Try bounds-based reduction first (preferred: zero new iter_args).
     if (tryBoundsBasedReduction(rewriter, forOp, candidates)) {
+      absorbInvariantIntoAccumulators(rewriter, forOp);
       tryAbsorbCommonOffset(rewriter, forOp);
       return;
     }
 
     // Fallback: accumulator-based reduction.
     accumulatorReduceLoop(rewriter, forOp, candidates);
+    absorbInvariantIntoAccumulators(rewriter, forOp);
+    tryAbsorbCommonOffset(rewriter, forOp);
   }
 };
 
