@@ -52,9 +52,30 @@ private:
     int64_t constSum;
   };
 
+  /// Try to extract a compile-time constant integer from a value.
+  /// Recognizes arith.constant directly and also
+  /// unrealized_conversion_cast(arith.constant) which appears after
+  /// applyPartialConversion for index-to-i32 conversions.
+  static std::optional<int64_t> getConstantInt(Value v) {
+    if (auto constOp = v.getDefiningOp<arith::ConstantOp>())
+      if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
+        return intAttr.getValue().getSExtValue();
+    if (auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>())
+      if (castOp.getNumOperands() == 1)
+        if (auto constOp =
+                castOp.getOperand(0).getDefiningOp<arith::ConstantOp>())
+          if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue()))
+            return intAttr.getValue().getSExtValue();
+    return std::nullopt;
+  }
+
   /// Recursively flatten an arith.addi tree into leaf terms.
   /// Constants are summed; non-constants are collected.
   /// Recurses through arith.addi regardless of where the op is defined.
+  /// Also recognizes arith.muli of two effective constants (possibly
+  /// through unrealized_conversion_cast) and folds their product into
+  /// constSum, so that reassociation can group addresses that differ
+  /// only by a constant offset.
   static void flattenAddiTree(Value v, SmallVectorImpl<Value> &nonConstLeaves,
                               int64_t &constSum) {
     if (auto addOp = v.getDefiningOp<arith::AddIOp>()) {
@@ -62,9 +83,16 @@ private:
       flattenAddiTree(addOp.getRhs(), nonConstLeaves, constSum);
       return;
     }
-    if (auto constOp = v.getDefiningOp<arith::ConstantOp>()) {
-      if (auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue())) {
-        constSum += intAttr.getValue().getSExtValue();
+    if (auto cval = getConstantInt(v)) {
+      constSum += *cval;
+      return;
+    }
+    // Fold muli where both operands are effective constants.
+    if (auto mulOp = v.getDefiningOp<arith::MulIOp>()) {
+      auto lhsConst = getConstantInt(mulOp.getLhs());
+      auto rhsConst = getConstantInt(mulOp.getRhs());
+      if (lhsConst && rhsConst) {
+        constSum += *lhsConst * *rhsConst;
         return;
       }
     }
