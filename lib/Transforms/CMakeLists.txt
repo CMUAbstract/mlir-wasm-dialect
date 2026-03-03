@@ -3,6 +3,7 @@ add_mlir_dialect_library(
   AffineAccumulatorPromotion.cpp
   HoistFromScfIf.cpp
   LoopAccumulatorPromotion.cpp
+  RemainderToAnd.cpp
   ScfLoopUnroll.cpp
   StrengthReduce.cpp
   ADDITIONAL_HEADER_DIRS
@@ -12,6 +13,7 @@ add_mlir_dialect_library(
   LINK_LIBS
   PUBLIC
   MLIRIR
+  MLIRAnalysis
   MLIRAffineDialect
   MLIRAffineAnalysis
   MLIRArithDialect
