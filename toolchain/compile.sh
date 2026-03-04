@@ -89,7 +89,7 @@ if [[ -z "$WASI_SDK_PATH" ]]; then
 fi
 
 # ============================================================
-# Common MLIR pass pipeline fragments (shared by both compilers)
+# MLIR pass pipeline fragments
 # ============================================================
 
 # Affine-level optimizations (on affine.for / affine.load / affine.store).
@@ -117,16 +117,31 @@ loop-invariant-subset-hoisting, \
 cse, \
 control-flow-sink"
 
-# Full shared preprocessing: standard MLIR → optimized SCF/memref MLIR.
-# Both compilers apply this pipeline via wasm-opt (which has the custom
-# accumulator promotion passes registered).
-SHARED_PREPROCESS="\
+# WAMI preprocessing: standard MLIR → optimized SCF/memref MLIR.
+# Includes custom optimization passes (accumulator promotion, unrolling,
+# reassociation) that are essential for the WAMI path.
+WAMI_PREPROCESS="\
 inline, \
 canonicalize, \
 func.func($AFFINE_OPTS), \
 lower-affine, \
 $POST_AFFINE_OPTS, \
 $OPT_CLEANUP"
+
+# Minimal preprocessing for the LLVM path: just lower affine to scf/memref
+# and clean up. Skip custom optimization passes that LLVM duplicates.
+LLVM_PREPROCESS="\
+inline, \
+canonicalize, \
+func.func( \
+  affine-scalrep, \
+  affine-simplify-if, \
+  affine-loop-invariant-code-motion, \
+  affine-loop-normalize), \
+lower-affine, \
+symbol-dce, \
+canonicalize, \
+cse"
 
 # ============================================================
 # Build
@@ -175,16 +190,16 @@ if [[ "$COMPILER" == "wami" ]]; then
         echo "Warning: --add-debug-functions is not supported in the new wami->wasmstack pipeline. Ignoring."
     fi
 
-    # Full WAMI pipeline: shared preprocessing + WAMI-specific lowering.
+    # Full WAMI pipeline: preprocessing + WAMI-specific lowering.
     # Runs entirely in wasm-opt (single invocation).
-    #   Phase 1-2: Shared preprocessing (affine opts, accumulator promotion, unrolling)
+    #   Phase 1-2: Preprocessing (affine opts, accumulator promotion, unrolling)
     #   Phase 3:   Lower memref (address math emitted as arith ops)
     #   Phase 4:   Optimize address computations + strength reduction
     #   Phase 5:   Lower remaining dialects (scf, arith, math, func) to WasmStack
     echo "Converting $INPUT_MLIR to WasmStack..."
     "$REPO_ROOT/build/bin/wasm-opt" \
     --pass-pipeline="builtin.module( \
-      $SHARED_PREPROCESS, \
+      $WAMI_PREPROCESS, \
       wami-convert-memref, \
       canonicalize, \
       hoist-from-scf-if, \
@@ -226,7 +241,7 @@ if [[ "$COMPILER" == "wami" ]]; then
     wasm2wat "$OUTPUT_BEFOREOPT_WASM" -o "$OUTPUT_BEFOREOPT_WAT"
 
 elif [[ "$COMPILER" == "llvm" ]]; then
-    OUTPUT_PREPROCESSED="${OUTPUT_BASE}-preprocessed-0.mlir" # after shared opts
+    OUTPUT_PREPROCESSED="${OUTPUT_BASE}-preprocessed-0.mlir" # after affine lowering
     OUTPUT_LLVM_MLIR="${OUTPUT_BASE}-llvm-1.mlir" # MLIR LLVM IR dialect
     OUTPUT_LL="${OUTPUT_BASE}-2.ll" # LLVM IR
     OUTPUT_OBJ="${OUTPUT_BASE}-3.o" # object file
@@ -234,17 +249,18 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-5.wasm"
     OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-6.wat"
 
-    # Step 1: Shared preprocessing via wasm-opt.
-    # Uses wasm-opt (not mlir-opt) because the custom accumulator promotion
-    # passes are registered there.
-    echo "Preprocessing $INPUT_MLIR (shared optimizations)..."
+    # Step 1: Minimal preprocessing via wasm-opt.
+    # Uses wasm-opt (not mlir-opt) because custom passes (e.g. affine-scalrep
+    # workaround) are registered there. Only lowers affine → scf/memref;
+    # optimization is left to LLVM's opt -O3.
+    echo "Preprocessing $INPUT_MLIR (minimal lowering for LLVM)..."
     "$REPO_ROOT/build/bin/wasm-opt" \
-    --pass-pipeline="builtin.module($SHARED_PREPROCESS)" \
+    --pass-pipeline="builtin.module($LLVM_PREPROCESS)" \
         "$INPUT_MLIR" \
         -o "$OUTPUT_PREPROCESSED"
 
     # Step 2: LLVM-specific lowering via mlir-opt.
-    # Input is already optimized SCF/memref MLIR from step 1.
+    # Input is SCF/memref MLIR from step 1.
     echo "Converting $OUTPUT_PREPROCESSED to LLVM dialect..."
     mlir-opt "$OUTPUT_PREPROCESSED" \
     --pass-pipeline="builtin.module( \
@@ -310,7 +326,7 @@ if [[ "$COMPILER" == "wami" ]]; then
     echo "  - $OUTPUT_OBJ (Relocatable object file)"
     echo "  - $OUTPUT_WAT (WAT format)"
 elif [[ "$COMPILER" == "llvm" ]]; then
-    echo "  - $OUTPUT_PREPROCESSED (Preprocessed MLIR after shared optimizations)"
+    echo "  - $OUTPUT_PREPROCESSED (Preprocessed MLIR after affine lowering)"
     echo "  - $OUTPUT_LLVM_MLIR (LLVM dialect MLIR)"
     echo "  - $OUTPUT_LL (LLVM IR)"
     echo "  - $OUTPUT_OPT_LL (LLVM IR after opt -O3)"
