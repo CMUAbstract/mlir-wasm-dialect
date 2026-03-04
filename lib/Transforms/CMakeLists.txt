@@ -6,7 +6,7 @@ add_mlir_dialect_library(
   LoopAccumulatorPromotion.cpp
   ReassociateAdditions.cpp
   ReassociateReductions.cpp
-  RemainderToAnd.cpp
+  SimplifyRemainder.cpp
   ScfLoopUnroll.cpp
   StrengthReduce.cpp
   ADDITIONAL_HEADER_DIRS

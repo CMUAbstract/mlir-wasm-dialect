@@ -189,7 +189,7 @@ if [[ "$COMPILER" == "wami" ]]; then
       canonicalize, \
       hoist-from-scf-if, \
       $OPT_CLEANUP, \
-      remainder-to-and, \
+      simplify-remainder, \
       strength-reduce, \
       loop-invariant-code-motion, \
       canonicalize, \

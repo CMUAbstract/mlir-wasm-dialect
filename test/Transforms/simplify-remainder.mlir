@@ -1,9 +1,9 @@
-// RUN: wasm-opt %s --remainder-to-and | FileCheck %s
+// RUN: wasm-opt %s --simplify-remainder | FileCheck %s
 
 func.func private @use_i32(i32) -> ()
 
 //===----------------------------------------------------------------------===//
-// Positive: remui with power-of-2 -> converted to andi
+// Power-of-2 AND: remui(x, 2^k) -> andi(x, 2^k - 1)
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @remui_power_of_2
@@ -17,10 +17,6 @@ func.func @remui_power_of_2(%x: i32) -> i32 {
   return %rem : i32
 }
 
-//===----------------------------------------------------------------------===//
-// Positive: remui with larger power-of-2 (8) -> mask is 7
-//===----------------------------------------------------------------------===//
-
 // CHECK-LABEL: func.func @remui_power_of_2_larger
 // CHECK-SAME:    (%[[X:.*]]: i32)
 // CHECK:         %[[MASK:.*]] = arith.constant 7 : i32
@@ -33,7 +29,7 @@ func.func @remui_power_of_2_larger(%x: i32) -> i32 {
 }
 
 //===----------------------------------------------------------------------===//
-// Positive: remsi with loop IV (provably non-negative) -> converted
+// Power-of-2 AND: remsi(x, 2^k) -> andi(x, 2^k - 1) when x >= 0
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @remsi_nonneg_loop_iv
@@ -53,10 +49,6 @@ func.func @remsi_nonneg_loop_iv() {
   }
   return
 }
-
-//===----------------------------------------------------------------------===//
-// Positive: remsi with IV + constant offset (nussinov pattern) -> converted
-//===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @remsi_nonneg_iv_plus_offset
 // CHECK:         scf.for
@@ -79,6 +71,90 @@ func.func @remsi_nonneg_iv_plus_offset() {
 }
 
 //===----------------------------------------------------------------------===//
+// Eliminate: remsi(x, N) -> x when 0 <= x < N
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @remsi_eliminate
+// CHECK:         scf.for
+// CHECK-NOT:       arith.remsi
+// CHECK-NOT:       arith.remui
+// CHECK-NOT:       arith.select
+// CHECK:           %[[CAST:.*]] = arith.index_cast
+// CHECK:           func.call @use_i32(%[[CAST]])
+// CHECK:         }
+func.func @remsi_eliminate() {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c400 = arith.constant 400 : index
+  %c400_i32 = arith.constant 400 : i32
+  scf.for %i = %c0 to %c400 step %c1 {
+    // IV range is [0, 399], so remsi(iv, 400) == iv
+    %cast = arith.index_cast %i : index to i32
+    %rem = arith.remsi %cast, %c400_i32 : i32
+    func.call @use_i32(%rem) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Select: remsi(x, N) -> select(x < N, x, x - N) when 0 <= x < 2N
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @remsi_select
+// CHECK:         scf.for
+// CHECK-NOT:       arith.remsi
+// CHECK-NOT:       arith.remui
+// CHECK:           %[[VAL:.*]] = arith.addi
+// CHECK:           %[[CMP:.*]] = arith.cmpi slt, %[[VAL]]
+// CHECK:           %[[SUB:.*]] = arith.subi %[[VAL]]
+// CHECK:           %[[SEL:.*]] = arith.select %[[CMP]], %[[VAL]], %[[SUB]]
+// CHECK:           func.call @use_i32(%[[SEL]])
+// CHECK:         }
+func.func @remsi_select() {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c400 = arith.constant 400 : index
+  %c3_i32 = arith.constant 3 : i32
+  %c400_i32 = arith.constant 400 : i32
+  scf.for %i = %c0 to %c400 step %c1 {
+    // IV range is [0, 399], so (iv + 3) range is [3, 402].
+    // 402 < 2*400 = 800, so select pattern applies.
+    %cast = arith.index_cast %i : index to i32
+    %plus3 = arith.addi %cast, %c3_i32 : i32
+    %rem = arith.remsi %plus3, %c400_i32 : i32
+    func.call @use_i32(%rem) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
+// Signed->unsigned: remsi(x, N) -> remui(x, N) when x >= 0
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func.func @remsi_to_remui
+// CHECK:         scf.for
+// CHECK-NOT:       arith.remsi
+// CHECK:           arith.remui
+// CHECK:         }
+func.func @remsi_to_remui() {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c1000 = arith.constant 1000 : index
+  %c3_i32 = arith.constant 3 : i32
+  %c400_i32 = arith.constant 400 : i32
+  scf.for %i = %c0 to %c1000 step %c1 {
+    // IV range is [0, 999], so (iv * 3) range is [0, 2997].
+    // 2997 >= 2*400 = 800, so select doesn't apply. But smin >= 0, so
+    // signed->unsigned conversion applies.
+    %cast = arith.index_cast %i : index to i32
+    %mul = arith.muli %cast, %c3_i32 : i32
+    %rem = arith.remsi %mul, %c400_i32 : i32
+    func.call @use_i32(%rem) : (i32) -> ()
+  }
+  return
+}
+
+//===----------------------------------------------------------------------===//
 // Negative: remsi with unknown-sign LHS -> NOT converted
 //===----------------------------------------------------------------------===//
 
@@ -92,7 +168,7 @@ func.func @remsi_unknown_sign(%x: i32) -> i32 {
 }
 
 //===----------------------------------------------------------------------===//
-// Negative: non-power-of-2 divisor -> NOT converted
+// Negative: non-power-of-2 remui -> NOT converted
 //===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: func.func @remui_non_power_of_2
@@ -104,10 +180,10 @@ func.func @remui_non_power_of_2(%x: i32) -> i32 {
   return %rem : i32
 }
 
-// CHECK-LABEL: func.func @remsi_non_power_of_2
+// CHECK-LABEL: func.func @remsi_non_power_of_2_unknown
 // CHECK:         arith.remsi
 // CHECK:         return
-func.func @remsi_non_power_of_2(%x: i32) -> i32 {
+func.func @remsi_non_power_of_2_unknown(%x: i32) -> i32 {
   %c3 = arith.constant 3 : i32
   %rem = arith.remsi %x, %c3 : i32
   return %rem : i32

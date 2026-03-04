@@ -66,15 +66,16 @@ def AffinePromoteAccumulators : Pass<"affine-promote-accumulators", "func::FuncO
   ];
 }
 
-def RemainderToAnd : Pass<"remainder-to-and", "ModuleOp"> {
-  let summary = "Convert remainder by power-of-2 to bitwise AND";
+def SimplifyRemainder : Pass<"simplify-remainder", "ModuleOp"> {
+  let summary = "Simplify remainder operations using integer range analysis";
   let description = [{
-    Converts unsigned and signed remainder operations by power-of-2 constants
-    to bitwise AND operations:
-      remui(x, 2^k) -> andi(x, 2^k - 1)  (always correct)
-      remsi(x, 2^k) -> andi(x, 2^k - 1)  (when x is provably non-negative)
+    Simplifies remainder operations using MLIR's IntegerRangeAnalysis:
+      remui(x, 2^k)      -> andi(x, 2^k - 1)     (always)
+      remsi(x, 2^k)      -> andi(x, 2^k - 1)     (when x >= 0)
+      remsi(x, N)         -> x                     (when 0 <= x < N)
+      remsi(x, N)         -> select(x<N, x, x-N)  (when 0 <= x < 2N)
+      remsi(x, N)         -> remui(x, N)           (when x >= 0)
 
-    Uses MLIR's IntegerRangeAnalysis to prove non-negativity for signed cases.
     Leaves remainder by 1 untouched for existing constant-folding passes.
   }];
   let dependentDialects = ["arith::ArithDialect"];
