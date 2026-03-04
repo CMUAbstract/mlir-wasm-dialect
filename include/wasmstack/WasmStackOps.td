@@ -1185,6 +1185,39 @@ def WasmStack_I64TruncF64UOp : WasmStack_ConversionOp<"i64.trunc_f64_u"> {
   let summary = "Truncate f64 to unsigned i64";
 }
 
+// Saturating (non-trapping) truncation ops
+def WasmStack_I32TruncSatF32SOp : WasmStack_ConversionOp<"i32.trunc_sat_f32_s"> {
+  let summary = "Saturating truncate f32 to signed i32";
+}
+
+def WasmStack_I32TruncSatF32UOp : WasmStack_ConversionOp<"i32.trunc_sat_f32_u"> {
+  let summary = "Saturating truncate f32 to unsigned i32";
+}
+
+def WasmStack_I32TruncSatF64SOp : WasmStack_ConversionOp<"i32.trunc_sat_f64_s"> {
+  let summary = "Saturating truncate f64 to signed i32";
+}
+
+def WasmStack_I32TruncSatF64UOp : WasmStack_ConversionOp<"i32.trunc_sat_f64_u"> {
+  let summary = "Saturating truncate f64 to unsigned i32";
+}
+
+def WasmStack_I64TruncSatF32SOp : WasmStack_ConversionOp<"i64.trunc_sat_f32_s"> {
+  let summary = "Saturating truncate f32 to signed i64";
+}
+
+def WasmStack_I64TruncSatF32UOp : WasmStack_ConversionOp<"i64.trunc_sat_f32_u"> {
+  let summary = "Saturating truncate f32 to unsigned i64";
+}
+
+def WasmStack_I64TruncSatF64SOp : WasmStack_ConversionOp<"i64.trunc_sat_f64_s"> {
+  let summary = "Saturating truncate f64 to signed i64";
+}
+
+def WasmStack_I64TruncSatF64UOp : WasmStack_ConversionOp<"i64.trunc_sat_f64_u"> {
+  let summary = "Saturating truncate f64 to unsigned i64";
+}
+
 def WasmStack_F32ConvertI32SOp : WasmStack_ConversionOp<"f32.convert_i32_s"> {
   let summary = "Convert signed i32 to f32";
 }

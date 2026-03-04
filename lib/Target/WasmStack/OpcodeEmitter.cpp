@@ -685,6 +685,47 @@ bool OpcodeEmitter::emitConversionOp(Operation *op) {
     writer.writeByte(wc::Opcode::I64TruncF64U);
     return true;
   }
+  // Saturating (non-trapping) truncation ops (0xFC prefix)
+  if (isa<I32TruncSatF32SOp>(op)) {
+    writer.writeByte(wc::Opcode::MiscPrefix);
+    writer.writeByte(wc::Opcode::I32TruncSatF32S);
+    return true;
+  }
+  if (isa<I32TruncSatF32UOp>(op)) {
+    writer.writeByte(wc::Opcode::MiscPrefix);
+    writer.writeByte(wc::Opcode::I32TruncSatF32U);
+    return true;
+  }
+  if (isa<I32TruncSatF64SOp>(op)) {
+    writer.writeByte(wc::Opcode::MiscPrefix);
+    writer.writeByte(wc::Opcode::I32TruncSatF64S);
+    return true;
+  }
+  if (isa<I32TruncSatF64UOp>(op)) {
+    writer.writeByte(wc::Opcode::MiscPrefix);
+    writer.writeByte(wc::Opcode::I32TruncSatF64U);
+    return true;
+  }
+  if (isa<I64TruncSatF32SOp>(op)) {
+    writer.writeByte(wc::Opcode::MiscPrefix);
+    writer.writeByte(wc::Opcode::I64TruncSatF32S);
+    return true;
+  }
+  if (isa<I64TruncSatF32UOp>(op)) {
+    writer.writeByte(wc::Opcode::MiscPrefix);
+    writer.writeByte(wc::Opcode::I64TruncSatF32U);
+    return true;
+  }
+  if (isa<I64TruncSatF64SOp>(op)) {
+    writer.writeByte(wc::Opcode::MiscPrefix);
+    writer.writeByte(wc::Opcode::I64TruncSatF64S);
+    return true;
+  }
+  if (isa<I64TruncSatF64UOp>(op)) {
+    writer.writeByte(wc::Opcode::MiscPrefix);
+    writer.writeByte(wc::Opcode::I64TruncSatF64U);
+    return true;
+  }
   if (isa<F32ConvertI32SOp>(op)) {
     writer.writeByte(wc::Opcode::F32ConvertI32S);
     return true;

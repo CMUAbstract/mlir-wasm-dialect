@@ -59,7 +59,7 @@ DepInfo queryDependencies(Operation *op) {
 
   // Trapping operations must not be moved across side effects.
   if (isa<wasmssa::DivSIOp, wasmssa::DivUIOp, wasmssa::RemSIOp,
-          wasmssa::RemUIOp, wami::TruncSOp, wami::TruncUOp>(op)) {
+          wasmssa::RemUIOp>(op)) {
     info.hasSideEffects = true;
     return info;
   }

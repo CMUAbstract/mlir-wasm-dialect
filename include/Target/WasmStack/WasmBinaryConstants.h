@@ -300,6 +300,17 @@ constexpr uint8_t F64ReinterpretI64 = 0xBF;
 constexpr uint8_t RefNull = 0xD0;
 constexpr uint8_t RefFunc = 0xD2;
 
+// Saturating truncation (0xFC prefix)
+constexpr uint8_t MiscPrefix = 0xFC;
+constexpr uint8_t I32TruncSatF32S = 0x00;
+constexpr uint8_t I32TruncSatF32U = 0x01;
+constexpr uint8_t I32TruncSatF64S = 0x02;
+constexpr uint8_t I32TruncSatF64U = 0x03;
+constexpr uint8_t I64TruncSatF32S = 0x04;
+constexpr uint8_t I64TruncSatF32U = 0x05;
+constexpr uint8_t I64TruncSatF64S = 0x06;
+constexpr uint8_t I64TruncSatF64U = 0x07;
+
 // Stack switching / typed continuations
 constexpr uint8_t ContNew = 0xE0;
 constexpr uint8_t ContBind = 0xE1;

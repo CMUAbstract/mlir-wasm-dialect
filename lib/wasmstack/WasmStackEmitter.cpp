@@ -1200,30 +1200,32 @@ void WasmStackEmitter::emitTruncOp(Operation *srcOp, bool isSigned) {
   if (failed)
     return;
 
-  // Emit appropriate truncation instruction based on types
+  // Emit saturating (non-trapping) truncation instructions.
+  // arith.fptosi/fptoui have undefined behavior for out-of-range values,
+  // so saturating is a valid and safer lowering than trapping.
   if (resultType.isInteger(32)) {
     if (inputType.isF32()) {
       if (isSigned)
-        I32TruncF32SOp::create(builder, loc, inputType, resultType);
+        I32TruncSatF32SOp::create(builder, loc, inputType, resultType);
       else
-        I32TruncF32UOp::create(builder, loc, inputType, resultType);
+        I32TruncSatF32UOp::create(builder, loc, inputType, resultType);
     } else if (inputType.isF64()) {
       if (isSigned)
-        I32TruncF64SOp::create(builder, loc, inputType, resultType);
+        I32TruncSatF64SOp::create(builder, loc, inputType, resultType);
       else
-        I32TruncF64UOp::create(builder, loc, inputType, resultType);
+        I32TruncSatF64UOp::create(builder, loc, inputType, resultType);
     }
   } else if (resultType.isInteger(64)) {
     if (inputType.isF32()) {
       if (isSigned)
-        I64TruncF32SOp::create(builder, loc, inputType, resultType);
+        I64TruncSatF32SOp::create(builder, loc, inputType, resultType);
       else
-        I64TruncF32UOp::create(builder, loc, inputType, resultType);
+        I64TruncSatF32UOp::create(builder, loc, inputType, resultType);
     } else if (inputType.isF64()) {
       if (isSigned)
-        I64TruncF64SOp::create(builder, loc, inputType, resultType);
+        I64TruncSatF64SOp::create(builder, loc, inputType, resultType);
       else
-        I64TruncF64UOp::create(builder, loc, inputType, resultType);
+        I64TruncSatF64UOp::create(builder, loc, inputType, resultType);
     }
   }
   materializeResult(loc, result);
