@@ -11,6 +11,7 @@ COMPILER=""
 CLEAN=false
 LLVM_OPT_FLAGS=""
 SKIP_BUILD=false
+WAMI_PREPROCESS_FOR_LLVM=false
 
 # Function to display usage information
 usage() {
@@ -21,6 +22,7 @@ usage() {
     echo "  --binaryen-opt-flags    Perform WebAssembly optimization (optional)"
     echo "  --llvm-opt-flags        Perform LLVM optimization (optional, only supported in --compiler=llvm)"
     echo "  --add-debug-functions   Add debug functions to the output (optional, only supported in --compiler=wami)"
+    echo "  --wami-preprocess       Use WAMI preprocessing (accumulator promotion, unrolling, reassociation) for LLVM path (optional, only supported in --compiler=llvm)"
     echo "  --clean                 Remove temporary files after completion"
     exit 1
 }
@@ -58,6 +60,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --skip-build)
             SKIP_BUILD=true
+            shift
+            ;;
+        --wami-preprocess)
+            WAMI_PREPROCESS_FOR_LLVM=true
             shift
             ;;
         *)
@@ -249,13 +255,18 @@ elif [[ "$COMPILER" == "llvm" ]]; then
     OUTPUT_BEFOREOPT_WASM="${OUTPUT_BASE}-nobinaryen-5.wasm"
     OUTPUT_BEFOREOPT_WAT="${OUTPUT_BASE}-nobinaryen-6.wat"
 
-    # Step 1: Minimal preprocessing via wasm-opt.
+    # Step 1: Preprocessing via wasm-opt.
     # Uses wasm-opt (not mlir-opt) because custom passes (e.g. affine-scalrep
-    # workaround) are registered there. Only lowers affine → scf/memref;
-    # optimization is left to LLVM's opt -O3.
-    echo "Preprocessing $INPUT_MLIR (minimal lowering for LLVM)..."
+    # workaround) are registered there.
+    if [ "$WAMI_PREPROCESS_FOR_LLVM" = true ]; then
+        LLVM_PREPROCESS_PIPELINE="$WAMI_PREPROCESS"
+        echo "Preprocessing $INPUT_MLIR (full WAMI optimizations for LLVM)..."
+    else
+        LLVM_PREPROCESS_PIPELINE="$LLVM_PREPROCESS"
+        echo "Preprocessing $INPUT_MLIR (minimal lowering for LLVM)..."
+    fi
     "$REPO_ROOT/build/bin/wasm-opt" \
-    --pass-pipeline="builtin.module($LLVM_PREPROCESS)" \
+    --pass-pipeline="builtin.module($LLVM_PREPROCESS_PIPELINE)" \
         "$INPUT_MLIR" \
         -o "$OUTPUT_PREPROCESSED"
 
