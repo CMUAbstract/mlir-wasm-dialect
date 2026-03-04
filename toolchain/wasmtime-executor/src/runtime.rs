@@ -72,19 +72,8 @@ pub fn run(cli: &Cli) -> Result<RunReport, RunnerError> {
             .map_err(|e| RunnerError::Module(e.to_string()))?;
     }
     let engine = Engine::new(&config).map_err(|e| RunnerError::Module(e.to_string()))?;
-    let module = if use_aot {
-        let wasm_bytes =
-            std::fs::read(&cli.input).map_err(|e| RunnerError::Module(e.to_string()))?;
-        let serialized = engine
-            .precompile_module(&wasm_bytes)
-            .map_err(|e| RunnerError::Module(e.to_string()))?;
-        unsafe {
-            Module::deserialize(&engine, &serialized)
-                .map_err(|e| RunnerError::Module(e.to_string()))?
-        }
-    } else {
-        Module::from_file(&engine, &cli.input).map_err(|e| RunnerError::Module(e.to_string()))?
-    };
+    let module =
+        Module::from_file(&engine, &cli.input).map_err(|e| RunnerError::Module(e.to_string()))?;
 
     let total_iterations = cli.warmup + cli.iterations;
     let mut durations: Vec<Duration> = Vec::with_capacity(cli.iterations);
