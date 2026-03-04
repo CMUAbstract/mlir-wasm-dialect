@@ -22,6 +22,7 @@ SILENT=false
 ITERATIONS=1
 WARMUP=0
 SKIP_BUILD=false
+WAMI_PREPROCESS=false
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
@@ -60,6 +61,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --skip-build)
             SKIP_BUILD=true
+            shift
+            ;;
+        --wami-preprocess)
+            WAMI_PREPROCESS=true
             shift
             ;;
         --)
@@ -103,7 +108,11 @@ SKIP_BUILD_FLAG=""
 if [ "$SKIP_BUILD" = true ]; then
     SKIP_BUILD_FLAG="--skip-build"
 fi
-COMPILE_CMD="\"$SCRIPT_DIR/compile.sh\" -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-flags=\"$LLVM_OPT_FLAGS\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\" $SKIP_BUILD_FLAG"
+WAMI_PREPROCESS_FLAG=""
+if [ "$WAMI_PREPROCESS" = true ]; then
+    WAMI_PREPROCESS_FLAG="--wami-preprocess"
+fi
+COMPILE_CMD="\"$SCRIPT_DIR/compile.sh\" -i $MLIR_FILE -o $TEMP_DIR/$BASENAME --compiler=$COMPILER --llvm-opt-flags=\"$LLVM_OPT_FLAGS\"  --binaryen-opt-flags=\"$BINARYEN_OPT_FLAGS\" $SKIP_BUILD_FLAG $WAMI_PREPROCESS_FLAG"
 
 echo "Compiling $COMPILER to Wasm with command: $COMPILE_CMD"
 eval "$COMPILE_CMD"
