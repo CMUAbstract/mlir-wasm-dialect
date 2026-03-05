@@ -296,7 +296,7 @@ elif [[ "$COMPILER" == "llvm" ]]; then
 
     OUTPUT_OPT_LL="${OUTPUT_BASE}-opt-2b.ll"
     echo "Running LLVM middle-end optimizations on $OUTPUT_LL..."
-    opt -O3 -S "$OUTPUT_LL" -o "$OUTPUT_OPT_LL"
+    opt -mtriple=wasm32-wasi -O3 -S "$OUTPUT_LL" -o "$OUTPUT_OPT_LL"
 
     echo "Lowering $OUTPUT_OPT_LL to object file (.o)..."
     llc $LLVM_OPT_FLAGS -filetype=obj -mtriple=wasm32-wasi "$OUTPUT_OPT_LL" -o "$OUTPUT_OBJ"
